@@ -1,0 +1,246 @@
+import java.io.InputStream;
+import javax.microedition.media.Manager;
+import javax.microedition.media.control.VolumeControl;
+
+public class Sound implements Runnable {
+   public static int touchMe = 1;
+   public static final int FLAGS_NONE = 0;
+   public static final int FLAGS_LOOP = 1;
+   public static final int SND_NEG = 0;
+   public static final int SND_POS = 1;
+   public static final int SND_DYN = 2;
+   private static javax.microedition.media.Player soundPlayer;
+   public static boolean soundLooped;
+   public static boolean soundFormatAllowed = true;
+   public static boolean vibrateEnabled;
+   private static boolean allowSounds = true;
+   public static final String SOUND_FORMAT = "audio/midi";
+   private static int[] sndIndex;
+   private static int activeSound = -1;
+   private static javax.microedition.media.Player[] sound;
+   private static int iMaxS = -1;
+   private static javax.microedition.media.Player music;
+   public static boolean loop = false;
+   public static int actual = -1;
+   private int doN = -1;
+   private static boolean bInProgress = false;
+
+   public static final boolean startup() {
+      try {
+         sndIndex = Resource.loadFileIndex("/sounds.idx");
+      } catch (Exception var1) {
+         App.Error(var1, 80);
+         return false;
+      }
+
+      setVibrate(true);
+      allowSounds = true;
+      return true;
+   }
+
+   public static boolean isSoundEnabled() {
+      return allowSounds;
+   }
+
+   public static void setSound(boolean var0) {
+      allowSounds = var0;
+   }
+
+   public static boolean isVibrateEnabled() {
+      return vibrateEnabled;
+   }
+
+   public static void setVibrate(boolean var0) {
+      vibrateEnabled = var0;
+   }
+
+   public static final void startSound(int var0) {
+      if (allowSounds) {
+         if (!soundLooped || var0 == 2) {
+            try {
+               soundPlayer.stop();
+            } catch (Exception var3) {
+            }
+
+            try {
+               if (soundLooped) {
+                  soundPlayer.setLoopCount(-1);
+               }
+
+               soundPlayer.start();
+            } catch (Exception var2) {
+            }
+
+         }
+      }
+   }
+
+   public static int getActiveSound() {
+      return activeSound;
+   }
+
+   public static void resetActiveSound() {
+      activeSound = -1;
+      if (soundPlayer != null) {
+         soundPlayer.deallocate();
+         soundPlayer.close();
+         soundPlayer = null;
+         soundLooped = false;
+         System.gc();
+      }
+
+   }
+
+   public static final void loadSound(int var0, boolean var1) {
+      if (allowSounds && var0 != activeSound) {
+         if (soundPlayer != null) {
+            soundPlayer.deallocate();
+            soundPlayer.close();
+            soundPlayer = null;
+            activeSound = -1;
+            soundLooped = false;
+            System.gc();
+         }
+
+         activeSound = var0;
+         InputStream var2 = App.getResourceAsStream("sounds" + sndIndex[var0 * 3] + ".bin");
+
+         try {
+            soundPlayer = Manager.createPlayer(var2, "audio/midi");
+         } catch (Exception var6) {
+         }
+
+         try {
+            soundPlayer.realize();
+         } catch (Exception var5) {
+         }
+
+         try {
+            soundPlayer.prefetch();
+         } catch (Exception var4) {
+         }
+
+         if (var1) {
+            soundPlayer.setLoopCount(-1);
+         }
+
+         soundLooped = var1;
+      }
+   }
+
+   public static final void soundStop() {
+      stopAll();
+   }
+
+   public static final void clearDynamicSound() {
+   }
+
+   public Sound(int var1) {
+      bInProgress = true;
+      this.doN = var1;
+
+      try {
+         sndIndex = Resource.loadFileIndex("/sounds.idx");
+      } catch (Exception var3) {
+      }
+
+   }
+
+   public static javax.microedition.media.Player load(int var0) {
+      javax.microedition.media.Player var1 = null;
+      if (var0 == 0) {
+         var0 = 11;
+      } else if (var0 == 1) {
+         var0 = 13;
+      } else if (var0 == 2) {
+         var0 = 24;
+      }
+
+      String var2 = "sounds" + sndIndex[var0 * 3] + ".bin";
+
+      try {
+         InputStream var3 = App.getResourceAsStream(var2);
+         var1 = Manager.createPlayer(var3, "audio/midi");
+         var1.realize();
+      } catch (Exception var4) {
+         var1 = null;
+      }
+
+      return var1;
+   }
+
+   public static void playSound(int var0) {
+      if (var0 != 5 && var0 != 6 && var0 != 4 && var0 != 3 && var0 != 2 && var0 != 15 && var0 != 17 && var0 != 18 && var0 != 19 && var0 != 21) {
+         loop = false;
+         if (!bInProgress) {
+            (new Thread(new Sound(var0))).start();
+         }
+      }
+   }
+
+   public static void playSound(int var0, int var1) {
+      if (var0 != 5 && var0 != 6 && var0 != 4 && var0 != 3 && var0 != 2 && var0 != 15 && var0 != 17 && var0 != 18 && var0 != 19 && var0 != 21) {
+         boolean var2 = (var1 & 1) != 0;
+         if (!bInProgress) {
+            (new Thread(new Sound(var0))).start();
+         }
+      }
+   }
+
+   public static void play(int var0) {
+      if (allowSounds) {
+         if (actual != var0) {
+            stopAll();
+         }
+
+         if (music == null) {
+            music = load(var0);
+            if (music == null) {
+               return;
+            }
+         }
+
+         try {
+            actual = var0;
+            music.prefetch();
+            if (loop) {
+               music.setLoopCount(-1);
+            }
+
+            VolumeControl var1 = (VolumeControl)music.getControl("VolumeControl");
+            var1.setLevel(99);
+            music.start();
+         } catch (Exception var2) {
+            music = null;
+            actual = -1;
+         }
+
+      }
+   }
+
+   public void run() {
+      try {
+         play(this.doN);
+      } catch (Exception var2) {
+      }
+
+      bInProgress = false;
+   }
+
+   public static void stopSound() {
+      stopAll();
+   }
+
+   public static void stopAll() {
+      if (actual != -1) {
+         try {
+            music.stop();
+            music.deallocate();
+            music = null;
+         } catch (Exception var1) {
+         }
+
+         actual = -1;
+      }
+   }
+}

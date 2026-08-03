@@ -1,0 +1,3965 @@
+import java.io.IOException;
+import java.io.InputStream;
+import javax.microedition.lcdui.Image;
+
+final class MenuSystem implements Runnable {
+   public static int touchMe = 0;
+   private static int[] menuData;
+   private static int[] menuItems;
+   public static short LEVEL_STATS_nextMap;
+   public static final int NO = 0;
+   public static final int YES = 1;
+   public static int menuParam;
+   private static EntityDef detailsDef;
+   public static final int INDEX_UAC_CREDITS = 0;
+   public static final int INDEX_WEAPONS = 1;
+   public static final int INDEX_ENERGY_DRINKS = 2;
+   public static final int INDEX_OTHER = 3;
+   public static final int INDEX_ITEMS = 4;
+   public static final int MAX_SAVED_INDEXES = 5;
+   public static int[] indexes = new int[10];
+   private static final int BLOCK_LINE_MASK = 63;
+   private static final int BLOCK_NUMLINES_SHIFT = 26;
+   private static final int BLOCK_CURLINE_SHIFT = 20;
+   private static final int BLOCK_OFS_MASK = 1023;
+   private static final int BLOCK_CHARS_TO_DRAW_SHIFT = 10;
+   public static final int MAX_MENUITEMS = 50;
+   public static final int EMPTY_TEXT = Text.STRINGID((short)3, (short)0);
+   public static Image imgMainBG;
+   public static Image background;
+   public static final short MAIN_BG_OFFSET_Y = 20;
+   public static int maxInputDigits = 10;
+   public static boolean digitInput;
+   public static int lastOffer;
+   public static MenuItem[] items = new MenuItem[50];
+   public static int numItems;
+   public static int menu;
+   public static int oldMenu;
+   public static int selectedIndex;
+   public static int scrollIndex;
+   public static int type;
+   private static int maxItems;
+   private static int cheatCombo;
+   public static int startTime;
+   private static int MODE_FULLREFRESH = 0;
+   private static int MODE_IDLE = 1;
+   private static int menuMode;
+   private static final int MAXSTACKCOUNT = 10;
+   private static int stackCount = 0;
+   private static int[] menuStack = new int[10];
+   private static int[] menuIdxStack = new int[10];
+   private static int[] poppedIdx = new int[1];
+   public static Text detailsTitle;
+   public static Text detailsHelpText;
+   public static boolean goBackToStation;
+   public static final int TOP_Y = 1;
+   private static final int MAX_MORE_GAMES = 4;
+   private static int moreGamesPage = 0;
+   private static int[] clipRect = new int[4];
+   private static boolean oldVibrateSetting;
+   private static boolean oldSoundSetting;
+   private static int oldLanguageSetting;
+   public static final int TITLE_VENDING_Y_OFFSET = 8;
+   static boolean isLongText;
+   public static Image imgMainMenuTop;
+   public static Image imgMainMenuQuadrant;
+   public static Image imgMainMenuElements;
+   public static Image imgIngameMenuElements;
+   static Text popUpTitle;
+   static Text popUpText;
+   static Text menuTitle;
+   private static final int TOUCH_MENU_TYPE_MAIN = 0;
+   private static final int TOUCH_MENU_TYPE_INGAME = 1;
+   private static final int TOUCH_MENU_TYPE_VENDING = 2;
+   public static MenuSystem.touchMenuFormat tFormat;
+   public static MenuSystem.touchMenuState tState;
+   public static final int MAIN_MENU_PADDING_LEFT = 22;
+   public static final int MAIN_MENU_PADDING_RIGHT = 23;
+   public static final int MAIN_MENU_PADDING_TOP = 23;
+   public static final int MAIN_MENU_PADDING_BOTTOM = 18;
+   public static final int MAIN_MENU_SCROLL_BAR_WIDTH = 15;
+   public static final int MAIN_MENU_SCROLL_HANDLE_WIDTH = 30;
+   public static final int MAIN_MENU_SCROLL_HANDLE_HEIGHT = 36;
+   public static final int MAIN_MENU_SCROLL_HANDLE_PADDING_TOP = -3;
+   public static final int MAIN_MENU_SCROLL_HANDLE_PADDING_LEFT = -10;
+   public static final int MAIN_MENU_ITEM_HEIGHT = 41;
+   public static final int MAIN_MENU_ITEM_PADDING_BOTTOM = 9;
+   public static final int MAIN_MENU_ITEM_INFO_WIDTH = 0;
+   public static final int MAIN_MENU_ITEM_INFO_PADDING_LEFT = 0;
+   public static final int MAIN_MENU_TITLE_PADDING_ABOVE = 10;
+   public static final int MAIN_MENU_TITLE_PADDING_BELOW = 25;
+   public static final int INGAME_MENU_PADDING_LEFT = 17;
+   public static final int INGAME_MENU_PADDING_RIGHT = 24;
+   public static final int INGAME_MENU_PADDING_TOP = 23;
+   public static final int INGAME_MENU_PADDING_BOTTOM = 19;
+   public static final int INGAME_MENU_SCROLL_BAR_WIDTH = 20;
+   public static final int INGAME_MENU_SCROLL_HANDLE_WIDTH = 24;
+   public static final int INGAME_MENU_SCROLL_HANDLE_HEIGHT = 62;
+   public static final int INGAME_MENU_SCROLL_HANDLE_PADDING_TOP = 10;
+   public static final int INGAME_MENU_SCROLL_HANDLE_PADDING_LEFT = -3;
+   public static final int INGAME_MENU_ITEM_HEIGHT = 20;
+   public static final int INGAME_MENU_ITEM_PADDING_BOTTOM = 17;
+   public static final int INGAME_MENU_ITEM_INFO_WIDTH = 24;
+   public static final int INGAME_MENU_ITEM_INFO_PADDING_LEFT = 3;
+   public static final int INGAME_MENU_TITLE_PADDING_ABOVE = 80;
+   public static final int INGAME_MENU_TITLE_PADDING_BELOW = 25;
+   public static final int VENDING_MENU_PADDING_LEFT = 10;
+   public static final int VENDING_MENU_PADDING_RIGHT = 11;
+   public static final int VENDING_MENU_PADDING_TOP = 15;
+   public static final int VENDING_MENU_PADDING_BOTTOM = 4;
+   public static final int VENDING_MENU_SCROLL_BAR_WIDTH = 31;
+   public static final int VENDING_MENU_SCROLL_HANDLE_WIDTH = 0;
+   public static final int VENDING_MENU_SCROLL_HANDLE_HEIGHT = 0;
+   public static final int VENDING_MENU_SCROLL_HANDLE_PADDING_TOP = 0;
+   public static final int VENDING_MENU_SCROLL_HANDLE_PADDING_LEFT = 0;
+   public static final int VENDING_MENU_ITEM_HEIGHT = 59;
+   public static final int VENDING_MENU_ITEM_PADDING_BOTTOM = 10;
+   public static final int VENDING_MENU_ITEM_INFO_WIDTH = 38;
+   public static final int VENDING_MENU_ITEM_INFO_PADDING_LEFT = 4;
+   public static final int VENDING_MAIN_MENU_ITEM_HEIGHT = 36;
+   public static final int VENDING_MAIN_MENU_ITEM_PADDING_BOTTOM = 16;
+   public static final int VENDING_MENU_TITLE_PADDING_ABOVE = 0;
+   public static final int VENDING_MENU_TITLE_PADDING_BELOW = 11;
+   public static final int VENDING_MAIN_MENU_TITLE_PADDING_BELOW = 21;
+   public static final int MENU_TOP_SECTION_HEIGHT = 250;
+   public static final int MENU_TOP_SECTION_OVERLAP = 0;
+   public static final int MENU_SOFTKEY_WIDTH = 99;
+   public static final int MENU_SOFTKEY_HEIGHT = 37;
+   public static final int MENU_SOFTKEY_PADDING_ABOVE = 16;
+   public static final int MENU_SOFTKEY_PADDING_SIDE = 19;
+   public static final int MENU_TOP_SECTION_HEIGHT_VENDING = 223;
+   public static final int MENU_TOP_SECTION_OVERLAP_VENDING = 0;
+   public static final int MENU_SOFTKEY_WIDTH_VENDING = 104;
+   public static final int MENU_SOFTKEY_HEIGHT_VENDING = 36;
+   public static final int MENU_SOFTKEY_PADDING_ABOVE_VENDING = 0;
+   public static final int MENU_SOFTKEY_PADDING_SIDE_VENDING = 14;
+   public static final int MENU_NON_FULL_SCREEN_OFFSET_Y = 144;
+   public static final int POP_UP_WIDTH = 240;
+   public static final int POP_UP_TEXT_OFFSET_X = 25;
+   private static final int UP_ARROW_OFFSET_X = 151;
+   private static final int UP_ARROW_OFFSET_Y = 100;
+   private static final int DOWN_ARROW_PADDING_ABOVE = 32;
+   private static final int ARROW_WIDTH = 45;
+   private static final int ARROW_HEIGHT = 39;
+   private static final int SOFTKEY_PRESS_LEFT = 0;
+   private static final int SOFTKEY_PRESS_RIGHT = 1;
+
+   public static final boolean startup() {
+      App.checkPausedState();
+
+      try {
+         InputStream var0 = App.getResourceAsStream("/menus.bin");
+         Resource.read(var0, 4);
+         short var1 = Resource.shortAt(0);
+         short var2 = Resource.shortAt(2);
+         menuData = new int[var1];
+         menuItems = new int[var2];
+         int var3 = 0;
+         int var4 = 0;
+         boolean var5 = false;
+
+         int var6;
+         int var9;
+         do {
+            var9 = (var1 << 2) - var4 > 40960 ? 'ꀀ' : (var1 << 2) - var4;
+            Resource.read(var0, var9);
+
+            for(var6 = 4; var6 <= var9; var6 += 4) {
+               menuData[var3++] = Resource.shiftInt();
+            }
+         } while((var4 += var9) < var1 << 2);
+
+         App.checkPausedState();
+         var3 = 0;
+         var4 = 0;
+
+         do {
+            var9 = (var2 << 2) - var4 > 40960 ? 'ꀀ' : (var2 << 2) - var4;
+            Resource.read(var0, var9);
+
+            for(var6 = 4; var6 <= var9; var6 += 4) {
+               menuItems[var3++] = Resource.shiftInt();
+            }
+         } while((var4 += var9) < var2 << 2);
+      } catch (IOException var7) {
+         App.Error(var7, 21);
+      }
+
+      for(int var8 = 0; var8 < items.length; ++var8) {
+         items[var8] = new MenuItem();
+      }
+
+      numItems = 0;
+      background = null;
+      menu = 0;
+      selectedIndex = 0;
+      scrollIndex = 0;
+      type = 0;
+      maxItems = 0;
+      cheatCombo = 0;
+      goBackToStation = false;
+      return true;
+   }
+
+   public static final void buildDivider(Text var0, int var1) {
+      int var2 = var0.length();
+      int var3 = (var1 - (var2 + 2)) / 2;
+      if (var0.length() > 0) {
+         var0.insert((char)' ', 0);
+         var0.append(' ');
+      } else {
+         var0.append('\u0080');
+         var0.append('\u0080');
+         var0.append('\u0080');
+      }
+
+      for(int var4 = 0; var4 < var3; ++var4) {
+         var0.insert((char)'\u0080', 0);
+         var0.append('\u0080');
+      }
+
+   }
+
+   public static boolean enterDigit(int var0) {
+      cheatCombo *= 10;
+      cheatCombo += var0;
+      if (cheatCombo == 1011001) {
+         cheatCombo = 0;
+         selectedIndex = 0;
+         scrollIndex = 0;
+         gotoMenu(65);
+         return true;
+      } else if (cheatCombo == 3666) {
+         cheatCombo = 0;
+         selectedIndex = 0;
+         scrollIndex = 0;
+         gotoMenu(65);
+         return true;
+      } else if (cheatCombo == 1666) {
+         Canvas.loadMap(Canvas.loadMapID, true, false);
+         return true;
+      } else {
+         if (cheatCombo == 4332) {
+            Player.giveAll();
+         } else if (cheatCombo == 3366) {
+            cheatCombo = 0;
+            if (menu >= 29) {
+               Canvas.startSpeedTest(false);
+            }
+         }
+
+         return false;
+      }
+   }
+
+   public static final void scrollDown() {
+      if ((items[selectedIndex].flags & 256) != 0) {
+         shiftBlockText(selectedIndex, 1, maxItems);
+      } else {
+         moveDir(1);
+      }
+
+   }
+
+   public static final void scrollUp() {
+      if ((items[selectedIndex].flags & 256) != 0) {
+         shiftBlockText(selectedIndex, -1, maxItems);
+      } else {
+         moveDir(-1);
+      }
+
+   }
+
+   public static final boolean scrollPageDown() {
+      if ((items[selectedIndex].flags & 256) != 0) {
+         return shiftBlockText(selectedIndex, maxItems, maxItems);
+      } else {
+         int var0 = selectedIndex;
+
+         for(int var1 = 0; var1 < maxItems && selectedIndex != numItems - 1; ++var1) {
+            moveDir(1);
+            if (selectedIndex < var0) {
+               moveDir(-1);
+               break;
+            }
+         }
+
+         return var0 != selectedIndex;
+      }
+   }
+
+   public static final void scrollPageUp() {
+      if ((items[selectedIndex].flags & 256) != 0) {
+         shiftBlockText(selectedIndex, -maxItems, maxItems);
+      } else {
+         int var0 = selectedIndex;
+
+         for(int var1 = 0; var1 < maxItems && selectedIndex != 0; ++var1) {
+            moveDir(-1);
+            if (selectedIndex >= var0) {
+               moveDir(1);
+               break;
+            }
+         }
+      }
+
+   }
+
+   public static final boolean shiftBlockText(int var0, int var1, int var2) {
+      if (var0 <= numItems && (items[var0].flags & 256) != 0) {
+         Text var3 = Text.getLargeBuffer();
+         Text.composeText(items[var0].textField, var3);
+         int var4 = items[var0].param >> 26 & 63;
+         int var5 = items[var0].param >> 20 & 63;
+         int var6 = items[var0].param & 1023;
+         int var7 = var6;
+         if (var1 > 0) {
+            for(var1 = Math.min(var1, var4 - (var5 + var2)); var1 > 0; --var1) {
+               var6 = var3.findFirstOf('|', var6) + 1;
+               ++var5;
+            }
+         } else {
+            for(var1 = Math.min(Math.abs(var1), var5); var1 > 0; --var1) {
+               var6 = var3.findLastOf('|', var6 - 1) + 1;
+               --var5;
+            }
+         }
+
+         int var8;
+         for(var8 = var6; var2 > 0; ++var8) {
+            var8 = var3.findFirstOf('|', var8);
+            if (var8 == -1) {
+               var8 = var3.length();
+               break;
+            }
+
+            --var2;
+         }
+
+         items[var0].param = (var4 & 63) << 26 | (var5 & 63) << 20 | (var8 - var6 & 1023) << 10 | var6 & 1023;
+         var3.dispose();
+         return var6 != var7;
+      } else {
+         return false;
+      }
+   }
+
+   public static final void doDetailsSelect() {
+      if (type != 5 && type != 7 && menu != 87) {
+         cheatCombo = 0;
+         if ((items[selectedIndex].flags & 32) == 0) {
+            if (items[selectedIndex].action != 0) {
+               select();
+            }
+
+         } else {
+            showDetailsMenu();
+         }
+      }
+   }
+
+   public static final void back() {
+      if (menu == 17 || menu == 35) {
+         leaveOptionsMenu();
+      }
+
+      if (stackCount != 0) {
+         int var0 = popMenu(poppedIdx);
+         setMenu(var0);
+         tState.scrollHandle_y = poppedIdx[0];
+      } else if (menu != 29 && menu != 72 && menu != 46 && menu != 57 && !goBackToStation && menu != 41) {
+         if (menu == 18) {
+            setMenu(3);
+         }
+      } else {
+         returnToGame();
+      }
+
+   }
+
+   private static final void moveDir(int var0) {
+      menuMode = MODE_FULLREFRESH;
+      if (type != 5 && type != 7) {
+         label85:
+         while(true) {
+            selectedIndex += var0;
+            if (selectedIndex < numItems && selectedIndex >= 0) {
+               if (items[selectedIndex].textField == EMPTY_TEXT || (items[selectedIndex].flags & '老') != 0) {
+                  continue;
+               }
+               break;
+            }
+
+            if (selectedIndex < 0) {
+               selectedIndex = numItems - 1;
+            } else {
+               selectedIndex = 0;
+               if (type == 9) {
+                  scrollIndex = 0;
+               }
+            }
+
+            while(true) {
+               if (items[selectedIndex].textField != EMPTY_TEXT && (items[selectedIndex].flags & '老') == 0) {
+                  break label85;
+               }
+
+               selectedIndex += var0;
+            }
+         }
+
+         if (maxItems != 0 && var0 < 0) {
+            if (selectedIndex - maxItems + 1 > scrollIndex) {
+               scrollIndex = selectedIndex - maxItems + 1;
+            } else if (selectedIndex < scrollIndex) {
+               scrollIndex = selectedIndex;
+            } else if (type == 9 && selectedIndex - 3 < scrollIndex && scrollIndex > 0) {
+               --scrollIndex;
+            }
+         } else if (maxItems != 0) {
+            if (selectedIndex > scrollIndex + maxItems - 1) {
+               scrollIndex = selectedIndex - maxItems + 1;
+            } else if (scrollIndex > selectedIndex) {
+               scrollIndex = selectedIndex;
+            } else if (type == 9 && selectedIndex + 3 > scrollIndex + maxItems - 1 && scrollIndex + maxItems < numItems) {
+               ++scrollIndex;
+            }
+         }
+      } else {
+         if (var0 < 0 && scrollIndex > 0) {
+            scrollIndex += var0;
+         } else if (var0 > 0 && scrollIndex < numItems - maxItems) {
+            scrollIndex += var0;
+         }
+
+         selectedIndex = scrollIndex;
+      }
+
+   }
+
+   public static final void setMenu(int var0) {
+      cheatCombo = 0;
+      menuMode = MODE_FULLREFRESH;
+      if (var0 == 3 || var0 == 29 || var0 == 57) {
+         clearStack();
+      }
+
+      if (var0 == 25) {
+         menuMode = MODE_FULLREFRESH;
+      }
+
+      oldMenu = menu;
+      menu = var0;
+      if (menu != 0) {
+         initMenu(menu);
+         if (Canvas.state != 1) {
+            Canvas.setState(1);
+         }
+      } else {
+         returnToGame();
+         menu = 0;
+      }
+
+   }
+
+   public static final void paint(Graphics var0) {
+      int[] var1 = Canvas.menuRect;
+      int[] var2 = Canvas.screenRect;
+      int[] var3 = clipRect;
+      int var4 = 16;
+      Text var5 = Text.getLargeBuffer();
+      Text var6 = Text.getLargeBuffer();
+      if (menuMode == MODE_IDLE) {
+         var0.clipRect(var3[0], var3[1], var3[2], var3[3]);
+      }
+
+      MenuItem var7 = items[selectedIndex];
+      boolean var8 = (var7.flags & 256) != 0;
+      boolean var9 = false;
+      if (menu != 1 && menu != 17 && selectedIndex < numItems && var7.helpField != EMPTY_TEXT) {
+         var9 = true;
+      }
+
+      int var10 = 1;
+      boolean var11 = false;
+      boolean var12 = menu >= 72 && menu <= 82;
+      int var13;
+      int var14;
+      if (menu >= 29) {
+         if (menu >= 83 && menu <= 88) {
+            VendingMachine.drawVendingMachineBackground(var0, menu == 83 || menu == 88);
+            ++var4;
+         } else {
+            Canvas.drawInventoryBG(var0, var9, true, var12, true, true);
+            var10 += 8;
+            var11 = true;
+         }
+      } else {
+         var0.eraseRgn(var1);
+         if (background != null) {
+            var13 = background.getWidth();
+            var14 = background.getHeight();
+            if (background == imgMainBG) {
+               var0.drawImage(background, var1[2] / 2, 20, 17);
+            } else {
+               var0.drawImage(background, var1[2] / 2, var1[3] / 2, 3);
+            }
+
+            var10 += var14 / 2 + 4 - var2[1];
+            if (var14 < var1[3]) {
+               var10 += (var1[3] - var14) / 2;
+            }
+         }
+      }
+
+      if (menu == 3) {
+         var10 -= 14;
+      } else if (menu == 19) {
+         var10 += 15;
+      } else if (menu == 25) {
+         var10 += 20;
+      } else if (type == 9) {
+         var10 += 13;
+      }
+
+      var13 = var1[3];
+      if (var12) {
+         var5.setLength(0);
+         var5.append('\u008b');
+         var5.append(Player.ce.getStat(2));
+         var5.append("/");
+         var5.append((int)200);
+         var5.append("   ");
+         var5.append('\u008d');
+         var5.append(Player.ce.getStat(0));
+         var5.append("/");
+         var5.append(Player.ce.getStat(1));
+         var0.drawString(var5, Canvas.SCR_CX, var10 + -4, 1);
+         var13 -= var4;
+         var10 += var4;
+      }
+
+      if (type == 2) {
+         var14 = 90;
+      } else if (type == 1) {
+         var14 = 0;
+      } else if (type == 5 && !var11) {
+         var14 = 1;
+         var10 = -var2[1] + 1;
+      } else if (type == 7) {
+         var14 = 0;
+      } else if (type == 6) {
+         var14 = 0;
+         var10 = (Canvas.menuRect[3] - numItems * var4) / 2;
+      } else if (type == 8) {
+         var14 = 13;
+      } else if (type == 4) {
+         var14 = 0;
+      } else if (type == 9) {
+         var14 = 0;
+      } else if (var11) {
+         var14 = 0;
+      } else {
+         var14 = var1[2] / 2;
+      }
+
+      if (var9) {
+         var13 -= var4 * 4;
+      } else if (var11) {
+         var13 -= var4 * 1;
+      }
+
+      maxItems = var13 / var4;
+      int var15;
+      int var16;
+      if (var8) {
+         var15 = items[0].param;
+         var16 = var15 >> 20 & 63;
+         Canvas.drawScrollBar(var0, var1[2], var10, maxItems * var4, var16, var16 + maxItems, var15 >> 26 & 63, maxItems);
+      } else if (maxItems > 0 && numItems > maxItems) {
+         var15 = type == 9 ? var1[2] - 10 : var1[2];
+         Canvas.drawScrollBar(var0, var15, var10, maxItems * var4, scrollIndex, scrollIndex + maxItems, numItems, maxItems);
+      }
+
+      MenuItem[] var23 = items;
+
+      int var17;
+      for(var16 = scrollIndex; var16 < numItems; ++var16) {
+         MenuItem var18 = var23[var16];
+         int var19 = var1[2] - 2;
+         if (var11) {
+            var19 = var1[2] - 12;
+         }
+
+         byte var20 = 9;
+         if ((var18.flags & '耀') == 0) {
+            if (var18.textField != EMPTY_TEXT || (var18.flags & 64) != 0) {
+               var5.setLength(0);
+               if ((var18.flags & 1024) != 0) {
+                  var5.append('\u0087');
+                  var5.append(" ");
+               }
+
+               Text.composeTextField(var18.textField, var5);
+               if ((var18.flags & 2) == 0 && !var8) {
+                  var5.dehyphenate();
+               }
+
+               int var21;
+               if ((var18.flags & 64) != 0) {
+                  var21 = (var1[2] - var14) / var20;
+                  if (maxItems > 0 && numItems > maxItems && !var11) {
+                     --var21;
+                  }
+
+                  if (type == 9) {
+                     var21 -= 4;
+                  } else if (var11) {
+                     var21 -= 3;
+                  }
+
+                  buildDivider(var5, var21);
+               }
+
+               if ((var18.flags & 8) != 0) {
+                  var21 = var5.getStringWidth(false) >> 1;
+                  if (maxItems > 0 && numItems > maxItems && !var11) {
+                     var17 = Canvas.SCR_CX + (var14 >> 1) - 21 - var21;
+                  } else {
+                     var17 = Canvas.SCR_CX + (var14 >> 1) - var21;
+                  }
+               } else {
+                  if (type == 9) {
+                     var17 = 9;
+                  } else if (var11) {
+                     var17 = 12;
+                  } else {
+                     var17 = var14 - var2[0];
+                  }
+
+                  if (var18.textField2 != EMPTY_TEXT) {
+                     if (maxItems > 0 && numItems > maxItems && !var11) {
+                        var19 -= 21;
+                     }
+
+                     if (type == 9) {
+                        var19 -= 9;
+                     }
+
+                     var6.setLength(0);
+                     Text.composeTextField(var18.textField2, var6);
+                     if ((var18.flags & 2) == 0) {
+                        var6.dehyphenate();
+                     }
+
+                     var0.drawString(var6, var19 - 2, var10, 24);
+                  }
+               }
+
+               if (type != 5 && type != 7 && menu != 87 && menu != 88 && menu != 86 && var16 == selectedIndex) {
+                  var21 = var17 + Canvas.OSC_CYCLE[App.time / 100 % 4];
+                  menuMode = MODE_IDLE;
+                  var3[0] = var2[0] + var17 - 8;
+                  var3[1] = var2[1] + var10 + var4 / 2 - 8;
+                  var3[2] = 16;
+                  var3[3] = 16;
+                  var0.drawCursor(var21, var10, 8);
+                  var17 += 4;
+               }
+
+               if (var8) {
+                  var0.drawString(var5, var17, var10, var4, 0, var18.param & 1023, var18.param >> 10 & 1023);
+               } else {
+                  var0.drawString(var5, var17, var10, 0);
+               }
+
+               if ((var18.flags & 4) != 0) {
+                  var21 = var5.length();
+                  var5.setLength(0);
+
+                  for(int var22 = 0; var22 < var21; ++var22) {
+                     var5.append('\u0089');
+                  }
+
+                  var0.drawString(var5, var17, var10, 0);
+               }
+
+               if ((var18.flags & 16384) != 0) {
+                  var0.drawRegion(Hud.imgAttArrow, 0, 0, 12, 12, var17 - 17, var10, 0, 5);
+               }
+
+               if ((var18.flags & 8192) != 0) {
+                  var21 = var17 + var5.getStringWidth(false);
+                  var0.drawRegion(Hud.imgAttArrow, 0, 0, 12, 12, var21 + 5, var10, 0, 6);
+               }
+            }
+
+            var10 += var4;
+            if (maxItems != 0 && var16 == scrollIndex + maxItems - 1) {
+               break;
+            }
+         }
+      }
+
+      if (var9) {
+         var17 = maxItems * var4;
+         if (var12) {
+            var17 += var4;
+         }
+
+         if (type == 9) {
+            var16 = var14 + 9;
+            var17 += 26;
+         } else {
+            var16 = var14 + 12;
+            var17 += 18;
+         }
+
+         Text var24 = Text.getLargeBuffer();
+         var7.WrapHelpText(var24);
+         var0.drawString(var24, var16, var17, 0);
+         var24.dispose();
+      }
+
+      if (menuMode == MODE_IDLE) {
+         var0.clearClipRect();
+      }
+
+      var5.dispose();
+      var6.dispose();
+   }
+
+   public static final void setItemsFromText(int var0, Text var1, int var2) {
+      setItemsFromText(var0, var1, var2, 0, 0);
+   }
+
+   public static final void setItemsFromText(int var0, Text var1, int var2, int var3, int var4) {
+      numItems = var0;
+      var1.wrapText(var2);
+
+      int var5;
+      int var6;
+      for(var5 = 0; (var6 = var1.findFirstOf('|', var5)) >= 0; var5 = var6 + 1) {
+         Text.addTextArg(var1, var5, var6);
+         items[var0++].Set(getLastArgString(), EMPTY_TEXT, 2 | var3, 0, var4, EMPTY_TEXT);
+      }
+
+      var6 = var1.length();
+      Text.addTextArg(var1, var5, var6);
+      items[var0++].Set(getLastArgString(), EMPTY_TEXT, 2 | var3, 0, var4, EMPTY_TEXT);
+      numItems = var0;
+      var1.dispose();
+   }
+
+   public static void returnToGame() {
+      numItems = 0;
+      if (goBackToStation) {
+         Canvas.setState(20);
+         goBackToStation = false;
+      } else {
+         App.time = App.lastTime = App.getUpTimeMs();
+         if (Game.isCameraActive()) {
+            Canvas.setState(4);
+         } else {
+            Canvas.setState(3);
+         }
+      }
+
+   }
+
+   public static final void initMenu(int var0) {
+      isLongText = false;
+      setupTouchMenu(var0);
+      byte var2 = 0;
+      MenuItem[] var3 = items;
+      scrollIndex = 0;
+      selectedIndex = 0;
+      if (var0 == 1) {
+         maxItems = Canvas.menuRect[3] / 16;
+      }
+
+      Text var4;
+      numItems = 0;
+      var4 = Text.getLargeBuffer();
+      Text.resetTextArgs();
+      EntityDef var1;
+      int var5;
+      int var7;
+      int var8;
+      int var9;
+      Text var11;
+      int var17;
+      boolean var19;
+      Text var20;
+      Text var22;
+      label368:
+      switch(var0) {
+      case 1:
+         byte var16 = 3;
+         addItem(EMPTY_TEXT, EMPTY_TEXT, 9);
+         addItem(EMPTY_TEXT, EMPTY_TEXT, 9);
+         var5 = var16 + 2;
+         loadMenuItems(var0);
+         var3[var5 + 0].textField = Text.STRINGID((short)3, (short)235);
+         var3[var5 + 2].textField2 = Text.STRINGID((short)3, (short)236);
+         var3[var5 + 3].textField2 = Text.STRINGID((short)3, (short)237);
+         var3[var5 + 4].textField2 = Text.STRINGID((short)3, (short)238);
+         var3[var5 + 5].textField2 = Text.STRINGID((short)3, (short)239);
+         var3[var5 + 6].textField2 = Text.STRINGID((short)3, (short)240);
+         var3[var5 + 7].textField2 = Text.STRINGID((short)3, (short)241);
+         fillStatus(true, false, false);
+         break;
+      case 2:
+      case 18:
+      case 19:
+      case 26:
+      case 27:
+      case 28:
+      case 30:
+      case 34:
+      case 37:
+      case 42:
+      case 48:
+      case 51:
+      case 54:
+      case 55:
+      case 56:
+      case 57:
+      case 62:
+      case 63:
+      case 64:
+      case 68:
+      case 69:
+      case 70:
+      case 74:
+      case 76:
+      case 78:
+      case 79:
+      case 80:
+      case 81:
+      case 82:
+      default:
+         loadMenuItems(var0);
+         break;
+      case 3:
+         if (Game.hasSavedState()) {
+            addItem(Text.STRINGID((short)3, (short)70), EMPTY_TEXT, 8, 22, 0, EMPTY_TEXT);
+         } else {
+            addItem(EMPTY_TEXT, EMPTY_TEXT, 4);
+         }
+
+         background = imgMainBG;
+         loadMenuItems(var0);
+         if (!App.canvas.mgInstance.isAvailable()) {
+            var5 = Text.STRINGID((short)3, (short)77);
+
+            for(var17 = 0; var17 < numItems; ++var17) {
+               if (var3[var17].textField == var5) {
+                  for(var7 = var17; var7 < numItems - 1; ++var7) {
+                     var3[var7].Set(var3[var7 + 1].textField, var3[var7 + 1].textField2, var3[var7 + 1].flags, var3[var7 + 1].action, var3[var7 + 1].param, var3[var7 + 1].helpField);
+                  }
+
+                  --numItems;
+                  break label368;
+               }
+            }
+         }
+         break;
+      case 4:
+      case 16:
+         background = null;
+         loadMenuItems(var0);
+         break;
+      case 5:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)4);
+         break;
+      case 6:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)5);
+         break;
+      case 7:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)6);
+         break;
+      case 8:
+         type = 5;
+         background = null;
+         LoadAbout();
+         break;
+      case 9:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)1);
+         break;
+      case 10:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)2);
+         break;
+      case 11:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)3);
+         break;
+      case 12:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)7);
+         break;
+      case 13:
+         type = 4;
+         background = imgMainBG;
+         SetYESNO((short)106, 0, 8, 0);
+         break;
+      case 14:
+         type = 6;
+         background = null;
+         SetYESNO((short)107, 0, 1, 16);
+         break;
+      case 15:
+         type = 6;
+         background = null;
+         SetYESNO((short)108, 0, 7, 0);
+         break;
+      case 17:
+      case 35:
+         loadMenuItems(var0);
+         var3[1].textField2 = onOffValue(Sound.isVibrateEnabled());
+         var3[2].textField2 = onOffValue(Sound.isSoundEnabled());
+         var3[3].textField2 = Text.STRINGID((short)14, (short)0);
+         if (var0 == 17) {
+            var3[3].param = 23;
+         } else {
+            var3[3].param = 36;
+         }
+
+         oldVibrateSetting = Sound.isVibrateEnabled();
+         oldSoundSetting = Sound.isSoundEnabled();
+         break;
+      case 20:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)8);
+         break;
+      case 21:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)9);
+         break;
+      case 22:
+         type = 5;
+         background = null;
+         LoadHelpResource((short)10);
+         break;
+      case 23:
+         background = imgMainBG;
+         var2 = 8;
+      case 36:
+         oldLanguageSetting = Text.defaultLanguage;
+         type = var0 == 36 ? 1 : 4;
+         scrollIndex = 0;
+         if (peekMenu() != 25) {
+            var4.setLength(0);
+            Text.composeText((short)3, (short)80, var4);
+            if (type == 4) {
+               while(var4.length() < 8) {
+                  var4.append(' ');
+               }
+            }
+
+            Text.addTextArg(var4);
+            addItem(getLastArgString(), EMPTY_TEXT, var2, 2, 0, EMPTY_TEXT);
+         }
+
+         try {
+            Text.beginTextLoading();
+
+            for(var7 = 0; var7 < 5; ++var7) {
+               Text.loadTextFromIndex(var7, 14);
+               var4.setLength(0);
+               Text.composeText((short)14, (short)0, var4);
+               var4.dehyphenate();
+               if (type == 4) {
+                  while(var4.length() < 8) {
+                     var4.append(' ');
+                  }
+               }
+
+               Text.addTextArg(var4);
+               addItem(getLastArgString(), EMPTY_TEXT, var2, 19, var7, EMPTY_TEXT);
+            }
+
+            Text.finishTextLoading();
+            Text.beginTextLoading();
+            Text.loadTextFromIndex(Text.defaultLanguage, 14);
+            Text.finishTextLoading();
+         } catch (IOException var14) {
+            App.Error(var14, -1);
+         }
+         break;
+      case 24:
+         type = 5;
+         background = null;
+         clearStack();
+         scrollIndex = 0;
+         selectedIndex = 0;
+         FillRanking();
+         break;
+      case 25:
+         type = 4;
+         background = imgMainBG;
+         scrollIndex = 0;
+         SetYESNO((short)166, 1, 6, 1, 6, 0);
+         clearStack();
+         break;
+      case 29:
+         if (Player.isFamiliar) {
+            loadMenuItems(var0, 0, 1);
+            addItem(Text.STRINGID((short)3, (short)350), EMPTY_TEXT, 0, 33, 0, Text.STRINGID((short)3, (short)351));
+            loadMenuItems(var0, 1, -1);
+            var3[2].flags = 4;
+            var3[3].flags = 4;
+            var3[7].flags = 4;
+         } else {
+            loadMenuItems(var0);
+            if (Player.inventory[18] == 0) {
+               var3[2].flags = 4;
+            }
+
+            if (Game.isCameraActive()) {
+               var3[3].flags = 4;
+               var3[4].flags = 4;
+               var3[5].flags = 4;
+               var3[10].flags = 4;
+               var3[11].action = 1;
+               var3[11].param = 58;
+            }
+         }
+         break;
+      case 31:
+         loadMenuItems(var0);
+         var3[4].textField2 = Text.STRINGID((short)3, (short)235);
+         var3[5].textField2 = Text.STRINGID((short)3, (short)236);
+         var3[6].textField2 = Text.STRINGID((short)3, (short)237);
+         var3[7].textField2 = Text.STRINGID((short)3, (short)238);
+         var3[8].textField2 = Text.STRINGID((short)3, (short)239);
+         var3[9].textField2 = Text.STRINGID((short)3, (short)240);
+         var3[10].textField2 = Text.STRINGID((short)3, (short)241);
+         var3[11].textField2 = Text.STRINGID((short)3, (short)242);
+         var3[12].textField2 = Text.STRINGID((short)3, (short)243);
+         var3[13].textField2 = Text.STRINGID((short)3, (short)244);
+         var3[14].textField2 = Text.STRINGID((short)3, (short)245);
+         var3[15].textField2 = Text.STRINGID((short)3, (short)246);
+         var3[16].textField2 = Text.STRINGID((short)3, (short)247);
+         var3[17].textField2 = Text.STRINGID((short)3, (short)248);
+         var3[18].textField2 = Text.STRINGID((short)3, (short)249);
+         var3[19].textField2 = Text.STRINGID((short)3, (short)250);
+         var3[20].textField2 = Text.STRINGID((short)3, (short)251);
+         fillStatus(false, true, true);
+         var3[4].flags |= 1;
+         var3[5].flags |= 1;
+         var3[6].flags |= 1;
+         var3[7].flags |= 1;
+         var3[8].flags |= 1;
+         var3[9].flags |= 1;
+         var3[10].flags |= 1;
+         var3[11].flags |= 1;
+         var3[12].flags |= 1;
+         var3[13].flags |= 1;
+         var3[14].flags |= 1;
+         var3[15].flags |= 1;
+         var3[16].flags |= 1;
+         var3[17].flags |= 1;
+         var3[18].flags |= 1;
+         var3[19].flags |= 1;
+         var3[20].flags |= 1;
+         break;
+      case 32:
+         loadMenuItems(var0);
+         var3[3].textField = Text.STRINGID((short)3, (short)235);
+         var3[4].textField2 = Text.STRINGID((short)3, (short)236);
+         var3[5].textField2 = Text.STRINGID((short)3, (short)237);
+         var3[6].textField2 = Text.STRINGID((short)3, (short)238);
+         var3[7].textField2 = Text.STRINGID((short)3, (short)239);
+         var3[8].textField2 = Text.STRINGID((short)3, (short)240);
+         var3[9].textField2 = Text.STRINGID((short)3, (short)241);
+         fillStatus(true, false, false);
+         var3[3].flags |= 1;
+         var3[4].flags |= 1;
+         var3[5].flags |= 1;
+         var3[6].flags |= 1;
+         var3[7].flags |= 1;
+         var3[8].flags |= 1;
+         var3[9].flags |= 1;
+         break;
+      case 33:
+         loadMenuItems(var0);
+         buildLevelGrades(var4);
+         break;
+      case 38:
+         type = 5;
+         LoadHelpResource((short)1);
+         break;
+      case 39:
+         type = 5;
+         LoadHelpResource((short)2);
+         break;
+      case 40:
+         type = 5;
+         LoadHelpResource((short)3);
+         break;
+      case 41:
+         type = 5;
+         LoadHelpResource((short)7);
+         break;
+      case 43:
+         type = 5;
+         LoadHelpResource((short)4);
+         break;
+      case 44:
+         type = 5;
+         LoadHelpResource((short)5);
+         break;
+      case 45:
+         type = 5;
+         LoadHelpResource((short)6);
+         break;
+      case 46:
+         LoadNotebook();
+      case 47:
+         break;
+      case 49:
+         type = 6;
+         scrollIndex = 0;
+         SetYESNO((short)136, 1, 3, 0);
+         break;
+      case 50:
+         scrollIndex = 0;
+         loadMenuItems(var0);
+         break;
+      case 52:
+         type = 6;
+         scrollIndex = 0;
+         SetYESNO((short)134, 1, 12, 0);
+         break;
+      case 53:
+         type = 6;
+         scrollIndex = 0;
+         SetYESNO((short)135, 1, 13, 0, 2, 0);
+         break;
+      case 58:
+         type = 6;
+         scrollIndex = 0;
+         SetYESNO((short)137, 0, 23, 0);
+         break;
+      case 59:
+         type = 5;
+         LoadHelpResource((short)8);
+         break;
+      case 60:
+         type = 5;
+         LoadHelpResource((short)9);
+         break;
+      case 61:
+         type = 5;
+         LoadHelpResource((short)10);
+         break;
+      case 65:
+         loadMenuItems(var0);
+         if (peekMenu() == 3) {
+            var3[0].action = 1;
+            var3[0].param = 3;
+         }
+
+         var3[6].textField2 = onOffValue(Player.noclip);
+         var3[7].textField2 = onOffValue(Combat.oneShotCheat);
+         var3[8].textField2 = onOffValue(Game.disableAI);
+         var3[9].textField2 = onOffValue(Game.skipMinigames);
+         var3[10].textField2 = onOffValue(Player.enableHelp);
+         var3[11].textField2 = onOffValue(Player.god);
+         var3[12].textField2 = onOffValue(Canvas.showLocation);
+         Text.addTextArg(Canvas.animFrames);
+         var3[13].textField2 = Text.STRINGID((short)3, (short)235);
+         var3[14].textField2 = onOffValue(Canvas.showSpeeds);
+         var3[15].textField2 = onOffValue(Render.skipFlats);
+         var3[16].textField2 = onOffValue(Render.skipCull);
+         var3[17].textField2 = onOffValue(Render.skipBSP);
+         var3[18].textField2 = onOffValue(Render.skipLines);
+         var3[19].textField2 = onOffValue(Render.skipSprites);
+         var3[20].textField2 = onOffValue(Canvas.renderOnly);
+         var3[21].textField2 = onOffValue(Render.skipDecals);
+         var3[22].textField2 = onOffValue(Render.skip2DStretch);
+         if (Render.renderMode == 0) {
+            var3[23].textField2 = Text.STRINGID((short)3, (short)292);
+         } else if (Render.renderMode == 63) {
+            var3[23].textField2 = Text.STRINGID((short)3, (short)293);
+         } else if (Render.renderMode == 31) {
+            var3[23].textField2 = Text.STRINGID((short)3, (short)294);
+         } else {
+            Text var18 = Text.getSmallBuffer();
+            var18.setLength(0);
+            if ((Render.renderMode & 1) != 0) {
+               var18.append('T');
+            }
+
+            if ((Render.renderMode & 2) != 0) {
+               var18.append('C');
+            }
+
+            if ((Render.renderMode & 4) != 0) {
+               var18.append('P');
+            }
+
+            if ((Render.renderMode & 8) != 0) {
+               var18.append('S');
+            }
+
+            if ((Render.renderMode & 16) != 0) {
+               var18.append('R');
+            }
+
+            Text.addTextArg(var18);
+            var18.dispose();
+            var3[23].textField2 = getLastArgString();
+         }
+
+         var3[27].textField2 = onOffValue(Canvas.showFreeHeap);
+         break;
+      case 66:
+         type = 1;
+         addItem(Text.STRINGID((short)3, (short)80), EMPTY_TEXT, 0, 2, 0, EMPTY_TEXT);
+         if (peekMenu() == 77) {
+            var3[0].action = 26;
+         }
+
+         var17 = 0;
+
+         while(true) {
+            if (var17 >= Game.levelNames.length) {
+               break label368;
+            }
+
+            addItem(Text.STRINGID((short)3, Game.levelNames[var17]), EMPTY_TEXT, 0, 17, var17, EMPTY_TEXT);
+            ++var17;
+         }
+      case 67:
+         System.gc();
+         Text.resetTextArgs();
+         Text.addTextArg((App.getTotalMemory() + 1023) / 1024);
+         Text.addTextArg((int)(App.initialMemory + 1023L) / 1024);
+         Text.addTextArg((App.getMemFootprint() + 1023) / 1024);
+         Text.addTextArg((App.getFreeMemory() + 1023) / 1024);
+         Text.addTextArg((App.findLargestMemoryBlock() + 1023) / 1024);
+         Text.addTextArg(((int)App.peakMemoryUsage + 1023) / 1024);
+         Text.addTextArg((Render.mapMemoryUsage + 1023) / 1024);
+         Text.addTextArg((Render.spriteMem + 1023) / 1024);
+         Text.addTextArg((Render.lineMem + 1023) / 1024);
+         Text.addTextArg((Render.nodeMem + 1023) / 1024);
+         var4.setLength(0);
+         var4.append((Render.texelMemoryUsage + 1023) / 1024);
+         var4.append('/');
+         var4.append((Render.paletteMemoryUsage + 1023) / 1024);
+         Text.addTextArg(var4);
+         Text.addTextArg(App.imageMemory);
+         loadMenuItems(var0);
+         var3[1].textField2 = Text.STRINGID((short)3, (short)235);
+         var3[2].textField2 = Text.STRINGID((short)3, (short)236);
+         var3[3].textField2 = Text.STRINGID((short)3, (short)237);
+         var3[4].textField2 = Text.STRINGID((short)3, (short)238);
+         var3[5].textField2 = Text.STRINGID((short)3, (short)239);
+         var3[6].textField2 = Text.STRINGID((short)3, (short)240);
+         var3[7].textField2 = Text.STRINGID((short)3, (short)241);
+         var3[8].textField2 = Text.STRINGID((short)3, (short)242);
+         var3[9].textField2 = Text.STRINGID((short)3, (short)243);
+         var3[10].textField2 = Text.STRINGID((short)3, (short)244);
+         var3[11].textField2 = Text.STRINGID((short)3, (short)245);
+         var3[12].textField2 = Text.STRINGID((short)3, (short)246);
+         break;
+      case 71:
+         var22 = null;
+         if (detailsDef != null && detailsDef.eType == 6 && detailsDef.eSubType == 1) {
+            var22 = Combat.getWeaponStatStr(detailsDef.parm);
+         }
+
+         Text.resetTextArgs();
+         type = 7;
+         setItemsFromText(0, detailsTitle, Canvas.ingameScrollWithBarMaxChars);
+
+         for(var8 = 0; var8 < numItems; ++var8) {
+            var3[var8].flags |= 8;
+         }
+
+         addItem(EMPTY_TEXT, EMPTY_TEXT, 73);
+         setItemsFromText(numItems, detailsHelpText, Canvas.ingameScrollWithBarMaxChars);
+         if (null != var22) {
+            addItem(EMPTY_TEXT, EMPTY_TEXT, 73);
+            setItemsFromText(numItems, var22, Canvas.ingameScrollWithBarMaxChars);
+            var22.dispose();
+         }
+
+         detailsTitle.dispose();
+         detailsHelpText.dispose();
+         break;
+      case 72:
+         loadMenuItems(var0, 0, 3);
+         boolean var6 = true;
+
+         short var24;
+         for(var7 = 16; var7 < 18; ++var7) {
+            var24 = Player.inventory[var7 - 0];
+            if (var24 > 0) {
+               if (var6) {
+                  var6 = false;
+                  addItem(Text.STRINGID((short)3, (short)112), EMPTY_TEXT, 73, 0, 0, EMPTY_TEXT);
+               }
+
+               var4.setLength(0);
+               var4.append((int)var24);
+               var1 = EntityDef.find(6, 0, var7);
+               Text.addTextArg(var4);
+               addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 32, 24, var7, Text.STRINGID((short)1, var1.description));
+            }
+         }
+
+         if (Player.ammo[3] >= 25 && (Player.weapons & 4) != 0) {
+            var4.setLength(0);
+            var4.append((int)Player.ammo[3]);
+            var1 = EntityDef.find(6, 2, 3);
+            Text.addTextArg(var4);
+            addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 32, 24, 22, Text.STRINGID((short)1, var1.description));
+         }
+
+         var6 = true;
+
+         for(var7 = 11; var7 < 13; ++var7) {
+            var24 = Player.inventory[var7 - 0];
+            if (var24 > 0) {
+               if (var6) {
+                  var6 = false;
+                  addItem(Text.STRINGID((short)3, (short)113), EMPTY_TEXT, 73, 0, 0, EMPTY_TEXT);
+               }
+
+               var4.setLength(0);
+               var4.append((int)var24);
+               var1 = EntityDef.find(6, 0, var7);
+               Text.addTextArg(var4);
+               addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 32, 24, var7, Text.STRINGID((short)1, var1.description));
+            }
+         }
+
+         loadMenuItems(var0, 3, 1);
+         if (Player.hasANanoDrink()) {
+            addItem(Text.STRINGID((short)3, (short)176), Text.STRINGID((short)3, (short)0), 0, 1, 75, Text.STRINGID((short)3, (short)177));
+         }
+
+         loadMenuItems(var0, 4, -1);
+         var4.setLength(0);
+         var4.append((int)Player.inventory[24]);
+         Text.addTextArg(var4);
+         var1 = EntityDef.find(6, 0, 24);
+         addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 33, 16, 24, Text.STRINGID((short)1, var1.description));
+         loadIndexes(4);
+         break;
+      case 73:
+         loadMenuItems(var0);
+         loadIndexes(1);
+         var7 = 0;
+
+         while(true) {
+            if (var7 >= 15) {
+               break label368;
+            }
+
+            if ((Player.weapons & 1 << var7) != 0) {
+               int var15 = Player.ce.weapon == 14 && var7 != 14 ? 4 : 0;
+               var1 = EntityDef.find(6, 1, (byte)var7);
+               if (Player.ce.weapon == var7) {
+                  var15 |= 1024;
+               }
+
+               var8 = var7 * 9;
+               var4.setLength(0);
+               if (Combat.weapons[var8 + 4] != 0) {
+                  var4.append((int)Player.ammo[Combat.weapons[var8 + 4]]);
+               } else {
+                  var4.append('\u0080');
+               }
+
+               Text.addTextArg(var4);
+               addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), var15 | 32, 18, var7, Text.STRINGID((short)1, var1.description));
+            }
+
+            ++var7;
+         }
+      case 75:
+         loadMenuItems(var0);
+         loadIndexes(2);
+         var19 = false;
+
+         for(var8 = 0; var8 < 11; ++var8) {
+            short var23 = Player.inventory[var8 - 0];
+            if (var23 > 0) {
+               var19 = true;
+               var4.setLength(0);
+               var4.append((int)var23);
+               var1 = EntityDef.find(6, 0, var8);
+               Text.addTextArg(var4);
+               addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 32, 24, var8, Text.STRINGID((short)1, var1.description));
+            }
+         }
+
+         if (!var19) {
+            addItem(Text.STRINGID((short)3, (short)1), EMPTY_TEXT, 9, 0, 0, EMPTY_TEXT);
+         }
+         break;
+      case 77:
+         type = 6;
+         scrollIndex = 0;
+         var1 = EntityDef.find(6, 0, menuParam);
+         var4.setLength(0);
+         Text.composeText((short)1, var1.name, var4);
+         Text.addTextArg(var4);
+         if (peekMenu() == 75) {
+            SetYESNO((short)182, 1, 20, menuParam);
+         } else {
+            SetYESNO((short)182, 1, 21, menuParam);
+         }
+         break;
+      case 83:
+         Text.resetTextArgs();
+         var4.setLength(0);
+         var4.append((int)Player.inventory[24]);
+         Text.addTextArg(var4);
+         var4.setLength(0);
+         Text.composeText((short)0, (short)197, var4);
+         Text.resetTextArgs();
+         var7 = VendingMachine.getVendingMachineTitleWidth();
+         var20 = Text.getSmallBuffer();
+         var20.setLength(0);
+         Text.composeText((short)3, (short)338, var20);
+         var20.dehyphenate();
+         buildDivider(var20, var7);
+         var20.append('|');
+         var20.append(var4);
+         var4.setLength(0);
+         Text.composeText((short)3, (short)352, var4);
+         var20.append('|');
+         var20.append('|');
+         var20.append(var4);
+         addMenuTitle(var20);
+         var20.dispose();
+         loadMenuItems(var0, 2, -1);
+         break;
+      case 84:
+         Text.resetTextArgs();
+         var4.setLength(0);
+         var4.append((int)Player.inventory[24]);
+         Text.addTextArg(var4);
+         var4.setLength(0);
+         Text.composeText((short)0, (short)197, var4);
+         Text.resetTextArgs();
+         Text.addTextArg(var4);
+         var22 = Text.getSmallBuffer();
+         var22.setLength(0);
+         Text.composeText((short)3, (short)176, var22);
+         var22.dehyphenate();
+         buildDivider(var22, VendingMachine.getVendingMachineTitleWidth());
+         var22.append('|');
+         var22.append(var4);
+         addMenuTitle(var22);
+         var22.dispose();
+         var8 = 0;
+
+         while(true) {
+            if (var8 >= 11) {
+               break label368;
+            }
+
+            if (VendingMachine.drinkInThisVendingMachine(var8)) {
+               var4.setLength(0);
+               var4.append((int)VendingMachine.getDrinkPrice(var8));
+               var1 = EntityDef.find(6, 0, var8);
+               Text.addTextArg(var4);
+               addItem(Text.STRINGID((short)1, var1.name), getLastArgString(), 32, 28, var8, Text.STRINGID((short)1, var1.description));
+            }
+
+            ++var8;
+         }
+      case 85:
+         Text.resetTextArgs();
+         var4.setLength(0);
+         var4.append((int)Player.inventory[24]);
+         Text.addTextArg(var4);
+         var4.setLength(0);
+         Text.composeText((short)0, (short)197, var4);
+         Text.resetTextArgs();
+         Text.addTextArg(var4);
+         var7 = VendingMachine.getVendingMachineTitleWidth();
+         var20 = Text.getSmallBuffer();
+         var20.setLength(0);
+         Text.composeText((short)3, (short)347, var20);
+         var20.dehyphenate();
+         buildDivider(var20, var7);
+         var20.append('|');
+         var20.append(var4);
+         addMenuTitle(var20);
+         var20.dispose();
+         fillVendingMachineSnacks(Canvas.loadMapID, var4);
+         break;
+      case 86:
+         var19 = false;
+         if (menuParam >= 0 && menuParam < 11) {
+            var19 = true;
+         }
+
+         byte var21;
+         if (var19) {
+            var1 = EntityDef.find(6, 0, menuParam);
+            var8 = VendingMachine.getDrinkPrice(menuParam);
+            var9 = Text.STRINGID((short)1, var1.name);
+            var21 = 29;
+         } else {
+            var1 = EntityDef.find(6, 0, 16);
+            var8 = VendingMachine.getSnackPrice();
+            var9 = menuParam;
+            var21 = 30;
+         }
+
+         VendingMachine.currentItemPrice = var8;
+         var11 = Text.getSmallBuffer();
+         Text.resetTextArgs();
+         var11.setLength(0);
+         var11.append((int)Player.inventory[24]);
+         Text.addTextArg(var11);
+         var11.setLength(0);
+         Text.composeText((short)0, (short)197, var11);
+         int var12 = VendingMachine.getVendingMachineTitleWidth();
+         Text var13 = Text.getSmallBuffer();
+         var13.setLength(0);
+         Text.composeText((short)3, (short)339, var13);
+         var13.dehyphenate();
+         buildDivider(var13, var12);
+         var13.append('|');
+         var13.append(var11);
+         var11.setLength(0);
+         Text.composeText(var9, var11);
+         var13.append('|');
+         var13.append('|');
+         var13.append(var11);
+         addMenuTitle(var13);
+         var13.dispose();
+         var11.dispose();
+         addItem(Text.STRINGID((short)1, var1.name), EMPTY_TEXT, 0, var21, menuParam, Text.STRINGID((short)1, var1.description));
+         break;
+      case 87:
+         var19 = false;
+         if (menuParam >= 0 && menuParam < 11) {
+            var19 = true;
+         }
+
+         if (var19) {
+            var1 = EntityDef.find(6, 0, menuParam);
+            var8 = VendingMachine.getDrinkPrice(menuParam);
+            var9 = Text.STRINGID((short)1, var1.name);
+         } else {
+            var1 = EntityDef.find(6, 0, 16);
+            var8 = VendingMachine.getSnackPrice();
+            var9 = menuParam;
+         }
+
+         loadMenuItems(var0, 0, 1);
+         Text var10 = Text.getSmallBuffer();
+         Text.resetTextArgs();
+         var10.setLength(0);
+         var10.append((int)Player.inventory[24]);
+         Text.addTextArg(var10);
+         var10.setLength(0);
+         Text.composeText((short)0, (short)197, var10);
+         var11 = Text.getSmallBuffer();
+         Text.resetTextArgs();
+         var11.setLength(0);
+         Text.composeText(var9, var11);
+         Text.addTextArg(var11);
+         var11.setLength(0);
+         var11.append(VendingMachine.currentItemQuantity);
+         Text.addTextArg(var11);
+         var11.setLength(0);
+         Text.composeText((short)3, (short)344, var11);
+         Text.resetTextArgs();
+         var4.setLength(0);
+         var4.append(var8 * VendingMachine.currentItemQuantity);
+         Text.addTextArg(var4);
+         var4.setLength(0);
+         Text.composeText((short)3, (short)345, var4);
+         Text.resetTextArgs();
+         Text.addTextArg(var10);
+         var10.dispose();
+         addItem(getLastArgString(), EMPTY_TEXT, 9);
+         loadMenuItems(var0, 1, -1);
+         Text.addTextArg(var11);
+         var11.dispose();
+         addItem(getLastArgString(), EMPTY_TEXT, 1);
+         Text.addTextArg(var4);
+         addItem(getLastArgString(), EMPTY_TEXT, 1);
+         addItem(EMPTY_TEXT, EMPTY_TEXT, 9);
+         addItem(Text.STRINGID((short)3, (short)349), EMPTY_TEXT, 9);
+         addItem(Text.STRINGID((short)0, (short)96), EMPTY_TEXT, 8, 2, 0, Text.STRINGID((short)1, var1.description));
+         break;
+      case 88:
+         Text.resetTextArgs();
+         type = 9;
+         setItemsFromText(0, detailsTitle, Canvas.ingameScrollWithBarMaxChars);
+
+         for(var7 = 0; var7 < numItems; ++var7) {
+            var3[var7].flags |= 8;
+         }
+
+         addItem(EMPTY_TEXT, EMPTY_TEXT, 72);
+         setItemsFromText(numItems, detailsHelpText, Canvas.ingameScrollWithBarMaxChars);
+         var3[0].action = 28;
+         var3[0].param = menuParam;
+
+         for(var7 = 1; var7 < numItems; ++var7) {
+            var3[var7].flags |= 1;
+         }
+
+         detailsTitle.dispose();
+         detailsHelpText.dispose();
+      }
+
+      var4.dispose();
+      adjustMenuItemsForTouch();
+   }
+
+   public static final void gotoMenu(int var0) {
+      if (var0 != menu) {
+         pushMenu(menu, tState.scrollHandle_y);
+      }
+
+      if (var0 == 19) {
+         Canvas.setState(26);
+         App.canvas.mgInstance.reset();
+      } else {
+         setMenu(var0);
+      }
+
+   }
+
+   public static final void handleMenuEvents(int var0, int var1) {
+      if (var0 < 48 || var0 > 57 || !enterDigit(var0 - 48)) {
+         if (var1 == 1) {
+            if (menu == 86) {
+               if (Player.inventory[24] >= VendingMachine.currentItemPrice * (VendingMachine.currentItemQuantity + 1)) {
+                  ++VendingMachine.currentItemQuantity;
+                  setMenu(86);
+               }
+            } else if (menu != 19) {
+               scrollUp();
+            }
+         } else if (var1 == 2) {
+            if (menu == 86) {
+               if (VendingMachine.currentItemQuantity > 1) {
+                  --VendingMachine.currentItemQuantity;
+                  setMenu(86);
+               }
+            } else if (menu != 19) {
+               scrollDown();
+            }
+         } else if (var1 == 3) {
+            if (menu != 19) {
+               scrollPageUp();
+            }
+         } else if (var1 == 4) {
+            if (menu != 19) {
+               scrollPageDown();
+            }
+         } else if (var1 == 6) {
+            select();
+         } else if (var1 != 14) {
+            if (var1 == 7) {
+               if (Canvas.softKeyRightID == Text.STRINGID((short)0, (short)29)) {
+                  returnToGame();
+               } else {
+                  doDetailsSelect();
+               }
+            } else if (var1 == 5) {
+               if (menu != 19) {
+                  if (menu == 3) {
+                     gotoMenu(13);
+                  } else if (menu == 83) {
+                     VendingMachine.returnFromBuying();
+                  } else {
+                     back();
+                  }
+               }
+            } else if (var1 == 15 && menu != 25) {
+               if (menu == 3) {
+                  gotoMenu(13);
+               } else if (menu != 1 && menu != 26 && menu != 24 && menu != 27) {
+                  if (menu != 19) {
+                     if (menu == 83) {
+                        VendingMachine.returnFromBuying();
+                     } else {
+                        back();
+                     }
+                  }
+               } else {
+                  select();
+               }
+            }
+         }
+
+      }
+   }
+
+   public static final void select() {
+      select(selectedIndex);
+   }
+
+   public static final void select(int var0) {
+      cheatCombo = 0;
+      menuMode = MODE_FULLREFRESH;
+      MenuItem[] var1 = items;
+      if (var0 >= numItems || (var1[var0].flags & 4) == 0) {
+         int var2 = var1[var0].action;
+         if (menu == 24) {
+            Sound.soundStop();
+            Sound.playSound(10, 1);
+            Canvas.setState(15);
+         } else {
+            if (menu == 1) {
+               if (!Canvas.endingGame) {
+                  Canvas.loadMap(LEVEL_STATS_nextMap, true, false);
+                  return;
+               }
+
+               gotoMenu(24);
+            } else if (menu != 19 && (type == 5 || type == 7)) {
+               if (menu == 71 && goBackToStation) {
+                  returnToGame();
+                  return;
+               } else {
+                  back();
+                  return;
+               }
+            }
+
+            int var3;
+            switch(var2) {
+            case 0:
+               return;
+            case 1:
+               if (menu != 18) {
+                  var3 = var1[var0].param;
+                  if (var3 == 75 || var3 == 73) {
+                     saveIndexes(4);
+                  }
+
+                  gotoMenu(var3);
+                  break;
+               }
+            case 2:
+               back();
+               break;
+            case 3:
+               Canvas.loadState(Canvas.getRecentLoadType(), (short)3, (short)192);
+               break;
+            case 4:
+               byte var5 = 3;
+               if (var1[var0].param == 1) {
+                  var3 = var5 | 256;
+               } else {
+                  var3 = var5 | 128;
+               }
+
+               Canvas.saveState(var3, (short)3, (short)194);
+               break;
+            case 5:
+               Canvas.backToMain(false);
+               break;
+            case 6:
+               if (var1[var0].param == 255) {
+                  Sound.setSound(!Sound.isSoundEnabled());
+               } else {
+                  Sound.setSound(var1[var0].param != 0);
+               }
+
+               Canvas.areSoundsAllowed = Sound.isSoundEnabled();
+               if (!Sound.isSoundEnabled()) {
+                  Sound.soundStop();
+               }
+
+               if (menu == 25) {
+                  Sound.playSound(7, 1);
+                  Canvas.repaintFlags |= 1;
+                  App.canvas.flushGraphics();
+                  Canvas.setState(2);
+               } else {
+                  var1[var0].textField2 = onOffValue(Sound.isSoundEnabled());
+                  if (menu == 17) {
+                     Sound.playSound(10, 1);
+                  } else {
+                     Sound.playSound(14, 0);
+                  }
+               }
+               break;
+            case 7:
+               if (Game.hasSavedState()) {
+                  gotoMenu(14);
+               } else {
+                  gotoMenu(16);
+               }
+               break;
+            case 8:
+               App.app.shutdown();
+               break;
+            case 9:
+               var3 = var1[var0].param;
+               if (var3 == 15 && Canvas.loadMapID != 0) {
+                  Sound.playSound(10, 1);
+               }
+
+               Canvas.setState(var3);
+               break;
+            case 10:
+               Game.difficulty = (byte)var1[var0].param;
+               Canvas.clearSoftKeys();
+               startGame(true);
+               break;
+            case 11:
+               returnToGame();
+               break;
+            case 12:
+               Canvas.loadState(2, (short)3, (short)192);
+               if (menu != 51) {
+                  Hud.addMessage((short)3, (short)193);
+               }
+               break;
+            case 13:
+               Canvas.saveState(67, (short)3, (short)194);
+            case 14:
+               break;
+            case 15:
+               Sound.setVibrate(!Sound.isVibrateEnabled());
+               if (Sound.isVibrateEnabled()) {
+                  Canvas.startShake(0, 0, 500);
+               }
+
+               var1[var0].textField2 = onOffValue(Sound.isVibrateEnabled());
+               break;
+            case 16:
+               showDetailsMenu();
+               break;
+            case 17:
+               Game.spawnParam = 0;
+               Canvas.loadMap(1 + var1[var0].param, false, false);
+               break;
+            case 18:
+               saveIndexes(1);
+               if (var0 > 0) {
+                  Player.selectWeapon((short)var1[var0].param);
+                  returnToGame();
+               }
+               break;
+            case 19:
+               Text.setLanguage(var1[var0].param);
+               back();
+               break;
+            case 20:
+            case 21:
+               boolean var4 = Player.useItem((short)menuParam);
+               if (Game.animatingEffects != 0) {
+                  returnToGame();
+               } else {
+                  Game.snapMonsters(true);
+                  Game.snapLerpSprites(-1);
+                  if (Canvas.state == 1) {
+                     if (!var4) {
+                        if (menuParam == 22) {
+                           gotoMenu(82);
+                        } else if (menuParam >= 16 && menuParam < 18) {
+                           gotoMenu(79);
+                        } else if (menuParam >= 11 && menuParam < 13) {
+                           gotoMenu(80);
+                        } else {
+                           gotoMenu(81);
+                        }
+                     } else {
+                        back();
+                     }
+                  }
+               }
+               break;
+            case 22:
+               startGame(false);
+               break;
+            case 23:
+               Canvas.backToMain(false);
+               break;
+            case 24:
+               if (menu == 75) {
+                  saveIndexes(2);
+               } else if (menu == 72) {
+                  saveIndexes(4);
+               }
+
+               menuParam = var1[var0].param;
+               gotoMenu(77);
+               break;
+            case 25:
+               Canvas.saveState(7, (short)3, (short)194);
+               break;
+            case 26:
+               popMenu(poppedIdx);
+               back();
+               break;
+            case 27:
+               if (var1[var0].param == 2) {
+                  Sound.soundStop();
+                  HackingGame.playFromMainMenu();
+               } else if (var1[var0].param == 0) {
+                  Sound.soundStop();
+                  SentryBotGame.playFromMainMenu();
+               } else if (var1[var0].param == 4) {
+                  Sound.soundStop();
+                  VendingMachine.playFromMainMenu();
+               }
+               break;
+            case 28:
+               menuParam = var1[var0].param;
+               if (menu == 88) {
+                  VendingMachine.currentItemQuantity = 1;
+                  setMenu(86);
+               } else {
+                  VendingMachine.currentItemQuantity = 1;
+                  gotoMenu(86);
+               }
+               break;
+            case 29:
+               if (VendingMachine.buyDrink(menuParam)) {
+                  back();
+               } else {
+                  displayPopUp(-1, Text.STRINGID((short)3, (short)349));
+               }
+               break;
+            case 30:
+               if (Player.inventory[24] < VendingMachine.currentItemPrice * VendingMachine.currentItemQuantity) {
+                  displayPopUp(-1, Text.STRINGID((short)3, (short)349));
+               } else {
+                  for(var3 = 0; var3 < VendingMachine.currentItemQuantity; ++var3) {
+                     short[] var10000 = Player.inventory;
+                     var10000[24] = (short)(var10000[24] - VendingMachine.getSnackPrice());
+                     Player.give(0, 16, 1, false);
+                  }
+
+                  back();
+               }
+               break;
+            case 31:
+            case 32:
+            case 34:
+            case 35:
+            case 36:
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+            case 41:
+            case 42:
+            case 43:
+            case 44:
+            case 45:
+            case 46:
+            case 47:
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57:
+            case 58:
+            case 59:
+            case 60:
+            case 61:
+            case 62:
+            case 63:
+            case 64:
+            case 65:
+            case 66:
+            case 67:
+            case 68:
+            case 69:
+            case 70:
+            case 71:
+            case 72:
+            case 73:
+            case 74:
+            case 75:
+            case 76:
+            case 77:
+            case 78:
+            case 79:
+            case 80:
+            case 81:
+            case 82:
+            case 83:
+            case 84:
+            case 85:
+            case 86:
+            case 87:
+            case 88:
+            case 89:
+            case 90:
+            case 91:
+            case 92:
+            case 93:
+            case 94:
+            case 95:
+            case 96:
+            case 97:
+            case 98:
+            case 99:
+            case 100:
+            case 101:
+            case 113:
+            default:
+               App.Error(new Exception("Unhandled Menu Action"), var1[var0].action);
+               break;
+            case 33:
+               Player.familiarReturnsToPlayer(false);
+               returnToGame();
+               break;
+            case 102:
+               Player.giveAll();
+               break;
+            case 103:
+               Game.givemap(0, 0, 32, 32);
+               break;
+            case 104:
+               Player.noclip = !Player.noclip;
+               setMenu(65);
+               break;
+            case 105:
+               Game.disableAI = !Game.disableAI;
+               setMenu(65);
+               break;
+            case 106:
+               Player.enableHelp = !Player.enableHelp;
+               Game.saveConfig();
+               setMenu(65);
+               break;
+            case 107:
+               Player.god = !Player.god;
+               setMenu(65);
+               break;
+            case 108:
+               Canvas.showLocation = !Canvas.showLocation;
+               setMenu(65);
+               break;
+            case 109:
+               var3 = Canvas.animFrames + 1;
+               if (var3 > 15) {
+                  var3 = 2;
+               }
+
+               Canvas.setAnimFrames(var3);
+               Game.saveConfig();
+               setMenu(65);
+               break;
+            case 110:
+               Canvas.showSpeeds = !Canvas.showSpeeds;
+               setMenu(65);
+               break;
+            case 111:
+               Render.skipFlats = !Render.skipFlats;
+               setMenu(65);
+               break;
+            case 112:
+               Render.skipCull = !Render.skipCull;
+               setMenu(65);
+               break;
+            case 114:
+               Render.skipBSP = !Render.skipBSP;
+               setMenu(65);
+               break;
+            case 115:
+               Render.skipLines = !Render.skipLines;
+               setMenu(65);
+               break;
+            case 116:
+               Render.skipSprites = !Render.skipSprites;
+               setMenu(65);
+               break;
+            case 117:
+               Canvas.renderOnly = !Canvas.renderOnly;
+               setMenu(65);
+               break;
+            case 118:
+               Render.skipDecals = !Render.skipDecals;
+               setMenu(65);
+               break;
+            case 119:
+               Render.skip2DStretch = !Render.skip2DStretch;
+               setMenu(65);
+               break;
+            case 120:
+               setMenu(65);
+               break;
+            case 121:
+               if (Render.renderMode == 0) {
+                  Render.renderMode = 63;
+               } else {
+                  Render.renderMode >>= 1;
+               }
+
+               setMenu(65);
+               break;
+            case 122:
+               Player.equipForLevel(Canvas.loadMapID);
+               break;
+            case 123:
+               Combat.oneShotCheat = !Combat.oneShotCheat;
+               setMenu(65);
+               break;
+            case 124:
+               Canvas.enqueueHelpDialog((short)3, (short)336, (byte)-1);
+               returnToGame();
+               break;
+            case 125:
+               systemTest(var1[var0].param + 326);
+               break;
+            case 126:
+               Game.skipMinigames = !Game.skipMinigames;
+               setMenu(65);
+               break;
+            case 127:
+               Canvas.showFreeHeap = !Canvas.showFreeHeap;
+               setMenu(65);
+            }
+
+         }
+      }
+   }
+
+   public MenuSystem() {
+      tFormat = new MenuSystem.touchMenuFormat();
+      tState = new MenuSystem.touchMenuState();
+   }
+
+   private static void infiniteLoop() {
+      int var0 = 0;
+
+      while(var0 >= 0) {
+         ++var0;
+         if (var0 < 0) {
+            var0 = 0;
+         }
+
+         try {
+            Thread.sleep(5000L);
+         } catch (Exception var2) {
+         }
+      }
+
+   }
+
+   private static int infiniteRecursion(int[] var0) {
+      int var10002 = var0[0]++;
+      if (var0[0] > 0) {
+         var0[0] = 0;
+         return infiniteRecursion(var0);
+      } else {
+         return var0[0];
+      }
+   }
+
+   public void run() {
+      int var1 = 0;
+
+      while(var1 == 0) {
+         int[] var2 = new int[4];
+         var1 = var2[8] / 4;
+
+         try {
+            Thread.sleep(5000L);
+         } catch (Exception var4) {
+         }
+      }
+
+   }
+
+   private static void systemTest(int var0) {
+      switch(var0) {
+      case 326:
+         infiniteLoop();
+         break;
+      case 327:
+         int[] var4 = new int[1];
+         App.time += infiniteRecursion(var4);
+         break;
+      case 328:
+         Thread var1 = new Thread(new MenuSystem());
+         var1.start();
+
+         try {
+            Thread.sleep(5000L);
+            var1.join();
+         } catch (Exception var3) {
+         }
+      }
+
+   }
+
+   private static final void startGame(boolean var0) {
+      App.beginImageUnload();
+      background = null;
+      imgMainBG = null;
+      App.endImageUnload();
+      Sound.soundStop();
+      System.gc();
+      if (var0) {
+         Canvas.setLoadingBarText((short)-1, (short)-1);
+         Game.removeState(true);
+         Game.totalLevelTime = 0;
+         Game.activeLoadType = 0;
+         Canvas.loadType = 0;
+         Canvas.loadMapID = 0;
+         Canvas.lastMapID = 0;
+         Player.reset();
+         Player.totalDeaths = 0;
+         Player.helpBitmask = 0;
+         Player.invHelpBitmask = 0;
+         Player.ammoHelpBitmask = 0;
+         Player.weaponHelpBitmask = 0;
+         Player.armorHelpBitmask = 0;
+         Player.currentGrades = 0;
+         Canvas.clearEvents();
+         Canvas.setState(22);
+      } else {
+         Canvas.loadState(Canvas.getRecentLoadType(), (short)3, (short)192);
+      }
+
+   }
+
+   private static final void SetYESNO(short var0, int var1, int var2, int var3) {
+      SetYESNO(var0, var1, var2, var3, 2, 0);
+   }
+
+   private static final void SetYESNO(short var0, int var1, int var2, int var3, int var4, int var5) {
+      addMenuTitle(Text.STRINGID((short)3, var0));
+      addItem(Text.STRINGID((short)3, (short)195), EMPTY_TEXT, 8, var2, var3, EMPTY_TEXT);
+      addItem(Text.STRINGID((short)3, (short)196), EMPTY_TEXT, 8, var4, var5, EMPTY_TEXT);
+   }
+
+   private static final void SetYESNO(Text var0, int var1, int var2, int var3, int var4, int var5) {
+      Text.resetTextArgs();
+      if (var0.findFirstOf('\n', 0) >= 0) {
+         int var6;
+         int var7;
+         for(var6 = 0; (var7 = var0.findFirstOf('\n', var6)) >= 0; var6 = var7 + 1) {
+            Text.addTextArg(var0, var6, var7);
+            addItem(getLastArgString(), EMPTY_TEXT, 9);
+         }
+
+         Text.addTextArg(var0, var6, var0.length());
+         addItem(getLastArgString(), EMPTY_TEXT, 9);
+      } else {
+         Text.addTextArg(var0);
+         addItem(getLastArgString(), EMPTY_TEXT, 9);
+      }
+
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 9);
+      addItem(Text.STRINGID((short)3, (short)195), EMPTY_TEXT, 8, var2, var3, EMPTY_TEXT);
+      addItem(Text.STRINGID((short)3, (short)196), EMPTY_TEXT, 8, var4, var5, EMPTY_TEXT);
+      if (var1 == 1) {
+         selectedIndex = numItems - 2;
+      } else {
+         selectedIndex = numItems - 1;
+      }
+
+   }
+
+   public static void LoadHelpResource(short var0) {
+      scrollIndex = 0;
+      selectedIndex = 0;
+      Text var1 = Text.getLargeBuffer();
+      Text.loadText(2);
+      Text.composeText((short)2, var0, var1);
+      var1.wrapText(tFormat.width / 9);
+      if (var1.getNumLines() * 16 > tFormat.height) {
+         var1.setLength(0);
+         Text.composeText((short)2, var0, var1);
+         var1.wrapText(tFormat.menuContent_width / 9);
+         isLongText = true;
+      }
+
+      Text.unloadText(2);
+      LoadHelpItems(var1);
+      var1.dispose();
+   }
+
+   private static final void LoadAbout() {
+      Text.resetTextArgs();
+      addItem(Text.STRINGID((short)3, (short)197), EMPTY_TEXT, 73);
+      addItem(Text.STRINGID((short)3, (short)141), EMPTY_TEXT, 1);
+      Text var0 = Text.getSmallBuffer();
+      Text.composeText((short)3, (short)227, var0);
+      Text.addTextArg(var0);
+      var0.dispose();
+      addItem(getLastArgString(), EMPTY_TEXT, 1);
+      String var1 = App.app.getAppProperty("MIDlet-Version");
+      if (var1 != null && var1.length() != 0) {
+         Text.addTextArg(var1);
+      } else {
+         Text.addTextArg((int)0);
+      }
+
+      addItem(getLastArgString(), EMPTY_TEXT, 1);
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 1);
+      LoadHelpResource((short)11);
+   }
+
+   private static final void FillRanking() {
+      int var0 = Math.max(Player.finalCurrentGrade(), 1);
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 0);
+      if (Game.difficulty == 1) {
+         addItem(Text.STRINGID((short)3, (short)198), EMPTY_TEXT, 72);
+      } else if (Game.difficulty == 2) {
+         addItem(Text.STRINGID((short)3, (short)199), EMPTY_TEXT, 72);
+      } else {
+         addItem(Text.STRINGID((short)3, (short)200), EMPTY_TEXT, 72);
+      }
+
+      byte var1;
+      byte var2;
+      switch(var0) {
+      case 3:
+         if (Game.difficulty == 4) {
+            var1 = 23;
+            var2 = 24;
+         } else {
+            var1 = 21;
+            var2 = 22;
+         }
+         break;
+      case 4:
+         var1 = 23;
+         var2 = 24;
+         break;
+      case 5:
+         var1 = 25;
+         var2 = 26;
+         break;
+      case 6:
+         var1 = 27;
+         var2 = 28;
+         break;
+      default:
+         if (Game.difficulty == 4) {
+            var1 = 23;
+            var2 = 24;
+         } else if (Game.difficulty == 2) {
+            var1 = 21;
+            var2 = 22;
+         } else {
+            var1 = 19;
+            var2 = 20;
+         }
+      }
+
+      Text.resetTextArgs();
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 1);
+      addItem(Text.STRINGID((short)3, (short)201), EMPTY_TEXT, 8);
+      addItem(Text.STRINGID((short)3, Player.gradeToString(var0)), EMPTY_TEXT, 8);
+      addItem(Text.STRINGID((short)3, (short)202), EMPTY_TEXT, 8);
+      addItem(Text.STRINGID((short)0, var1), EMPTY_TEXT, 8);
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 1);
+      Text var3 = Text.getLargeBuffer();
+      Text.composeText((short)0, var2, var3);
+      var3.wrapText(Canvas.menuScrollWithBarMaxChars);
+      LoadHelpItems(var3, 8);
+      var3.dispose();
+   }
+
+   private static final void LoadNotebook() {
+      detailsHelpText = Text.getLargeBuffer();
+      type = 7;
+      boolean var0 = false;
+      items[numItems++].Set(Render.mapNameField, EMPTY_TEXT, 9);
+      items[numItems++].Set(EMPTY_TEXT, EMPTY_TEXT, 73);
+
+      int var1;
+      for(var1 = 0; var1 < Player.numNotebookIndexes; ++var1) {
+         detailsHelpText.setLength(0);
+         byte var2 = 0;
+         Text.composeText(Canvas.loadMapStringID, Player.notebookIndexes[var1], detailsHelpText);
+         if (Player.isQuestFailed(var1)) {
+            items[numItems++].Set(Text.STRINGID((short)3, (short)225), EMPTY_TEXT, 0);
+            var2 = 4;
+         } else if (Player.isQuestDone(var1)) {
+            detailsHelpText.insert((char)'\u0087', 0);
+            detailsHelpText.insert((String)" ", 1);
+         }
+
+         detailsHelpText.wrapText(Canvas.ingameScrollWithBarMaxChars);
+         LoadHelpItems(detailsHelpText, var2);
+         items[numItems++].Set(EMPTY_TEXT, EMPTY_TEXT, 0);
+      }
+
+      var1 = (Canvas.displayRect[3] - 26) / 16;
+      selectedIndex = 0;
+      scrollIndex = 0;
+      detailsHelpText.dispose();
+   }
+
+   private static final void LoadHelpItems(Text var0) {
+      LoadHelpItems(var0, 0);
+   }
+
+   private static final void LoadHelpItems(Text var0, int var1) {
+      displayAsText();
+      byte var2 = 3;
+
+      int var3;
+      int var4;
+      for(var3 = 0; (var4 = var0.findFirstOf('|', var3)) >= 0; var3 = var4 + 1) {
+         if (var4 > var3 && var0.charAt(var3) == '#') {
+            Text.addTextArg(var0, var3 + 1, var4);
+            addItem(getLastArgString(), EMPTY_TEXT, var2 | 8 | 64 | var1);
+         } else {
+            Text.addTextArg(var0, var3, var4);
+            addItem(getLastArgString(), EMPTY_TEXT, var2 | var1);
+         }
+      }
+
+      var4 = var0.length();
+      if (var3 < var4) {
+         if (var0.charAt(var3) == '#') {
+            Text.addTextArg(var0, var3, var4);
+            addItem(getLastArgString(), EMPTY_TEXT, var2 | 8 | 64 | 64 | var1);
+         } else {
+            Text.addTextArg(var0, var3, var0.length());
+            addItem(getLastArgString(), EMPTY_TEXT, var2 | var1);
+         }
+      }
+
+   }
+
+   public static void buildFraction(int var0, int var1, Text var2) {
+      var2.setLength(0);
+      if (var0 < 0) {
+         var2.append('-');
+      }
+
+      var2.append(var0);
+      var2.append("/");
+      if (var1 < 0) {
+         var2.append('-');
+      }
+
+      var2.append(var1);
+   }
+
+   private static void buildModStat(int var0, int var1, Text var2) {
+      var2.setLength(0);
+      var2.append(var0);
+      if (var1 != 0) {
+         var2.append(var1 > 0 ? "(+" : "(-");
+         var2.append(var1);
+         var2.append(')');
+      }
+   }
+
+   private static final void buildLevelGrades(Text var0) {
+      int var1 = Canvas.menuHelpMaxChars - 4;
+      Text.resetTextArgs();
+      var0.setLength(0);
+      Text var3 = Text.getSmallBuffer();
+      var3.setLength(0);
+      Text.composeText((short)3, (short)47, var3);
+      var3.dehyphenate();
+
+      int var4;
+      for(var4 = var0.length() + var3.length(); var4 < var1 - 7; ++var4) {
+         var0.append('\u0080');
+      }
+
+      var0.append(var3);
+      var3.setLength(0);
+      Text.composeText((short)3, (short)48, var3);
+      var3.dehyphenate();
+
+      for(var4 = var0.length() + var3.length(); var4 < var1 - 1; ++var4) {
+         var0.append(" ");
+      }
+
+      var0.append(var3);
+      var3.dispose();
+      addItem(EMPTY_TEXT, EMPTY_TEXT, 1);
+      Text.addTextArg(var0);
+      addItem(getLastArgString(), EMPTY_TEXT, 1);
+
+      for(var4 = 0; var4 < Game.levelNames.length - 1; ++var4) {
+         int var5 = var4 + 1;
+         if (Player.getCurrentGrade(var5) != 0 || Player.getBestGrade(var5) != 0 || var5 <= Canvas.loadMapID) {
+            buildLevelGrade(var5, var0, var1, 7);
+            Text.addTextArg(var0);
+            addItem(getLastArgString(), EMPTY_TEXT, 1);
+         }
+      }
+
+   }
+
+   private static final void buildLevelGrade(int var0, Text var1, int var2, int var3) {
+      int var4 = var0 == Canvas.loadMapID ? Player.levelGrade(false) : Player.getCurrentGrade(var0);
+      int var5 = Player.getBestGrade(var0);
+      var1.setLength(0);
+      Text.composeText((short)3, Game.levelNames[var0 - 1], var1);
+      var1.dehyphenate();
+      Text var6 = Text.getSmallBuffer();
+      var6.setLength(0);
+      Text.composeText((short)3, Player.gradeToString(var4), var6);
+      var6.dehyphenate();
+      int var7 = var6.length();
+      var6.setLength(0);
+      Text.composeText((short)3, Player.gradeToString(var4), var6);
+
+      int var8;
+      for(var8 = var1.length() + var7; var8 < var2 - var3; ++var8) {
+         var1.append(" ");
+      }
+
+      var1.append(var6);
+      var6.setLength(0);
+      Text.composeText((short)3, Player.gradeToString(var5), var6);
+      var6.dehyphenate();
+      var8 = var6.length();
+      var6.setLength(0);
+      Text.composeText((short)3, Player.gradeToString(var5), var6);
+
+      for(int var9 = var8; var9 < var3; ++var9) {
+         var1.append(" ");
+      }
+
+      var1.append(var6);
+      var6.dispose();
+   }
+
+   private static final void fillStatus(boolean var0, boolean var1, boolean var2) {
+      Text.resetTextArgs();
+      Text var3 = Text.getLargeBuffer();
+      if (var1) {
+         buildFraction(Player.ce.getStat(0), Player.ce.getStat(1), var3);
+         Text.addTextArg(var3);
+         buildFraction(Player.ce.getStat(2), 200, var3);
+         Text.addTextArg(var3);
+         Text.addTextArg(Player.level);
+         Text.addTextArg(Player.currentXP);
+         Text.addTextArg(Player.nextLevelXP);
+         int var4 = Player.ce.getStat(3) - Player.baseCe.getStat(3);
+         buildModStat(Player.baseCe.getStat(3), var4, var3);
+         Text.addTextArg(var3);
+         var4 = Player.ce.getStat(4) - Player.baseCe.getStat(4);
+         buildModStat(Player.baseCe.getStat(4), var4, var3);
+         Text.addTextArg(var3);
+         var4 = Player.ce.getStat(5) - Player.baseCe.getStat(5);
+         buildModStat(Player.baseCe.getStat(5), var4, var3);
+         Text.addTextArg(var3);
+         var4 = Player.ce.getStat(6) - Player.baseCe.getStat(6);
+         buildModStat(Player.baseCe.getStat(6), var4, var3);
+         Text.addTextArg(var3);
+         var4 = Player.ce.getStat(7) - Player.baseCe.getStat(7);
+         buildModStat(Player.baseCe.getStat(7), var4, var3);
+         Text.addTextArg(var3);
+      }
+
+      if (var0) {
+         if (var0 && !var1 && !var2) {
+            Text.addTextArg((short)3, (short)(Render.mapNameField & 1023));
+         }
+
+         Player.formatTime(Game.totalLevelTime + (App.gameTime - Game.curLevelTime), var3);
+         Text.addTextArg(var3);
+         Player.fillMonsterStats();
+         buildFraction(Game.mapSecretsFound, Game.totalSecrets, var3);
+         Text.addTextArg(var3);
+         buildFraction(Player.monsterStats[0], Player.monsterStats[1], var3);
+         Text.addTextArg(var3);
+         Text.addTextArg(Player.moves);
+         Text var6 = Text.getSmallBuffer();
+         short var5 = Player.gradeToString(Player.levelGrade(false));
+         Text.composeText((short)3, var5, var6);
+         Text.addTextArg(var6);
+         var6.dispose();
+      }
+
+      if (var2) {
+         var3.setLength(0);
+         Player.formatTime(Player.totalTime + (App.gameTime - Player.playTime), var3);
+         Text.addTextArg(var3);
+         Text.addTextArg(Player.totalMoves);
+         Text.addTextArg(Player.totalDeaths);
+         Text.addTextArg(Player.counters[6]);
+         Text.addTextArg(Player.counters[7]);
+         Text.addTextArg(Player.counters[1]);
+         Text.addTextArg(Player.counters[2]);
+      }
+
+      var3.dispose();
+   }
+
+   private static final void saveIndexes(int var0) {
+      indexes[var0 * 2] = selectedIndex;
+      indexes[var0 * 2 + 1] = scrollIndex;
+   }
+
+   private static final void loadIndexes(int var0) {
+      selectedIndex = indexes[var0 * 2];
+      scrollIndex = indexes[var0 * 2 + 1];
+   }
+
+   public static final void showDetailsMenu() {
+      MenuItem var0 = items[selectedIndex];
+      detailsHelpText = Text.getLargeBuffer();
+      detailsTitle = Text.getLargeBuffer();
+      detailsDef = null;
+      switch(menu) {
+      case 72:
+         saveIndexes(4);
+         if (var0.param == 3) {
+            detailsDef = EntityDef.find(6, 2, var0.param);
+         } else {
+            detailsDef = EntityDef.find(6, 0, var0.param);
+         }
+         break;
+      case 73:
+         saveIndexes(1);
+         detailsDef = EntityDef.find(6, 1, var0.param);
+         break;
+      case 75:
+         saveIndexes(2);
+      case 47:
+         detailsDef = EntityDef.find(6, 0, var0.param);
+         break;
+      case 84:
+         menuParam = var0.param;
+         detailsDef = EntityDef.find(6, 0, var0.param);
+         Text.composeText((short)1, detailsDef.longName, detailsTitle);
+         Text.composeText((short)1, detailsDef.description, detailsHelpText);
+         gotoMenu(88);
+         return;
+      }
+
+      if (detailsDef == null) {
+         detailsHelpText.dispose();
+         detailsTitle.dispose();
+      } else {
+         Text.composeText((short)1, detailsDef.longName, detailsTitle);
+         Text.composeText((short)1, detailsDef.description, detailsHelpText);
+         gotoMenu(71);
+      }
+   }
+
+   private static final void addItem(int var0, int var1, int var2, int var3, int var4, int var5) {
+      if (numItems == 50) {
+         App.Error(100);
+      }
+
+      items[numItems++].Set(var0, var1, var2, var3, var4, var5);
+   }
+
+   private static final void addItem(int var0, int var1, int var2) {
+      addItem(var0, var1, var2, 0, 0, EMPTY_TEXT);
+   }
+
+   private static final void loadMenuItems(int var0) {
+      loadMenuItems(var0, 0, -1);
+   }
+
+   private static final void loadMenuItems(int var0, int var1, int var2) {
+      if (var0 != 19) {
+         int var3 = menuData.length;
+
+         for(int var6 = 0; var6 < var3; ++var6) {
+            if ((menuData[var6] & 255) == var0) {
+               int var4 = menuData[var6];
+               type = (var4 & -16777216) >> 24;
+               int var7 = 0;
+               if (var6 != 0) {
+                  var7 = (menuData[var6 - 1] & 16776960) >> 8;
+               }
+
+               if (var2 == -1) {
+                  var2 = (((var4 & 16776960) >> 8) - var7) / 2;
+                  var2 -= var1;
+               }
+
+               var7 += var1 * 2;
+
+               for(int var8 = 0; var8 < var2; ++var8) {
+                  var4 = menuItems[var7 + 0];
+                  int var5 = menuItems[var7 + 1];
+                  addItem(Text.STRINGID((short)3, (short)(var4 >> 16)), Text.STRINGID((short)3, (short)0), (short)(var4 & '\uffff'), (short)((var5 & '\uff00') >> 8), (short)(var5 & 255), Text.STRINGID((short)3, (short)((var5 & -65536) >> 16)));
+                  var7 += 2;
+               }
+
+               return;
+            }
+         }
+
+         App.Error(29);
+      }
+   }
+
+   private static final int onOffValue(boolean var0) {
+      return Text.STRINGID((short)3, (short)(var0 ? 142 : 143));
+   }
+
+   public static final void leaveOptionsMenu() {
+      if (Sound.isVibrateEnabled() != oldVibrateSetting || Sound.isSoundEnabled() != oldSoundSetting || Text.defaultLanguage != oldLanguageSetting) {
+         Canvas.pacifierX = Canvas.SCR_CX - 100 + 9;
+         Canvas.repaintFlags |= 1;
+         Canvas.setLoadingBarText((short)3, (short)226);
+         Canvas.updateLoadingBar(true);
+         Game.saveConfig();
+      }
+
+   }
+
+   public static int getStackCount() {
+      return stackCount;
+   }
+
+   public static void clearStack() {
+      stackCount = 0;
+   }
+
+   public static void pushMenu(int var0, int var1) {
+      if (stackCount + 1 >= 10) {
+         App.Error(new Exception("Menu stack is full."), 0);
+      }
+
+      menuIdxStack[stackCount] = var1;
+      menuStack[stackCount++] = var0;
+   }
+
+   public static int popMenu(int[] var0) {
+      if (stackCount - 1 < 0) {
+         App.Error(new Exception("Menu stack is empty"), 0);
+      }
+
+      var0[0] = menuIdxStack[stackCount - 1];
+      return menuStack[--stackCount];
+   }
+
+   public static int peekMenu() {
+      return stackCount - 1 < 0 ? -1 : menuStack[stackCount - 1];
+   }
+
+   private static int getLastArgString() {
+      int var0 = 0;
+      if (Text.numTextArgs > 0) {
+         var0 = Text.STRINGID((short)3, (short)(235 + (Text.numTextArgs - 1)));
+      }
+
+      return var0;
+   }
+
+   public static final void fillVendingMachineSnacks(int var0, Text var1) {
+      byte var5 = 1;
+      if (var0 >= 1 && var0 <= 3) {
+         var5 = 0;
+      } else if (var0 >= 7 && var0 <= 9) {
+         var5 = 2;
+      }
+
+      EntityDef var6;
+      if (var5 == 0) {
+         var1.setLength(0);
+         var1.append(VendingMachine.getSnackPrice());
+         var6 = EntityDef.find(6, 0, 16);
+         Text.addTextArg(var1);
+         addItem(Text.STRINGID((short)3, (short)355), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)355), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)356), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)356), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)357), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)357), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)358), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)358), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)359), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)359), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)360), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)360), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)361), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)361), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)362), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)362), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)363), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)363), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)364), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)364), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)365), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)365), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)366), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)366), Text.STRINGID((short)1, var6.description));
+      } else if (var5 == 1) {
+         var1.setLength(0);
+         var1.append(VendingMachine.getSnackPrice());
+         var6 = EntityDef.find(6, 0, 16);
+         Text.addTextArg(var1);
+         addItem(Text.STRINGID((short)3, (short)367), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)367), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)368), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)368), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)369), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)369), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)370), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)370), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)371), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)371), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)372), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)372), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)373), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)373), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)374), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)374), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)375), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)375), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)376), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)376), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)365), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)365), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)366), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)366), Text.STRINGID((short)1, var6.description));
+      } else if (var5 == 2) {
+         var1.setLength(0);
+         var1.append(VendingMachine.getSnackPrice());
+         var6 = EntityDef.find(6, 0, 16);
+         Text.addTextArg(var1);
+         addItem(Text.STRINGID((short)3, (short)377), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)377), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)378), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)378), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)379), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)379), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)380), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)380), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)381), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)381), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)382), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)382), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)383), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)383), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)384), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)384), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)385), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)385), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)386), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)386), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)387), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)387), Text.STRINGID((short)1, var6.description));
+         addItem(Text.STRINGID((short)3, (short)366), getLastArgString(), 0, 28, Text.STRINGID((short)3, (short)366), Text.STRINGID((short)1, var6.description));
+      }
+
+   }
+
+   public static void paintTouchMenu(Graphics var0) {
+      if (tFormat.isPlainOlMenu) {
+         paint(var0);
+      } else {
+         tFormat.height = tFormat.maxHeight;
+         MenuSystem.touchMenuFormat var10000;
+         if (getSoftKeyCount() > 0) {
+            var10000 = tFormat;
+            var10000.height -= Canvas.displayRect[3] - (tFormat.topSection_height + tFormat.topSection_overlap);
+         }
+
+         finalizeTouchMenuFormat();
+         int var1 = getSoftKeyPress(tState.currentPress_x, tState.currentPress_y);
+         drawMenuBackgroundTouch(var0, var1 == 0, var1 == 1);
+         if (menuTitle != null) {
+            var0.drawString(menuTitle, Canvas.SCR_CX, tFormat.topLeft_y + tFormat.titleOffset_y - 8, 17);
+         }
+
+         if (menu == 86) {
+            drawMenuVendingConfirm(var0);
+         } else {
+            int var2 = tFormat.scrollHandle_paddingTop;
+            int var3 = tFormat.height - tFormat.scrollHandle_height - tFormat.scrollHandle_paddingTop;
+            tState.scrollHandle_y = Math.max(var2, Math.min(tState.scrollHandle_y, var3));
+            int var5;
+            if (tFormat.needsScrollBar) {
+               drawMenuScrollBarTouch(var0, tFormat.scrollBar_topLeft_x, tFormat.topLeft_y, tFormat.height);
+               if (tFormat.touchMenuType != 2) {
+                  tState.menuItemsOffset_y = -((tFormat.menuContent_height - tFormat.height) * (tState.scrollHandle_y - var2)) / (var3 - var2);
+               } else {
+                  tState.menuItemsOffset_y = clamp(tState.menuItemsOffset_y, -(tFormat.menuContent_height - tFormat.height), 0);
+                  tState.scrollHandle_y = var2 - (var3 - var2) * tState.menuItemsOffset_y / (tFormat.menuContent_height - tFormat.height);
+               }
+            } else {
+               tState.menuItemsOffset_y = 0;
+               if (tFormat.touchMenuType == 0 && !tFormat.isFullScreen || menu == 83) {
+                  short var4 = 162;
+                  if (menu == 83) {
+                     var4 = 116;
+                  }
+
+                  var5 = Canvas.SCR_CX - var4 / 2;
+                  var10000 = tFormat;
+                  var10000.padding_left += var5 - tFormat.topLeft_x;
+                  var10000 = tFormat;
+                  var10000.width -= var5 - tFormat.topLeft_x;
+                  var10000 = tFormat;
+                  var10000.menuContent_width -= var5 - tFormat.topLeft_x;
+                  tFormat.topLeft_x = var5;
+               }
+            }
+
+            boolean var15 = tState.currentPress_x != -1 && tState.currentPress_y != -1 && Canvas.pointInRectangle(tState.currentPress_x, tState.currentPress_y, tFormat.topLeft_x, tFormat.topLeft_y, tFormat.menuContent_width, tFormat.height);
+            if (var15 && tFormat.needsScrollBar) {
+               if (tState.initialMenuPress_y != -1) {
+                  var5 = tState.initialMenuPress_y - tState.currentPress_y;
+               } else {
+                  tState.initialMenuPress_y = tState.currentPress_y;
+               }
+            } else {
+               tState.initialMenuPress_y = -1;
+               tState.draggingMenu = false;
+            }
+
+            Text var16 = Text.getSmallBuffer();
+            Text var6 = Text.getSmallBuffer();
+            int var7 = tFormat.topLeft_y + tState.menuItemsOffset_y;
+            int var8 = tFormat.topLeft_x;
+            var0.clipRect(tFormat.topLeft_x, tFormat.topLeft_y, tFormat.menuContent_width, tFormat.height);
+            tState.currentPressedItem = -1;
+            tState.infoPressed = false;
+            boolean var9 = false;
+            boolean var10 = false;
+
+            for(int var11 = 0; var11 < numItems; ++var11) {
+               MenuItem var12 = items[var11];
+               var10 = false;
+               var9 = var12.helpField != EMPTY_TEXT;
+               if ((var12.flags & '耀') == 0 && var12.textField != EMPTY_TEXT) {
+                  boolean var13 = (var12.flags & 1) == 0;
+                  if (!tState.draggingMenu && var15) {
+                     int var14 = tFormat.menuContent_width - (var9 ? tFormat.menuItemInfo_width : 0);
+                     if (var13 && pointInItem(tState.currentPress_x, tState.currentPress_y, var11)) {
+                        var10 = true;
+                        tState.infoPressed = false;
+                        tState.currentPressedItem = var11;
+                     } else if (var9 && pointInItemInfo(tState.currentPress_x, tState.currentPress_y, var11)) {
+                        var10 = true;
+                        tState.infoPressed = true;
+                        tState.currentPressedItem = var11;
+                     }
+                  }
+
+                  drawMenuItemTouch(var0, var8, var7, var12, var16, var6, var13, var10, var9, tState.infoPressed);
+               }
+
+               var7 += tFormat.menuItem_height + tFormat.menuItem_paddingBottom;
+            }
+
+            var0.resetScreenSpace();
+            var16.dispose();
+            var6.dispose();
+         }
+
+         if (tState.displayingPopUp) {
+            if (tFormat.touchMenuType == 2) {
+               var0.fillRegion(imgIngameMenuElements, 49, 95, 43, 24, Canvas.displayRect[0] + 7, Canvas.displayRect[1], Canvas.displayRect[2] - 14, Canvas.displayRect[3] - 62, 0);
+               VendingMachine.drawMachineTopBar(var0);
+            } else {
+               var0.fillRegion(imgIngameMenuElements, 49, 95, 43, 24, Canvas.displayRect[0], Canvas.displayRect[1], Canvas.displayRect[2], Canvas.displayRect[3], 0);
+            }
+
+            drawPopUp(var0);
+         }
+
+      }
+   }
+
+   public static void pointerPressed(int var0, int var1) {
+      if (!tState.displayingPopUp) {
+         tState.currentPress_x = var0;
+         tState.currentPress_y = var1;
+         if (pointInScrollHandle(var0, var1)) {
+            tState.draggingScrollHandle = true;
+            tState.scrollHandleTouchOffset_y = tFormat.topLeft_y + tState.scrollHandle_y - var1;
+         }
+      }
+
+   }
+
+   public static void pointerReleased(int var0, int var1) {
+      if (tFormat.isPlainOlMenu) {
+         App.canvas.touchKeyPressed(-5);
+      } else {
+         if (menu >= 29) {
+            if (Canvas.pointInRectangle(var0, var1, 0, Canvas.displayRect[3] - 60, 60, 60)) {
+               enterDigit(1);
+            } else if (Canvas.pointInRectangle(var0, var1, Canvas.displayRect[2] - 60, Canvas.displayRect[3] - 60, 60, 60)) {
+               enterDigit(0);
+            }
+         }
+
+         if (!tState.displayingPopUp) {
+            tState.draggingScrollHandle = false;
+            tState.draggingMenu = false;
+            tState.currentPress_x = tState.currentPress_y = tState.initialMenuPress_y = -1;
+            if (tState.currentPressedItem != -1) {
+               if (!tState.infoPressed) {
+                  if (pointInItem(var0, var1, tState.currentPressedItem)) {
+                     select(tState.currentPressedItem);
+                  }
+               } else if (pointInItemInfo(var0, var1, tState.currentPressedItem)) {
+                  displayPopUp(items[tState.currentPressedItem].textField, items[tState.currentPressedItem].helpField);
+               }
+            } else if (getSoftKeyCount() == 1 && Canvas.pointInRectangle(var0, var1, Canvas.SCR_CX - tFormat.softKey_width / 2, tFormat.topSection_height + tFormat.softKey_paddingAbove, tFormat.softKey_width, tFormat.softKey_height)) {
+               App.canvas.touchKeyPressed(-6);
+            } else {
+               if (menu == 86) {
+                  if (pointInUpArrow(var0, var1)) {
+                     App.canvas.touchKeyPressed(-1);
+                     return;
+                  }
+
+                  if (pointInDownArrow(var0, var1)) {
+                     App.canvas.touchKeyPressed(-2);
+                     return;
+                  }
+               }
+
+               int var2 = getSoftKeyPress(var0, var1);
+               if (var2 == 0) {
+                  App.canvas.touchKeyPressed(-6);
+               } else if (var2 == 1) {
+                  App.canvas.touchKeyPressed(-7);
+               }
+            }
+         } else {
+            closePopUp();
+            if (menu == 86) {
+               back();
+            }
+         }
+
+      }
+   }
+
+   public static void pointerDragged(int var0, int var1) {
+      if (!tState.displayingPopUp) {
+         tState.currentPress_x = var0;
+         tState.currentPress_y = var1;
+         if (tState.draggingScrollHandle) {
+            if (!pointInScrollHandle(var0, var1)) {
+               tState.draggingScrollHandle = false;
+            } else {
+               tState.scrollHandle_y = var1 + tState.scrollHandleTouchOffset_y - tFormat.topLeft_y;
+            }
+         } else if (pointInScrollHandle(var0, var1)) {
+            tState.draggingScrollHandle = true;
+            tState.scrollHandleTouchOffset_y = tFormat.topLeft_y + tState.scrollHandle_y - var1;
+         }
+      }
+
+   }
+
+   public static void setupTouchMenu(int var0) {
+      tFormat.isPlainOlMenu = var0 == 1 || var0 == 24;
+      if (!tFormat.isPlainOlMenu) {
+         tFormat.infoOnRightSide = true;
+         if (var0 >= 83 && var0 <= 88) {
+            tFormat.touchMenuType = 2;
+            tFormat.infoOnRightSide = false;
+         } else if ((var0 < 3 || var0 > 23) && var0 != 25 && var0 != 26 && var0 != 27) {
+            tFormat.touchMenuType = 1;
+         } else {
+            tFormat.touchMenuType = 0;
+         }
+
+         tFormat.isFullScreen = var0 != 3 && var0 != 25 && var0 != 13;
+         int var1 = Canvas.displayRect[0];
+         int var2 = Canvas.displayRect[1];
+         int var3 = Canvas.displayRect[2];
+         int var4 = Canvas.displayRect[3];
+         if (tFormat.touchMenuType == 1) {
+            tFormat.padding_left = 17;
+            tFormat.padding_right = 24;
+            tFormat.padding_top = 23;
+            tFormat.padding_bottom = 19;
+            tFormat.scrollBar_width = 20;
+            tFormat.scrollHandle_width = 24;
+            tFormat.scrollHandle_height = 62;
+            tFormat.scrollHandle_paddingTop = 10;
+            tFormat.scrollHandle_paddingLeft = -3;
+            tFormat.menuItem_height = 20;
+            tFormat.menuItem_paddingBottom = 17;
+            tFormat.menuItemInfo_width = 24;
+            tFormat.menuItemInfo_paddingSide = 3;
+            tFormat.menuTitle_paddingTop = 80;
+            tFormat.menuTitle_paddingBottom = 25;
+         } else if (tFormat.touchMenuType == 2) {
+            tFormat.padding_left = 10;
+            tFormat.padding_right = 11;
+            tFormat.padding_top = 15;
+            tFormat.padding_bottom = 4;
+            tFormat.scrollBar_width = 31;
+            tFormat.scrollHandle_width = 0;
+            tFormat.scrollHandle_height = 0;
+            tFormat.scrollHandle_paddingTop = 0;
+            tFormat.scrollHandle_paddingLeft = 0;
+            if (var0 == 83) {
+               tFormat.menuItem_height = 36;
+               tFormat.menuItem_paddingBottom = 16;
+            } else {
+               tFormat.menuItem_height = 59;
+               tFormat.menuItem_paddingBottom = 10;
+            }
+
+            tFormat.menuItemInfo_width = 38;
+            tFormat.menuItemInfo_paddingSide = 4;
+            tFormat.menuTitle_paddingTop = 0;
+            if (var0 == 83) {
+               tFormat.menuTitle_paddingBottom = 21;
+            } else {
+               tFormat.menuTitle_paddingBottom = 11;
+            }
+         } else {
+            tFormat.padding_left = 22;
+            tFormat.padding_right = 23;
+            tFormat.padding_top = 23;
+            tFormat.padding_bottom = 18;
+            tFormat.scrollBar_width = 15;
+            tFormat.scrollHandle_width = 30;
+            tFormat.scrollHandle_height = 36;
+            tFormat.scrollHandle_paddingTop = -3;
+            tFormat.scrollHandle_paddingLeft = -10;
+            tFormat.menuItem_height = 41;
+            tFormat.menuItem_paddingBottom = 9;
+            tFormat.menuItemInfo_width = 0;
+            tFormat.menuItemInfo_paddingSide = 0;
+            tFormat.menuTitle_paddingTop = 10;
+            tFormat.menuTitle_paddingBottom = 25;
+         }
+
+         if (tFormat.touchMenuType == 2) {
+            tFormat.topSection_height = 223;
+            tFormat.topSection_overlap = 0;
+            tFormat.scrollArrow_width = 31;
+            tFormat.scrollArrow_height = 27;
+            tFormat.softKey_width = 104;
+            tFormat.softKey_height = 36;
+            tFormat.softKey_paddingAbove = 0;
+            tFormat.softKey_paddingSide = 14;
+         } else {
+            tFormat.topSection_height = 250;
+            tFormat.topSection_overlap = 0;
+            tFormat.scrollArrow_width = 0;
+            tFormat.scrollArrow_height = 0;
+            tFormat.softKey_width = 99;
+            tFormat.softKey_height = 37;
+            tFormat.softKey_paddingAbove = 16;
+            tFormat.softKey_paddingSide = 19;
+         }
+
+         tFormat.topLeft_x = var1 + tFormat.padding_left;
+         tFormat.topLeft_y = var2 + tFormat.padding_top;
+         tFormat.width = var3 - (tFormat.padding_left + tFormat.padding_right);
+         tFormat.maxHeight = var4 - (tFormat.padding_top + tFormat.padding_bottom);
+         tFormat.scrollBarArea_width = tFormat.scrollBar_width + Math.abs(tFormat.scrollHandle_paddingLeft);
+         tFormat.menuDragPixelTolerance_y = tFormat.menuItem_height / 2;
+         tFormat.scrollBar_topLeft_x = tFormat.topLeft_x + tFormat.width - tFormat.scrollBar_width;
+         MenuSystem.touchMenuFormat var10000;
+         if (!tFormat.isFullScreen) {
+            var10000 = tFormat;
+            var10000.topLeft_y += 144;
+            var10000 = tFormat;
+            var10000.maxHeight -= 144;
+         }
+
+         int var5 = tFormat.maxHeight % 16;
+         var10000 = tFormat;
+         var10000.maxHeight -= var5;
+         tState.draggingScrollHandle = false;
+         tState.draggingMenu = false;
+         tState.menuStickySpot = 0;
+         tState.scrollHandle_y = tFormat.scrollHandle_paddingTop;
+         tState.menuItemsOffset_y = 0;
+         tState.scrollHandleTouchOffset_y = 0;
+         tState.currentPress_x = tState.currentPress_y = tState.initialMenuPress_y = -1;
+         tState.currentPressedItem = -1;
+         tState.infoPressed = false;
+         tState.displayingPopUp = false;
+         tState.lastArrowScrollTime = 0;
+         if (popUpTitle != null) {
+            popUpTitle.dispose();
+         }
+
+         popUpTitle = null;
+         if (popUpText != null) {
+            popUpText.dispose();
+         }
+
+         popUpText = null;
+         if (menuTitle != null) {
+            menuTitle.dispose();
+         }
+
+         menuTitle = null;
+      }
+   }
+
+   public static void finalizeTouchMenuFormat() {
+      tFormat.menuContent_height = 0;
+
+      MenuSystem.touchMenuFormat var10000;
+      for(int var0 = 0; var0 < numItems; ++var0) {
+         var10000 = tFormat;
+         var10000.menuContent_height += tFormat.menuItem_height + tFormat.menuItem_paddingBottom;
+      }
+
+      var10000 = tFormat;
+      var10000.menuContent_height -= tFormat.menuItem_paddingBottom;
+      if (isLongText) {
+         var10000 = tFormat;
+         var10000.menuContent_height += tFormat.menuItem_height;
+      }
+
+      tFormat.needsScrollBar = tFormat.menuContent_height > tFormat.height;
+      tFormat.menuContent_width = tFormat.width;
+      if (tFormat.needsScrollBar) {
+         var10000 = tFormat;
+         var10000.menuContent_width -= tFormat.scrollBarArea_width;
+      }
+
+   }
+
+   public static void drawMenuScrollBarTouch(Graphics var0, int var1, int var2, int var3) {
+      if (tFormat.touchMenuType == 0) {
+         int var16 = var3 - 26 - 3;
+         int var17 = var16 / 9;
+         int var18 = var16 - var17 * 9;
+         int var19 = var18 / 2;
+         var0.drawRegion(imgMainMenuElements, 2, 2, 15, 13, var1, var2);
+         int var20 = var2 + 13 + var19 + 3;
+
+         for(int var23 = 0; var23 < var17; ++var23) {
+            int var22 = var2 + tState.scrollHandle_y + tFormat.scrollHandle_height / 2 - (var20 + 3);
+            int var21 = Math.abs(var22 / 9);
+            var21 = Math.max(0, Math.min(8, var21));
+            var21 = 8 - var21;
+            var0.drawRegion(imgMainMenuElements, 162, 22 + var21 * 9, 15, 6, var1, var20);
+            var20 += 9;
+         }
+
+         var20 += var18 - var19;
+         var0.drawRegion(imgMainMenuElements, 2, 2, 15, 13, var1, var20, 0, 1);
+         var0.drawRegion(imgMainMenuElements, 19, 0, tFormat.scrollHandle_width, tFormat.scrollHandle_height / 2, var1 + tFormat.scrollHandle_paddingLeft, var2 + tState.scrollHandle_y);
+         var0.drawRegion(imgMainMenuElements, 19, 0, tFormat.scrollHandle_width, tFormat.scrollHandle_height / 2, var1 + tFormat.scrollHandle_paddingLeft, var2 + tState.scrollHandle_y + tFormat.scrollHandle_height / 2, 0, 1);
+      } else {
+         int var14;
+         if (tFormat.touchMenuType == 1) {
+            var14 = var3 - 112;
+            var0.drawRegion(imgIngameMenuElements, 128, 0, 20, 56, var1, var2);
+            var0.fillRegion(imgIngameMenuElements, 128, 29, 20, 28, var1, var2 + 56, 20, var14);
+            var0.drawRegion(imgIngameMenuElements, 128, 0, 20, 56, var1, var2 + var3, 36, 1);
+            var0.drawRegion(imgIngameMenuElements, 122, 58, tFormat.scrollHandle_width, tFormat.scrollHandle_height, var1 + tFormat.scrollHandle_paddingLeft, var2 + tState.scrollHandle_y);
+         } else if (tFormat.touchMenuType == 2) {
+            int var11 = tFormat.menuItem_height + tFormat.menuItem_paddingBottom;
+            boolean var12 = touchScrollArrowUp(tState.currentPress_x, tState.currentPress_y);
+            boolean var13 = touchScrollArrowDown(tState.currentPress_x, tState.currentPress_y);
+            MenuSystem.touchMenuState var10000;
+            if (var12 && tState.lastArrowScrollTime + 250 < App.time) {
+               var10000 = tState;
+               var10000.menuItemsOffset_y += var11;
+               tState.lastArrowScrollTime = App.time;
+            } else if (var13 && tState.lastArrowScrollTime + 250 < App.time) {
+               var10000 = tState;
+               var10000.menuItemsOffset_y -= var11;
+               tState.lastArrowScrollTime = App.time;
+            } else if (!var13 && !var12) {
+               tState.lastArrowScrollTime = 0;
+            }
+
+            var14 = var12 ? 121 : 281;
+            int var15 = var12 ? 101 : 128;
+            var0.drawRegion(VendingMachine.imgBuyAssets, var14, var15, 31, 27, var1, var2, 20, 0);
+            var14 = var13 ? 152 : 312;
+            var15 = var13 ? 101 : 128;
+            var0.drawRegion(VendingMachine.imgBuyAssets, var14, var15, 31, 27, var1, var2 + var3, 36, 0);
+         }
+      }
+
+   }
+
+   public static void drawMenuBackgroundTouch(Graphics var0, boolean var1, boolean var2) {
+      int var3 = Canvas.displayRect[0];
+      int var4 = Canvas.displayRect[2] - Canvas.displayRect[0];
+      int var5 = getSoftKeyCount() > 0 ? tFormat.topSection_height : Canvas.displayRect[3];
+      int var15;
+      int var17;
+      if (tFormat.touchMenuType == 0) {
+         int var7 = imgMainMenuQuadrant.getHeight();
+         if (!tFormat.isFullScreen) {
+            var0.drawImage(imgMainMenuTop, Canvas.screenRect[0], Canvas.screenRect[0]);
+            int var8 = imgMainMenuTop.getHeight();
+            var0.drawImage(imgMainMenuQuadrant, Canvas.screenRect[0], var8);
+            var0.drawImage(imgMainMenuQuadrant, Canvas.screenRect[2], var8, 24, 2);
+            var0.drawImage(imgMainMenuQuadrant, Canvas.screenRect[0], var8 + var7 - 80, 20, 1);
+            var0.drawImage(imgMainMenuQuadrant, Canvas.screenRect[2], var8 + var7 - 80, 24, 3);
+         } else {
+            int var10 = Canvas.screenRect[2] / 2;
+            int var11 = getSoftKeyCount() > 0 ? 22 : 24;
+            var15 = var7 - 0;
+            int var16 = Canvas.screenRect[1];
+            var0.drawImage(imgMainMenuQuadrant, var3, var16);
+            var0.drawImage(imgMainMenuQuadrant, var4, var16, 24, 2);
+            var16 += var7;
+            var17 = getSoftKeyCount() > 0 ? 4 : 5;
+
+            int var18;
+            for(var18 = 0; var18 < var17 - 1; ++var18) {
+               var0.drawRegion(imgMainMenuQuadrant, 0, 93, var10, var11, var3, var16, 20, 1);
+               var0.drawRegion(imgMainMenuQuadrant, 0, 93, var10, var11, var4, var16, 24, 3);
+               var16 += var11;
+               var0.drawRegion(imgMainMenuQuadrant, 0, 93, var10, var11, var3, var16);
+               var0.drawRegion(imgMainMenuQuadrant, 0, 93, var10, var11, var4, var16, 24, 2);
+               var16 += var11;
+            }
+
+            if (getSoftKeyCount() > 0) {
+               var16 = 250 - var15;
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var15, var3, var16, 20, 1);
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var15, var4, var16, 24, 3);
+               var16 += var15;
+               var18 = Canvas.displayRect[3] - 250 + 0;
+               int var19 = var18 / 2 - 0;
+               int var20 = (var18 + 1) / 2;
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var19, var3, var16);
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var19, var4, var16, 24, 2);
+               var16 += var19;
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var20, var3, var16, 20, 1);
+               var0.drawRegion(imgMainMenuQuadrant, 0, 0, 120, var20, var4, var16, 24, 3);
+            } else {
+               var0.drawImage(imgMainMenuQuadrant, var3, var16, 20, 1);
+               var0.drawImage(imgMainMenuQuadrant, var4, var16, 24, 3);
+            }
+         }
+      } else if (tFormat.touchMenuType == 1) {
+         int var27 = Canvas.displayRect[3] - var5;
+         int var28 = var5 - 40 - 180;
+         if (getSoftKeyCount() > 0) {
+            var28 += 0;
+         }
+
+         int var29 = Math.max(0, var27 - 40 + 0);
+         int var30 = Canvas.displayRect[1];
+         var0.fillRegion(imgIngameMenuElements, 19, 94, 26, 25, Canvas.displayRect[0], Canvas.displayRect[1], Canvas.displayRect[2], Canvas.displayRect[3]);
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var3, var30);
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var4, var30, 24, 2);
+         var30 += 20;
+         var0.drawRegion(imgIngameMenuElements, 0, 20, 18, 90, var3, var30);
+         var0.drawRegion(imgIngameMenuElements, 0, 20, 18, 90, var4, var30, 24, 2);
+         var30 += 90;
+         var0.fillRegion(imgIngameMenuElements, 0, 90, 18, 20, var3, var30, 18, var28);
+         var0.fillRegion(imgIngameMenuElements, 0, 90, 18, 20, var4 - 18, var30, 18, var28, 2);
+         var30 += var28;
+         var0.drawRegion(imgIngameMenuElements, 0, 20, 18, 90, var3, var30, 20, 1);
+         var0.drawRegion(imgIngameMenuElements, 0, 20, 18, 90, var4, var30, 24, 3);
+         var30 += 90;
+         if (getSoftKeyCount() > 0) {
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var3, var30, 20, 1);
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var4, var30, 24, 3);
+            var30 += 20;
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var3, var30);
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var4, var30, 24, 2);
+            var30 += 20;
+            var0.drawRegion(imgIngameMenuElements, 0, 20, 18, (var29 + 1) / 2, var3, var30);
+            var0.drawRegion(imgIngameMenuElements, 0, 20, 18, (var29 + 1) / 2, var4, var30, 24, 2);
+            var30 += (var29 + 1) / 2;
+            var0.drawRegion(imgIngameMenuElements, 0, 20, 18, var29 / 2, var3, var30);
+            var0.drawRegion(imgIngameMenuElements, 0, 20, 18, var29 / 2, var4, var30, 24, 2);
+            var30 += var29 / 2;
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var3, var30, 20, 1);
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var4, var30, 24, 3);
+         } else {
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var3, var30, 20, 1);
+            var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var4, var30, 24, 3);
+         }
+      } else if (tFormat.touchMenuType == 2) {
+         VendingMachine.drawVendingMachineBackground(var0, false);
+      }
+
+      if (getSoftKeyCount() != 0) {
+         byte var9;
+         short var12;
+         byte var13;
+         Image var14;
+         byte var31;
+         byte var32;
+         byte var33;
+         short var34;
+         if (tFormat.touchMenuType == 1) {
+            var31 = 18;
+            var32 = 21;
+            var9 = 71;
+            var33 = 21;
+            var34 = 0;
+            var12 = 160;
+            var13 = 9;
+            var14 = imgIngameMenuElements;
+         } else if (tFormat.touchMenuType == 0) {
+            var31 = 0;
+            var32 = 100;
+            var9 = 54;
+            var33 = 100;
+            var34 = 0;
+            var12 = 136;
+            var13 = 9;
+            var14 = imgMainMenuElements;
+         } else {
+            var31 = 0;
+            var32 = 0;
+            var9 = 0;
+            var33 = 0;
+            var34 = 241;
+            var12 = 0;
+            var13 = 11;
+            var14 = VendingMachine.imgBuyAssets;
+         }
+
+         var15 = tFormat.softKey_paddingAbove;
+         if (tFormat.touchMenuType != 2 && getSoftKeyCount() == 1) {
+            var0.drawRegion(var14, var31, var32, 54, 36, var3 + 14, var5 + 17, 20, 0);
+            var0.drawRegion(var14, var9, var33, 54, 36, var4 - 14, var5 + 17, 24, 0);
+         }
+
+         boolean var35 = getSoftKeyCount() == 1 && tFormat.touchMenuType != 2;
+         var17 = var35 ? Canvas.SCR_CX - tFormat.softKey_width / 2 : Canvas.menuRect[0] + tFormat.softKey_paddingSide;
+         short var36 = var34;
+         short var37 = var12;
+         if (var1) {
+            if (tFormat.touchMenuType == 1) {
+               var36 = 19;
+               var37 = 57;
+            } else if (tFormat.touchMenuType == 0) {
+               var36 = 108;
+               var37 = 100;
+            } else if (tFormat.touchMenuType == 2) {
+               var36 = 121;
+               var37 = 22;
+            }
+         }
+
+         var0.drawRegion(var14, var36, var37, tFormat.softKey_width, tFormat.softKey_height, var17, tFormat.topSection_height + var15, 0, 0);
+         Text var38;
+         if (Canvas.softKeyLeftID != -1) {
+            var38 = Text.getSmallBuffer();
+            var38.setLength(0);
+            Text.composeText(Canvas.softKeyLeftID, var38);
+            var38.dehyphenate();
+            var0.drawString(var38, var17 + tFormat.softKey_width / 2, var5 + var15 + var13, 17);
+            var38.dispose();
+         }
+
+         if (getSoftKeyCount() == 2) {
+            var17 = Canvas.menuRect[0] + Canvas.menuRect[2] - tFormat.softKey_paddingSide - tFormat.softKey_width;
+            var36 = var34;
+            var37 = var12;
+            if (var2) {
+               if (tFormat.touchMenuType == 1) {
+                  var36 = 19;
+                  var37 = 57;
+               } else if (tFormat.touchMenuType == 0) {
+                  var36 = 108;
+                  var37 = 100;
+               } else if (tFormat.touchMenuType == 2) {
+                  var36 = 121;
+                  var37 = 22;
+               }
+            }
+
+            var0.drawRegion(var14, var36, var37, tFormat.softKey_width, tFormat.softKey_height, Canvas.SCR_CX, tFormat.topSection_height + var15, 0, 0);
+            if (Canvas.softKeyRightID != -1) {
+               var38 = Text.getSmallBuffer();
+               var38.setLength(0);
+               Text.composeText(Canvas.softKeyRightID, var38);
+               var38.dehyphenate();
+               var0.drawString(var38, var17 + tFormat.softKey_width / 2, var5 + var15 + var13, 17);
+               var38.dispose();
+            }
+         }
+      }
+
+   }
+
+   public static void drawMenuItemTouch(Graphics var0, int var1, int var2, MenuItem var3, Text var4, Text var5, boolean var6, boolean var7, boolean var8, boolean var9) {
+      byte var17 = 0;
+      var4.setLength(0);
+      if ((var3.flags & 1024) != 0) {
+         var4.append('\u0087');
+         var4.append(" ");
+      }
+
+      Text.composeTextField(var3.textField, var4);
+      int var10;
+      int var11;
+      int var12;
+      int var13;
+      byte var15;
+      int var16;
+      Image var18;
+      if (tFormat.touchMenuType == 0) {
+         var10 = var6 ? 11 : 3;
+         var11 = 12;
+         var15 = -10;
+         var18 = imgMainMenuElements;
+         var12 = var7 ? 0 : 0;
+         var13 = var7 ? 59 : 18;
+         var16 = 162;
+      } else if (tFormat.touchMenuType == 1) {
+         var10 = var6 ? 9 : 3;
+         var11 = 3;
+         var15 = -6;
+         var18 = imgIngameMenuElements;
+         var12 = var7 && !var9 ? 0 : 0;
+         var13 = var7 && !var9 ? 120 : 140;
+         var16 = tFormat.menuContent_width;
+         if (var8) {
+            var16 -= tFormat.menuItemInfo_paddingSide + tFormat.menuItemInfo_width;
+         }
+      } else {
+         if (menu == 83) {
+            var12 = var7 && !var9 ? 121 : 241;
+            var13 = var7 && !var9 ? 59 : 36;
+            boolean var19 = true;
+            boolean var20 = true;
+            var16 = 116;
+            var10 = var16 / 2;
+            var11 = tFormat.menuItem_height / 2;
+            var17 = 3;
+         } else {
+            var12 = var7 && !var9 ? 7 : 154;
+            var13 = var7 && !var9 ? 162 : 168;
+            var16 = 148;
+            var10 = 9;
+            var11 = 14;
+         }
+
+         var4.wrapText(14);
+         if (var4.getNumLines() > 1) {
+            var11 -= 8;
+         }
+
+         var15 = 41;
+         var18 = VendingMachine.imgBuyAssets;
+      }
+
+      int var33 = var1;
+      int var34 = var1 + tFormat.menuContent_width - tFormat.menuItemInfo_width;
+      if (var8 && !tFormat.infoOnRightSide) {
+         var33 = var1 + tFormat.menuItemInfo_width + tFormat.menuItemInfo_paddingSide;
+         var34 = var1;
+      }
+
+      if (var6) {
+         if (tFormat.touchMenuType == 1) {
+            int var25 = var12 + 90;
+            int var29 = var12 + 142;
+            var0.drawRegion(var18, var12, var13, 50, 20, var33, var2, 0, 0);
+            var0.fillRegion(var18, var25, var13, 50, 20, var33 + 50, var2, var16 - 50 - 6, 20, 0);
+            var0.drawRegion(var18, var29, var13, 6, 20, var33 + var16 - 6, var2, 0, 0);
+         } else {
+            var0.drawRegion(var18, var12, var13, var16, tFormat.menuItem_height, var33, var2, 0, 0);
+         }
+      }
+
+      if ((var3.flags & 2) == 0) {
+         var4.dehyphenate();
+      }
+
+      if (var3.textField2 != EMPTY_TEXT) {
+         var5.setLength(0);
+         Text.composeTextField(var3.textField2, var5);
+         if ((var3.flags & 2) == 0) {
+            var5.dehyphenate();
+         }
+
+         if (tFormat.touchMenuType == 2) {
+            byte var21 = 36;
+            var0.drawString(var4, var33 + var10, var2 + var11, var17);
+            var0.drawString(var5, var33 + var15, var2 + var21, 17);
+         } else {
+            var4.ellipsis(var33 + var10, var1 + 152 + var15, var5);
+            var0.drawString(var4, var33 + var10, var2 + var11, var17);
+            var0.drawString(var5, var33 + var16 + var15, var2 + var11, 24);
+         }
+      } else if ((var3.flags & 64) != 0) {
+         buildDivider(var4, tFormat.menuContent_width / 9);
+         var0.drawString(var4, var33 + var10, var2 + var11, var17);
+      } else {
+         if (type != 5 && menu != 33 && menu != 16 && menu != 46 && var4.getStringWidth() > var16 - 20) {
+            var4.ellipsis(var33 + var10, var1 + 132, (Text)null);
+         }
+
+         var0.drawString(var4, var33 + var10, var2 + var11, var17);
+      }
+
+      if (var8) {
+         int var35 = 0;
+         int var22 = 0;
+         byte var23 = 0;
+         byte var24 = 0;
+         byte var36 = 0;
+         if (tFormat.touchMenuType == 1) {
+            var35 = var7 && var9 ? 96 : 102;
+            var22 = var7 && var9 ? 95 : 162;
+            var23 = 21;
+            var24 = 20;
+            var36 = 0;
+         } else if (tFormat.touchMenuType == 2) {
+            var35 = var7 && var9 ? 208 : 243;
+            var22 = var7 && var9 ? 128 : 128;
+            var23 = 35;
+            var24 = 38;
+            var36 = 10;
+         }
+
+         var0.drawRegion(var18, var35, var22, var23, var24, var34, var2 + var36, 0, 0);
+         var4.setLength(0);
+         var4.append("?");
+         var0.drawString(var4, var34 + var23 / 2, var2 + var36 + var24 / 2, 3);
+      }
+
+   }
+
+   public static void drawPopUp(Graphics var0) {
+      int var1 = popUpText.getNumLines();
+      int var3 = Math.max(0, var1 - 4);
+      int var9 = Canvas.displayRect[0];
+      int var10 = 144 + var3 * 16;
+      int var11 = Canvas.SCR_CY + 24 - var10 / 2;
+      int var27;
+      if (tFormat.touchMenuType == 1) {
+         var0.fillRegion(imgIngameMenuElements, 19, 94, 26, 25, Canvas.displayRect[0], var11, 240, var10);
+         int var25 = var9;
+         int var26 = var9 + 240;
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var9, var11);
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var26, var11, 24, 2);
+         var27 = var11 + 20;
+         var0.drawRegion(imgIngameMenuElements, 0, 40, 18, 52, var9, var27);
+         var0.drawRegion(imgIngameMenuElements, 0, 40, 18, 52, var26, var27, 24, 2);
+         var27 += 52;
+
+         for(int var28 = 0; var28 < var3; ++var28) {
+            var0.drawRegion(imgIngameMenuElements, 0, 92, 18, 16, var25, var27);
+            var0.drawRegion(imgIngameMenuElements, 0, 92, 18, 16, var26, var27, 24, 2);
+            var27 += 16;
+         }
+
+         var0.drawRegion(imgIngameMenuElements, 0, 40, 18, 52, var25, var27, 20, 1);
+         var0.drawRegion(imgIngameMenuElements, 0, 40, 18, 52, var26, var27, 24, 3);
+         var27 += 52;
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var25, var27, 20, 1);
+         var0.drawRegion(imgIngameMenuElements, 0, 0, 120, 20, var26, var27, 24, 3);
+         var27 += 20;
+      } else if (tFormat.touchMenuType == 2) {
+         var11 = (Canvas.screenRect[3] - 120) / 2;
+         Image var30 = VendingMachine.imgBuyAssets;
+         var27 = var9 + 10;
+         int var29 = Canvas.screenRect[2] - 20;
+         var0.fillRect(var27 + 1, var11, var29 - 2, var10, -14578293);
+         var0.drawRegion(var30, 121, 22, 25, 25, var27, var11);
+         var0.drawRegion(var30, 121, 22, 25, 25, var27 + var29, var11, 24, 2);
+         var0.drawRegion(var30, 121, 22, 25, 25, var27, var11 + var10, 36, 1);
+         var0.drawRegion(var30, 121, 22, 25, 25, var27 + var29, var11 + var10, 40, 3);
+         var0.fillRegion(var30, 129, 22, 90, 7, var27 + 25, var11, var29 - 50, 7);
+         var0.fillRegion(var30, 129, 22, 90, 7, var27 + 25, var11 + var10 - 7, var29 - 50, 7, 3);
+         var0.fillRegion(var30, 121, 29, 8, 22, var27, var11 + 25, 8, var10 - 50);
+         var0.fillRegion(var30, 121, 29, 8, 22, var27 + var29 - 8, var11 + 25, 8, var10 - 50, 3);
+      }
+
+      if (popUpTitle != null) {
+         var0.drawString(popUpTitle, Canvas.SCR_CX, var11 + 30, 3);
+      }
+
+      if (popUpText != null) {
+         var0.drawString(popUpText, var9 + 25, var11 + 60, 0);
+      }
+
+   }
+
+   public static void displayPopUp(int var0, int var1) {
+      byte var2 = 21;
+      tState.displayingPopUp = true;
+      if (var0 != -1) {
+         popUpTitle = Text.getSmallBuffer();
+         popUpTitle.setLength(0);
+         Text.composeText(var0, popUpTitle);
+         popUpTitle.trim();
+         popUpTitle.dehyphenate();
+      }
+
+      if (var1 != -1) {
+         popUpText = Text.getSmallBuffer();
+         popUpText.setLength(0);
+         Text.composeText(var1, popUpText);
+         popUpText.wrapText(var2);
+      }
+
+   }
+
+   public static void closePopUp() {
+      tState.currentPress_x = -1;
+      tState.currentPress_y = -1;
+      tState.currentPressedItem = -1;
+      tState.infoPressed = false;
+      tState.displayingPopUp = false;
+      if (popUpTitle != null) {
+         popUpTitle.dispose();
+      }
+
+      popUpTitle = null;
+      if (popUpText != null) {
+         popUpText.dispose();
+      }
+
+      popUpText = null;
+   }
+
+   public static void addMenuTitle(int var0) {
+      Text var1 = Text.getSmallBuffer();
+      var1.setLength(0);
+      Text.composeText(var0, var1);
+      addMenuTitle(var1);
+      var1.dispose();
+   }
+
+   public static void addMenuTitle(Text var0) {
+      menuTitle = Text.getSmallBuffer();
+      menuTitle.setLength(0);
+      menuTitle.append(var0);
+      int var1;
+      if (tFormat.touchMenuType == 2) {
+         var1 = tFormat.width / 9;
+      } else {
+         var1 = (tFormat.width - tFormat.scrollBarArea_width) / 9;
+      }
+
+      menuTitle.wrapText(var1);
+      int var2 = menuTitle.getNumLines() * 16;
+      tFormat.titleOffset_y = -(var2 + tFormat.menuTitle_paddingBottom);
+      MenuSystem.touchMenuFormat var10000 = tFormat;
+      var10000.topLeft_y += tFormat.menuTitle_paddingTop + var2 + tFormat.menuTitle_paddingBottom;
+      var10000 = tFormat;
+      var10000.maxHeight -= tFormat.menuTitle_paddingTop + var2 + tFormat.menuTitle_paddingBottom;
+   }
+
+   public static void displayAsText() {
+      tFormat.menuItem_height = 16;
+      tFormat.menuItem_paddingBottom = 0;
+      tFormat.menuDragPixelTolerance_y = 0;
+   }
+
+   public static int getMenuItemHeight(MenuItem var0) {
+      return tFormat.menuItem_height + tFormat.menuItem_paddingBottom;
+   }
+
+   public static int getSoftKeyPress(int var0, int var1) {
+      if (getSoftKeyCount() == 0) {
+         return -1;
+      } else {
+         if (getSoftKeyCount() == 1) {
+            if (tFormat.touchMenuType == 2) {
+               if (Canvas.pointInRectangle(var0, var1, Canvas.menuRect[0] + tFormat.softKey_paddingSide, tFormat.topSection_height + tFormat.softKey_paddingAbove, tFormat.softKey_width, tFormat.softKey_height)) {
+                  return 0;
+               }
+            } else if (Canvas.pointInRectangle(var0, var1, Canvas.SCR_CX - tFormat.softKey_width / 2, tFormat.topSection_height + tFormat.softKey_paddingAbove, tFormat.softKey_width, tFormat.softKey_height)) {
+               return 0;
+            }
+         } else if (getSoftKeyCount() == 2) {
+            if (Canvas.pointInRectangle(var0, var1, Canvas.menuRect[0] + tFormat.softKey_paddingSide, tFormat.topSection_height + tFormat.softKey_paddingAbove, tFormat.softKey_width, tFormat.softKey_height)) {
+               return 0;
+            }
+
+            if (Canvas.pointInRectangle(var0, var1, Canvas.menuRect[0] + Canvas.menuRect[2] - tFormat.softKey_paddingSide - tFormat.softKey_width, tFormat.topSection_height + tFormat.softKey_paddingAbove, tFormat.softKey_width, tFormat.softKey_height)) {
+               return 1;
+            }
+         }
+
+         return -1;
+      }
+   }
+
+   public static int getSoftKeyCount() {
+      boolean var0 = Canvas.softKeyLeftID != -1;
+      boolean var1 = Canvas.softKeyRightID != -1;
+      if (var0 && var1) {
+         return 2;
+      } else {
+         return !var0 && !var1 ? 0 : 1;
+      }
+   }
+
+   public static boolean touchScrollArrowUp(int var0, int var1) {
+      return tFormat.touchMenuType == 2 && var0 != -1 && var1 != -1 ? Canvas.pointInRectangle(var0, var1, tFormat.scrollBar_topLeft_x, tFormat.topLeft_y, tFormat.scrollArrow_width, tFormat.scrollArrow_height) : false;
+   }
+
+   public static boolean touchScrollArrowDown(int var0, int var1) {
+      return tFormat.touchMenuType == 2 && var0 != -1 && var1 != -1 ? Canvas.pointInRectangle(var0, var1, tFormat.scrollBar_topLeft_x, tFormat.topLeft_y + tFormat.height - tFormat.scrollArrow_height, tFormat.scrollArrow_width, tFormat.scrollArrow_height) : false;
+   }
+
+   public static boolean pointInItem(int var0, int var1, int var2) {
+      int var3 = tFormat.topLeft_y + tState.menuItemsOffset_y + var2 * (tFormat.menuItem_height + tFormat.menuItem_paddingBottom);
+      int var4 = 0;
+      int var5 = tFormat.menuContent_width;
+      if (items[var2].helpField != EMPTY_TEXT) {
+         var5 -= tFormat.menuItemInfo_width + tFormat.menuItemInfo_paddingSide;
+         if (!tFormat.infoOnRightSide) {
+            var4 += tFormat.menuItemInfo_width + tFormat.menuItemInfo_paddingSide;
+         }
+      }
+
+      return Canvas.pointInRectangle(var0, var1, tFormat.topLeft_x + var4, var3, var5, tFormat.menuItem_height);
+   }
+
+   public static boolean pointInItemInfo(int var0, int var1, int var2) {
+      int var3 = tFormat.topLeft_y + tState.menuItemsOffset_y + var2 * (tFormat.menuItem_height + tFormat.menuItem_paddingBottom);
+      int var4 = 0;
+      if (tFormat.infoOnRightSide) {
+         var4 += tFormat.menuContent_width - tFormat.menuItemInfo_width;
+      }
+
+      return items[var2].helpField != EMPTY_TEXT && Canvas.pointInRectangle(var0, var1, tFormat.topLeft_x + var4, var3, tFormat.menuItemInfo_width, tFormat.menuItem_height);
+   }
+
+   public static void drawMenuVendingConfirm(Graphics var0) {
+      int var20 = Canvas.screenRect[0] + 151;
+      int var21 = Canvas.menuRect[1] + 100;
+      boolean var22 = pointInUpArrow(tState.currentPress_x, tState.currentPress_y);
+      boolean var23 = pointInDownArrow(tState.currentPress_x, tState.currentPress_y);
+      Image var24 = VendingMachine.imgBuyAssets;
+      Text var25 = Text.getSmallBuffer();
+      int var26 = var22 ? 240 : 309;
+      int var27 = var22 ? 75 : 161;
+      var0.drawRegion(var24, var26, var27, 45, 39, var20, var21, 0, 0);
+      var26 = var23 ? 159 : 309;
+      var27 = var23 ? 129 : 201;
+      var0.drawRegion(var24, var26, var27, 45, 39, var20, var21 + 39 + 32, 0, 0);
+      int var28 = var20 + 22;
+      int var29 = var21 + 39 + 16;
+      var25.setLength(0);
+      var25.append(VendingMachine.currentItemQuantity);
+      var25.dehyphenate();
+      var0.drawRegion(var24, 193, 103, 41, 24, var28, var29, 3, 0);
+      var0.drawString(var25, var28, var29, 3);
+      int var30 = var20 - 6 - 53;
+      var25.setLength(0);
+      Text.composeText((short)3, (short)353, var25);
+      var25.dehyphenate();
+      var0.drawRegion(var24, 121, 22, 106, 36, var30, var29, 3, 0);
+      var0.drawString(var25, var30, var29, 3);
+      int var31 = var21 + 78 + 32 + 6 + 18;
+      var25.setLength(0);
+      var25.append(VendingMachine.currentItemPrice * VendingMachine.currentItemQuantity);
+      var25.dehyphenate();
+      var0.drawRegion(var24, 193, 103, 41, 24, var28, var31 - 147, 3, 0);
+      var0.drawString(var25, var28, var31 - 147, 3);
+      int var32 = var20 - 6 - 58;
+      var25.setLength(0);
+      Text.composeText((short)3, (short)346, var25);
+      var25.dehyphenate();
+      var25.ellipsis(var32 - var25.getStringWidth() / 2, var32 - var25.getStringWidth() / 2 + 100, (Text)null);
+      var0.drawRegion(var24, 121, 59, 116, 36, var32, var31 - 147, 3, 0);
+      var0.drawString(var25, var32, var31 - 147, 3);
+      var25.dispose();
+   }
+
+   public static boolean pointInUpArrow(int var0, int var1) {
+      return Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0] + 151, Canvas.screenRect[1] + 100, 45, 39);
+   }
+
+   public static boolean pointInDownArrow(int var0, int var1) {
+      return Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0] + 151, Canvas.screenRect[1] + 100 + 39 + 32, 45, 39);
+   }
+
+   public static void deleteMenuItem(int var0) {
+      if (var0 < numItems) {
+         for(int var1 = var0; var1 + 1 < numItems; ++var1) {
+            items[var1].Set(items[var1 + 1].textField, items[var1 + 1].textField2, items[var1 + 1].flags, items[var1 + 1].action, items[var1 + 1].param, items[var1 + 1].helpField);
+         }
+
+         --numItems;
+      }
+
+   }
+
+   public static boolean validFirstMenuItem_forTouch(MenuItem var0) {
+      boolean var1 = var0.action == 2;
+      boolean var2 = var0.action == 11;
+      boolean var3 = var0.textField == EMPTY_TEXT;
+      return !var1 && !var2 && !var3;
+   }
+
+   public static void adjustMenuItemsForTouch() {
+      if (!tFormat.isPlainOlMenu) {
+         while(!validFirstMenuItem_forTouch(items[0])) {
+            deleteMenuItem(0);
+         }
+      }
+
+   }
+
+   public static boolean canExitMenuDirectlyToGame() {
+      return tFormat.touchMenuType == 1;
+   }
+
+   public static boolean pointInScrollHandle(int var0, int var1) {
+      int var2 = tFormat.scrollBar_topLeft_x + tFormat.scrollHandle_paddingLeft;
+      int var4 = tFormat.topLeft_y + tState.scrollHandle_y - tFormat.scrollHandle_height / 2;
+      int var5 = tFormat.scrollHandle_width * 2;
+      int var6 = tFormat.scrollHandle_height * 2;
+      return Canvas.pointInRectangle(var0, var1, var2, var4, var5, var6);
+   }
+
+   public static int clamp(int var0, int var1, int var2) {
+      var0 = Math.min(var0, var2);
+      var0 = Math.max(var0, var1);
+      return var0;
+   }
+
+   class touchMenuState {
+      boolean draggingScrollHandle;
+      boolean draggingMenu;
+      int menuStickySpot;
+      int scrollHandle_y;
+      int menuItemsOffset_y;
+      int scrollHandleTouchOffset_y;
+      int currentPress_x;
+      int currentPress_y;
+      int initialMenuPress_y;
+      int currentPressedItem;
+      boolean infoPressed;
+      boolean displayingPopUp;
+      int lastArrowScrollTime;
+   }
+
+   class touchMenuFormat {
+      int padding_left;
+      int padding_right;
+      int padding_top;
+      int padding_bottom;
+      int scrollBar_width;
+      int scrollHandle_width;
+      int scrollHandle_height;
+      int scrollHandle_paddingTop;
+      int scrollHandle_paddingLeft;
+      int menuItem_height;
+      int menuItem_paddingBottom;
+      int menuItemInfo_width;
+      int menuItemInfo_paddingSide;
+      int menuTitle_paddingTop;
+      int menuTitle_paddingBottom;
+      int touchMenuType;
+      boolean isFullScreen;
+      boolean isPlainOlMenu;
+      boolean infoOnRightSide;
+      int topSection_height;
+      int topSection_overlap;
+      int scrollArrow_width;
+      int scrollArrow_height;
+      int softKey_width;
+      int softKey_height;
+      int softKey_paddingAbove;
+      int softKey_paddingSide;
+      int topLeft_x;
+      int topLeft_y;
+      int width;
+      int maxHeight;
+      int scrollBarArea_width;
+      int menuDragPixelTolerance_y;
+      int scrollBar_topLeft_x;
+      int menuContent_width;
+      int menuContent_height;
+      boolean needsScrollBar;
+      int titleOffset_y;
+      int height;
+   }
+}

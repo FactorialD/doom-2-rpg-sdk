@@ -1,0 +1,19 @@
+class PlatformVars {
+   public static final int KEY_UNDEFINED = 10001;
+   public static final int KEY_UP = -1;
+   public static final int KEY_DOWN = -2;
+   public static final int KEY_LEFT = -3;
+   public static final int KEY_RIGHT = -4;
+   public static final int KEY_FIRE = -5;
+   public static final int KEY_LEFTSOFT = -6;
+   public static final int KEY_RIGHTSOFT = -7;
+   public static final int KEY_BACK = -8;
+   public static final int DEFAULT_ANIM_FRAMES = 4;
+   public static final boolean FORCE_BACKLIGHT = true;
+   public static final boolean FULLSCREEN = true;
+   public static final boolean SPLITBLIT = false;
+   public static final int VIBRATION_MAXTIME = 0;
+   public static final int INTRO_WAIT_MS = 0;
+   public static final boolean VIBRATE_ALLOW = true;
+   public static final boolean PERFORM_SOUND_CHECK = false;
+}

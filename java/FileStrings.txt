@@ -1,0 +1,16 @@
+final class FileStrings {
+   static final short CREDITS = 0;
+   static final short HELP_ATTACK = 3;
+   static final short HELP_EFFECTS = 5;
+   static final short HELP_GENERAL = 1;
+   static final short HELP_HACKER = 8;
+   static final short HELP_HELMET = 4;
+   static final short HELP_ITEMS = 6;
+   static final short HELP_MATRIX_SKIP = 9;
+   static final short HELP_MOVE = 2;
+   static final short HELP_POWER_UP = 10;
+   static final short HELP_SNIPER = 7;
+   static final short LEGALS = 11;
+   static final short PROLOGUE = 12;
+   static final short MAX = 13;
+}

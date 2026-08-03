@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doom Texture Extractor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #121212;
+            color: #e0e0e0;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #333;
+            margin-bottom: 1.5rem;
+        }
+        h1 { color: #fff; margin-top: 0; }
+        .controls { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+        input[type="file"] {
+            background: #333;
+            padding: 0.5rem;
+            border-radius: 6px;
+            border: 1px solid #444;
+            color: #fff;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        #log {
+            background: #000;
+            color: #0f0;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1rem;
+            border-radius: 6px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+        .texture-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        .texture-item {
+            background: #2a2a2a;
+            padding: 0.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #444;
+        }
+        .texture-item canvas {
+            max-width: 100%;
+            height: auto;
+            image-rendering: pixelated;
+            /* Checkerboard background to see transparency */
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                              linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                              linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 10px 10px;
+            background-position: 0 0, 0 5px, 5px 5px, 5px 0;
+            background-color: #eee;
+            margin-bottom: 0.5rem;
+            border: 1px solid #000;
+        }
+        .texture-info { font-size: 0.7rem; color: #aaa; white-space: pre-line; line-height: 1.2; }
+        .status-bar { font-size: 0.9rem; margin-bottom: 1rem; color: #3b82f6; }
+    </style>
+</head>
+<body>
+
+    <h1>Doom Texture Extractor v1.1</h1>
+    
+    <div class="card">
+        <p>Extracts textures from Doom JAR. Supports transparency and palettes.</p>
+        <div class="controls">
+            <input type="file" id="jarInput" accept=".jar,.zip">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" id="monochromeToggle"> Monochrome
+            </label>
+            <button id="extractBtn">Extract All</button>
+        </div>
+        <div id="status" class="status-bar">Ready</div>
+        <div id="log">Waiting for JAR file...</div>
+    </div>
+
+    <div id="output" class="texture-grid"></div>
+
+    <script>
+        const logEl = document.getElementById('log');
+        const outputEl = document.getElementById('output');
+        const extractBtn = document.getElementById('extractBtn');
+        const jarInput = document.getElementById('jarInput');
+        const statusEl = document.getElementById('status');
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function setStatus(msg) {
+            statusEl.textContent = msg;
+        }
+
+        extractBtn.addEventListener('click', async () => {
+            const file = jarInput.files[0];
+            if (!file) {
+                alert('Please select a JAR file first.');
+                return;
+            }
+
+            outputEl.innerHTML = '';
+            logEl.innerHTML = '';
+            extractBtn.disabled = true;
+            setStatus('Initializing...');
+
+            try {
+                log(`Loading ${file.name}...`);
+                const zip = await JSZip.loadAsync(file);
+                
+                // 1. Load Mapping Data
+                log('Reading newMappings.bin...');
+                const mappingFile = zip.file('newMappings.bin');
+                if (!mappingFile) throw new Error('newMappings.bin not found in JAR');
+                const mappingBuf = await mappingFile.async('arraybuffer');
+                const mappingData = parseMappings(mappingBuf);
+                
+                // 2. Load Palette Data
+                log('Reading newPalettes.bin...');
+                const paletteFile = zip.file('newPalettes.bin');
+                let palettes = null;
+                if (paletteFile) {
+                    const paletteBuf = await paletteFile.async('arraybuffer');
+                    palettes = parsePalettes(paletteBuf, mappingData.mediaPalColors);
+                    log(`Loaded ${palettes.filter(p => p).length} unique palettes`);
+                } else {
+                    log('Warning: newPalettes.bin not found. Using grayscale fallback.');
+                }
+
+                // 3. Load Bin Files (texXX.bin and imagesXX.bin)
+                log('Loading bin files...');
+                const binFiles = new Map();
+                
+                // Load texXX.bin (for 3D textures)
+                for (let i = 0; i < 30; i++) { 
+                    const name = `tex${i < 10 ? '0' + i : i}.bin`;
+                    const f = zip.file(name);
+                    if (f) {
+                        binFiles.set(name, await f.async('uint8array'));
+                        log(`Loaded ${name} (${binFiles.get(name).length} bytes)`);
+                    }
+                }
+                
+                // Load imagesXX.bin (for UI)
+                for (let i = 0; i < 30; i++) { 
+                    const name = `images${i}.bin`;
+                    const f = zip.file(name);
+                    if (f) {
+                        binFiles.set(name, await f.async('uint8array'));
+                        log(`Loaded ${name} (${binFiles.get(name).length} bytes)`);
+                    }
+                }
+
+                // 4. Process Textures
+                log('Processing texture slots...');
+                const textureInfos = computeTextureLocations(mappingData);
+                
+                let count = 0;
+                const batchSize = 25;
+                
+                for (let i = 0; i < textureInfos.length; i++) {
+                    const info = textureInfos[i];
+                    if (!info.valid) continue;
+                    
+                    const fileIndexStr = info.fileIndex < 10 ? '0' + info.fileIndex : info.fileIndex.toString();
+                    
+                    // Try texXX.bin first, then imagesXX.bin
+                    let binData = binFiles.get(`tex${fileIndexStr}.bin`);
+                    if (!binData) {
+                        binData = binFiles.get(`images${info.fileIndex}.bin`);
+                    }
+
+                    if (!binData) continue;
+
+                    // Extract raw segment
+                    if (info.fileOffset + info.dataLength > binData.length) {
+                        continue;
+                    }
+                    const rawSegment = binData.slice(info.fileOffset, info.fileOffset + info.dataLength);
+                    
+                    // Decompress or use raw
+                    const indices = new Uint8Array(info.width * info.height);
+                    if (info.isCompressed) {
+                        try {
+                            decompressIndices(rawSegment, indices, info);
+                        } catch (e) {
+                            // log(`Failed to decompress texture ${info.id}: ${e.message}`);
+                        }
+                    } else {
+                        const copyLen = Math.min(rawSegment.length, indices.length);
+                        indices.set(rawSegment.slice(0, copyLen));
+                    }
+
+                    // Render to canvas
+                    const palette = (palettes && palettes[info.id]) ? palettes[info.id] : createGrayscalePalette();
+                    renderTexture(info, indices, palette);
+                    count++;
+                    
+                    if (count % batchSize === 0) {
+                        setStatus(`Extracted ${count} textures...`);
+                        await new Promise(r => setTimeout(r, 0)); 
+                    }
+                }
+
+                setStatus(`Completed! Total: ${count} textures.`);
+                log(`Done! Extracted ${count} textures.`);
+
+            } catch (err) {
+                log(`ERROR: ${err.message}`);
+                setStatus('Error occurred.');
+                console.error(err);
+            } finally {
+                extractBtn.disabled = false;
+            }
+        });
+
+        function parseMappings(buffer) {
+            const view = new DataView(buffer);
+            let offset = 0;
+
+            const readInt16Array = (len) => {
+                const arr = new Int16Array(len);
+                for (let i = 0; i < len; i++) {
+                    arr[i] = view.getInt16(offset, true);
+                    offset += 2;
+                }
+                return arr;
+            };
+
+            const readUint8Array = (len) => {
+                const arr = new Uint8Array(buffer, offset, len);
+                offset += len;
+                return arr;
+            };
+
+            return {
+                mediaMappings: readInt16Array(512),
+                mediaDimensions: readUint8Array(1024),
+                mediaBounds: readUint8Array(4096),
+                mediaPalColors: readInt16Array(1024),
+                mediaTexelSizes: readInt16Array(1024)
+            };
+        }
+
+        function computeTextureLocations(mappings) {
+            const { mediaDimensions, mediaTexelSizes, mediaMappings, mediaBounds } = mappings;
+            const locations = [];
+            
+            const flatToGroup = new Int32Array(1024).fill(-1);
+            for (let g = 0; g < mediaMappings.length - 1; g++) {
+                const start = mediaMappings[g];
+                const end = mediaMappings[g + 1];
+                if (start >= 0 && end <= 1024 && start < end) {
+                    for (let k = start; k < end; k++) {
+                        flatToGroup[k] = g;
+                    }
+                }
+            }
+
+            const TEXELS_PER_FILE = 32768;
+            let currentFileIndex = 0;
+            let currentAccum = 0;
+            let currentFileOffset = 0;
+
+            for (let i = 0; i < 1024; i++) {
+                const dimByte = mediaDimensions[i];
+                const w = 1 << ((dimByte >> 4) & 0x0F);
+                const h = 1 << (dimByte & 0x0F);
+                
+                const bIdx = i * 4;
+                const bounds = {
+                    minX: mediaBounds[bIdx],
+                    maxX: mediaBounds[bIdx + 1],
+                    minY: mediaBounds[bIdx + 2],
+                    maxY: mediaBounds[bIdx + 3]
+                };
+
+                const rawVal = mediaTexelSizes[i] & 0xFFFF;
+                const isReference = (rawVal & 0x8000) !== 0;
+                const size = (rawVal & 0x3FFF) + 1;
+
+                const info = {
+                    id: i,
+                    groupId: flatToGroup[i] !== -1 ? flatToGroup[i] : 999,
+                    width: w,
+                    height: h,
+                    valid: w > 0 && h > 0 && w <= 512 && h <= 512,
+                    isReference,
+                    bounds,
+                    fileIndex: -1,
+                    fileOffset: -1,
+                    dataLength: 0
+                };
+
+                if (isReference) {
+                    info.parentId = rawVal & 0x7FFF;
+                } else {
+                    info.fileIndex = currentFileIndex;
+                    info.fileOffset = currentFileOffset;
+                    info.dataLength = size;
+
+                    currentAccum += size;
+                    currentFileOffset += size;
+
+                    if (currentAccum > TEXELS_PER_FILE) {
+                        currentFileIndex++;
+                        currentAccum = 0;
+                        currentFileOffset = 0;
+                    }
+                }
+                locations.push(info);
+            }
+
+            // Resolve references
+            for (let i = 0; i < 1024; i++) {
+                const info = locations[i];
+                if (info.isReference && info.parentId !== undefined) {
+                    const parent = locations[info.parentId];
+                    if (parent && !parent.isReference) {
+                        info.fileIndex = parent.fileIndex;
+                        info.fileOffset = parent.fileOffset;
+                        info.dataLength = parent.dataLength;
+                        info.width = parent.width;
+                        info.height = parent.height;
+                        info.bounds = parent.bounds;
+                        info.valid = parent.valid;
+                    }
+                }
+            }
+
+            // Final pass: Determine if compressed
+            for (let i = 0; i < 1024; i++) {
+                const info = locations[i];
+                if (info.valid) {
+                    info.isCompressed = info.dataLength !== (info.width * info.height);
+                }
+            }
+
+            return locations;
+        }
+
+        function decompressIndices(buffer, output, info) {
+            const { minX, maxX, minY, maxY } = info.bounds;
+            const len = buffer.length;
+            if (len < 2) return;
+            
+            const dirSize = (buffer[len - 1] << 8) | buffer[len - 2];
+            if (dirSize <= 0 || dirSize >= len) return;
+
+            const dirStart = len - dirSize - 2;
+            const cols = maxX - minX;
+            if (cols <= 0) return;
+
+            const dirBytesCount = (cols + 1) >> 1;
+            const metaStart = dirStart + dirBytesCount; 
+            
+            let pixelPtr = 0;
+            let metaPtr = metaStart;
+            
+            for (let col = 0; col < cols; col++) {
+                const dirIdx = dirStart + (col >> 1);
+                if (dirIdx >= len) break;
+
+                const nibbleByte = buffer[dirIdx];
+                const numSpans = (col & 1) ? (nibbleByte >> 4) : (nibbleByte & 0x0F);
+                
+                const targetX = minX + col;
+                
+                for (let s = 0; s < numSpans; s++) {
+                    if (metaPtr + 2 > len) break;
+                    const topY = buffer[metaPtr++];
+                    const height = buffer[metaPtr++];
+                    
+                    for (let y = 0; y < height; y++) {
+                        const targetY = topY + y;
+                        if (targetX >= 0 && targetX < info.width && targetY >= 0 && targetY < info.height) {
+                            if (pixelPtr < dirStart) {
+                                output[targetY * info.width + targetX] = buffer[pixelPtr++];
+                            }
+                        } else {
+                            pixelPtr++;
+                        }
+                    }
+                }
+            }
+        }
+
+        function parsePalettes(buffer, palColors) {
+            const view = new DataView(buffer);
+            let offset = 0;
+            const palettes = new Array(1024).fill(null);
+            const uniquePalettes = new Map();
+
+            // First pass: Load actual data
+            for (let i = 0; i < 1024; i++) {
+                const rawVal = palColors[i] & 0xFFFF;
+                const isReference = (rawVal & 0x8000) !== 0;
+
+                if (!isReference) {
+                    const size = rawVal & 0x3FFF;
+                    if (size === 0) {
+                        uniquePalettes.set(i, createGrayscalePalette());
+                        continue;
+                    }
+                    
+                    const colors = new Uint32Array(size); 
+                    for (let c = 0; c < size; c++) {
+                        if (offset + 2 > buffer.byteLength) break;
+                        const c555 = view.getUint16(offset, true);
+                        offset += 2;
+                        
+                        // RGB555 to RGBA8888
+                        const r5 = (c555 >> 10) & 31;
+                        const g5 = (c555 >> 5) & 31;
+                        const b5 = c555 & 31;
+                        
+                        const r = (r5 << 3) | (r5 >> 2);
+                        const g = (g5 << 3) | (g5 >> 2);
+                        const b = (b5 << 3) | (b5 >> 2);
+                        
+                        // Store as 0xAABBGGRR for Canvas ImageData (Little Endian)
+                        colors[c] = (255 << 24) | (b << 16) | (g << 8) | r;
+                    }
+                    uniquePalettes.set(i, colors);
+                    palettes[i] = colors;
+                }
+            }
+
+            // Second pass: Resolve references
+            for (let i = 0; i < 1024; i++) {
+                const rawVal = palColors[i] & 0xFFFF;
+                const isReference = (rawVal & 0x8000) !== 0;
+                if (isReference) {
+                    const parentId = rawVal & 0x7FFF;
+                    palettes[i] = uniquePalettes.get(parentId) || null;
+                }
+            }
+
+            return palettes;
+        }
+
+        function createGrayscalePalette() {
+            const p = new Uint32Array(256);
+            for (let i = 0; i < 256; i++) {
+                // 0xFFRRGGBB (Little Endian view 0xAABBGGRR)
+                p[i] = (255 << 24) | (i << 16) | (i << 8) | i;
+            }
+            return p;
+        }
+
+        function renderTexture(info, indices, palette) {
+            const canvas = document.createElement('canvas');
+            canvas.width = info.width;
+            canvas.height = info.height;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(info.width, info.height);
+            
+            const data = new Uint32Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength / 4);
+            const isMonochrome = document.getElementById('monochromeToggle').checked;
+
+            // Transparency logic from DoomTextureService
+            const isSprite = info.groupId < 257;
+            const isOpaqueException = (
+                info.groupId === 175 || 
+                info.groupId === 162 || 
+                info.groupId === 129 || 
+                info.groupId === 173 || 
+                info.groupId === 184
+            );
+            const index0Transparent = info.isCompressed || (isSprite && !isOpaqueException);
+
+            let hasVisiblePixels = false;
+            for (let i = 0; i < indices.length; i++) {
+                const idx = indices[i];
+                if (idx === 0 && index0Transparent) {
+                    data[i] = 0; // Transparent
+                } else {
+                    let color;
+                    if (palette && idx < palette.length) {
+                        color = palette[idx];
+                    } else {
+                        // Grayscale fallback for out of bounds
+                        color = (255 << 24) | (idx << 16) | (idx << 8) | idx;
+                    }
+
+                    if (isMonochrome) {
+                        // Extract RGB (Little Endian ABGR)
+                        const r = color & 0xFF;
+                        const g = (color >> 8) & 0xFF;
+                        const b = (color >> 16) & 0xFF;
+                        // Standard luminance formula
+                        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+                        color = (255 << 24) | (gray << 16) | (gray << 8) | gray;
+                    }
+
+                    data[i] = color;
+                    hasVisiblePixels = true;
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+
+            const container = document.createElement('div');
+            container.className = 'texture-item';
+            container.appendChild(canvas);
+            
+            const meta = document.createElement('div');
+            meta.className = 'texture-info';
+            const type = info.isCompressed ? 'CMP' : 'RAW';
+            meta.textContent = `ID: ${info.id} | G: ${info.groupId}\n${info.width}x${info.height} [${type}]\nB: ${info.bounds.minX},${info.bounds.minY}`;
+            if (!hasVisiblePixels) {
+                meta.textContent += '\n(Empty/Transparent)';
+                meta.style.color = '#f87171';
+            }
+            container.appendChild(meta);
+
+            outputEl.appendChild(container);
+        }
+
+    </script>
+</body>
+</html>

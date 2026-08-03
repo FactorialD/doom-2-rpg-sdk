@@ -1,0 +1,2170 @@
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import javax.microedition.lcdui.Image;
+
+final class ScriptThread {
+   public static int touchMe = 1;
+   public static final int MAX_SCRIPT_THREADS = 20;
+   public static final int MAX_STACK_SIZE = 16;
+   public static final int DEFAULT_TIME_SCALE = 100;
+   public int unpauseTime;
+   public int state = 2;
+   public boolean inuse = false;
+   public int IP = 0;
+   public int FP = 0;
+   public int flags;
+   public int type;
+   public boolean throwAwayLoot;
+   private int[] scriptStack = new int[16];
+   public int stackPtr = 0;
+   private Text debugString = null;
+   public static int lootSource = -1;
+
+   public ScriptThread() {
+   }
+
+   public void saveState(DataOutputStream var1) throws IOException {
+      if (this.unpauseTime != -1 && this.unpauseTime != 0) {
+         var1.writeInt(this.unpauseTime - App.gameTime);
+      } else {
+         var1.writeInt(this.unpauseTime);
+      }
+
+      var1.writeByte(this.state);
+      var1.writeInt(this.IP);
+      var1.writeInt(this.FP);
+
+      for(int var2 = 0; var2 < this.FP; ++var2) {
+         var1.writeInt(this.scriptStack[var2]);
+      }
+
+   }
+
+   public void loadState(DataInputStream var1) throws IOException {
+      this.init();
+      this.unpauseTime = var1.readInt();
+      if (this.unpauseTime != 0 && this.unpauseTime != -1) {
+         this.unpauseTime += App.gameTime;
+      }
+
+      this.state = var1.readByte();
+      this.IP = var1.readInt();
+      this.FP = var1.readInt();
+
+      for(int var2 = 0; var2 < this.FP; ++var2) {
+         this.scriptStack[var2] = var1.readInt();
+      }
+
+   }
+
+   public int executeTile(int var1, int var2, int var3, boolean var4) {
+      if (var1 >= 0 && var1 < 32 && var2 >= 0 && var2 < 32) {
+         Game.skipAdvanceTurn = false;
+         int var5 = var2 * 32 + var1;
+         if ((Render.mapFlags[var5] & 64) == 0) {
+            this.state = 0;
+            return 0;
+         } else {
+            int var6 = Render.findEventIndex(var5);
+
+            int var7;
+            for(var7 = 0; var6 != -1; var6 = Render.getNextEventIndex()) {
+               int var8 = Render.tileEvents[var6 + 1];
+               int var9 = var8 & var3;
+               if ((var8 & 524288) == 0 && (var9 & 15) != 0 && (var9 & 4080) != 0 && ((var8 & 28672) == 0 && (var3 & 28672) == 0 || (var9 & 28672) != 0)) {
+                  if ((var8 & 262144) != 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                  }
+
+                  this.alloc(var6, var3, var4);
+                  var7 = this.run();
+               }
+            }
+
+            return var7;
+         }
+      } else {
+         this.state = 0;
+         return 0;
+      }
+   }
+
+   int queueTile(int var1, int var2, int var3) {
+      return this.queueTile(var1, var2, var3, false);
+   }
+
+   int queueTile(int var1, int var2, int var3, boolean var4) {
+      if (var1 >= 0 && var1 < 32 && var2 >= 0 && var2 < 32) {
+         Game.skipAdvanceTurn = false;
+         int var5 = var2 * 32 + var1;
+         if ((Render.mapFlags[var5] & 64) != 0) {
+            for(int var6 = Render.findEventIndex(var5); var6 != -1; var6 = Render.getNextEventIndex()) {
+               int var7 = Render.tileEvents[var6 + 1];
+               int var8 = var7 & var3;
+               if ((var7 & 524288) == 0 && (var8 & 15) != 0 && (var8 & 4080) != 0 && ((var7 & 28672) == 0 && (var3 & 28672) == 0 || (var8 & 28672) != 0)) {
+                  if ((var7 & 262144) != 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                  }
+
+                  this.alloc(var6, var3, var4);
+                  this.flags |= 2;
+                  return 2;
+               }
+            }
+         }
+
+         this.state = 0;
+         return this.state;
+      } else {
+         this.state = 0;
+         return 0;
+      }
+   }
+
+   private int evWait(int var1) {
+      if (Game.skippingCinematic) {
+         return 1;
+      } else {
+         this.unpauseTime = App.gameTime + var1;
+         if ((this.flags & 1) != 0) {
+            if (Canvas.state != 18) {
+               Canvas.blockInputTime = this.unpauseTime;
+            }
+
+            if (Canvas.state == 6 || Canvas.state == 1) {
+               Canvas.setState(3);
+            }
+
+            if (Canvas.state == 3) {
+               Canvas.clearSoftKeys();
+            }
+         }
+
+         return 2;
+      }
+   }
+
+   private boolean evReturn() {
+      while(this.FP < this.stackPtr - 2) {
+         this.pop();
+      }
+
+      this.FP = this.pop();
+      int var1 = this.pop();
+      if (var1 == -1) {
+         if (this.stackPtr != 0) {
+            App.Error(new Exception("The frame pointer should be zero if the script has completed."), 102);
+         }
+
+         return true;
+      } else {
+         this.IP = var1;
+         return false;
+      }
+   }
+
+   private void alloc(int var1, int var2, boolean var3) {
+      this.IP = (Render.tileEvents[var1] & -65536) >> 16;
+      this.FP = 0;
+      this.stackPtr = 0;
+      this.push(-1);
+      this.push(0);
+      this.type = var2;
+      this.flags = 0;
+      if (var3) {
+         this.flags = 1;
+      }
+
+   }
+
+   public void alloc(int var1) {
+      this.IP = var1;
+      this.FP = 0;
+      this.stackPtr = 0;
+      this.push(-1);
+      this.push(0);
+      this.type = 0;
+      this.flags = 1;
+   }
+
+   private final int peekNextCmd() {
+      return Render.mapByteCode[this.IP + 1];
+   }
+
+   public static void setupCamera(int var0) {
+      Game.cinUnpauseTime = App.gameTime + 1000;
+      Game.activeCameraView = true;
+      MayaCamera var1 = Game.mayaCameras[var0];
+      Game.activeCameraKey = -1;
+      Game.activeCamera = var1;
+      var1.complete = false;
+      Game.activeCameraTime = App.gameTime;
+      Game.camPlayerX = Canvas.destX << 0;
+      Game.camPlayerY = Canvas.destY << 0;
+      Game.camPlayerZ = Canvas.destZ << 0;
+      Game.camPlayerYaw = Canvas.destAngle & 1023;
+      Game.camPlayerPitch = Canvas.viewPitch;
+      var1.x = Game.mayaCameraKeys[Game.OFS_MAYAKEY_X + var1.keyOffset];
+      if (var1.x == -2) {
+         var1.x = Game.camPlayerX;
+      }
+
+      var1.y = Game.mayaCameraKeys[Game.OFS_MAYAKEY_Y + var1.keyOffset];
+      if (var1.y == -2) {
+         var1.y = Game.camPlayerY;
+      }
+
+      var1.z = Game.mayaCameraKeys[Game.OFS_MAYAKEY_Z + var1.keyOffset];
+      if (var1.z == -2) {
+         var1.z = Game.camPlayerZ;
+      }
+
+      var1.x <<= 4;
+      var1.y <<= 4;
+      var1.z <<= 4;
+      var1.pitch = Game.mayaCameraKeys[Game.OFS_MAYAKEY_PITCH + var1.keyOffset];
+      if (var1.pitch == -2) {
+         var1.pitch = Game.camPlayerPitch;
+      }
+
+      var1.yaw = Game.mayaCameraKeys[Game.OFS_MAYAKEY_YAW + var1.keyOffset];
+      if (var1.yaw == -2) {
+         var1.yaw = Game.camPlayerYaw;
+      }
+
+      var1.roll = Game.mayaCameraKeys[Game.OFS_MAYAKEY_ROLL + var1.keyOffset];
+   }
+
+   public int run() {
+      Game.updateScriptVars();
+      if (this.stackPtr == 0) {
+         return 1;
+      } else {
+         int var1 = 1;
+         boolean var2 = false;
+         boolean var3 = true;
+
+         for(byte[] var4 = Render.mapByteCode; this.IP < Render.mapByteCodeSize && var1 != 2; ++this.IP) {
+            byte var15;
+            var3 = true;
+            var15 = 0;
+            byte var5;
+            int var6;
+            int var7;
+            int var8;
+            int var9;
+            int var10;
+            int var11;
+            LerpSprite var13;
+            short var14;
+            int var16;
+            Entity var10000;
+            short var17;
+            short var18;
+            short var19;
+            Entity var20;
+            Entity var21;
+            short var22;
+            boolean var23;
+            boolean var24;
+            short var27;
+            byte var28;
+            LerpSprite var29;
+            short var30;
+            short var36;
+            Entity var39;
+            byte var43;
+            Entity var45;
+            short var46;
+            EntityDef var47;
+            byte var48;
+            byte var50;
+            boolean var52;
+            EntityMonster var53;
+            byte[] var55;
+            label1149:
+            switch(var4[this.IP]) {
+            case -1:
+               if (this.stackPtr != 0) {
+                  App.Error(new Exception("The frame pointer should be zero if the script has completed."), 102);
+               }
+
+               return 1;
+            case 0:
+               var17 = (short)this.getByteArg();
+               var3 = false;
+
+               while(true) {
+                  while(true) {
+                     --var17;
+                     if (var17 < 0) {
+                        var18 = this.getUByteArg();
+                        if (this.pop() == 0) {
+                           this.IP += var18;
+                        }
+                        break label1149;
+                     }
+
+                     var18 = this.getUByteArg();
+                     if ((var18 & 128) != 0) {
+                        var7 = var18 & 127;
+                        this.push(Game.scriptStateVars[var7]);
+                     } else if ((var18 & 64) != 0) {
+                        var6 = (var18 & 63) << 8;
+                        var6 |= this.getUByteArg();
+                        var6 = var6 << 18 >> 18;
+                        this.push(var6);
+                     } else {
+                        switch(var18) {
+                        case 0:
+                           this.push(this.pop() == 1 && this.pop() == 1);
+                           break;
+                        case 1:
+                           this.push(this.pop() == 1 || this.pop() == 1);
+                           break;
+                        case 2:
+                           var7 = this.pop();
+                           var8 = this.pop();
+                           this.push(var8 <= var7);
+                           break;
+                        case 3:
+                           var7 = this.pop();
+                           var8 = this.pop();
+                           this.push(var8 < var7);
+                           break;
+                        case 4:
+                           this.push(this.pop() == this.pop());
+                           break;
+                        case 5:
+                           this.push(this.pop() != this.pop());
+                           break;
+                        case 6:
+                           var7 = this.pop();
+                           if (var7 == 0) {
+                              this.push(1);
+                           } else {
+                              this.push(0);
+                           }
+                        }
+                     }
+                  }
+               }
+            case 1:
+               var3 = false;
+               var16 = this.getUShortArg();
+               this.IP += var16;
+               break;
+            case 2:
+               if (this.evReturn()) {
+                  return 1;
+               }
+               break;
+            case 3:
+               var16 = this.getUShortArg();
+               var18 = (short)(var16 & 32767);
+               var7 = (var16 & '耀') >> 15;
+               if (var7 == 1) {
+                  Hud.addMessage(Canvas.loadMapStringID, var18, 3);
+               } else {
+                  if (Canvas.state == 18) {
+                     Hud.msgCount = 0;
+                  }
+
+                  Hud.addMessage(Canvas.loadMapStringID, var18);
+               }
+               break;
+            case 4:
+               var30 = this.getUByteArg();
+               var11 = var30 | this.getUByteArg() << 8;
+               var11 |= this.getUByteArg() << 16;
+               var16 = var11 >> 14 & 255;
+               var7 = var11 >> 9 & 31;
+               var8 = var11 >> 4 & 31;
+               var10 = var11 & 15;
+               if ((var10 & 8) == 0) {
+                  var9 = this.getUByteArg() - 48;
+               } else {
+                  var9 = 32;
+               }
+
+               if ((var10 & 4) == 0) {
+                  var6 = this.getUByteArg() * 100;
+               } else {
+                  var6 = 0;
+               }
+
+               if (var6 != 0 && (var10 & 2) != 0) {
+                  this.evWait(var6);
+               }
+
+               boolean var37 = (var10 & 1) != 0;
+               var13 = Game.allocLerpSprite(this, var16, (var10 & 2) != 0);
+               if (var13 == null) {
+                  return 0;
+               }
+
+               var13.dstX = 32 + (var7 << 6);
+               var13.dstY = 32 + (var8 << 6);
+               var14 = Render.mapSprites[Render.S_ENT + var16];
+               if (var14 != -1) {
+                  var10000 = Game.entities[var14];
+                  var10000.info |= 4194304;
+                  if (Game.entities[var14].monster != null) {
+                     var53 = Game.entities[var14].monster;
+                     var53.flags = (short)(var53.flags | 16384);
+                  }
+               }
+
+               var13.dstZ = Render.getHeight(var13.dstX, var13.dstY) + var9;
+               var13.srcX = Render.mapSprites[Render.S_X + var16];
+               var13.srcY = Render.mapSprites[Render.S_Y + var16];
+               var13.srcZ = Render.mapSprites[Render.S_Z + var16];
+               var13.srcScale = var13.dstScale = Render.mapSprites[Render.S_SCALEFACTOR + var16];
+               var13.startTime = App.gameTime;
+               var13.travelTime = var6;
+               var13.flags = var10 & 3;
+               var13.calcDist();
+               if (var6 == 0) {
+                  if ((Game.updateLerpSprite(var13) & 1) != 0) {
+                     Canvas.invalidateRect();
+                  } else {
+                     var1 = 0;
+                  }
+               } else if (!var37) {
+                  Game.skipAdvanceTurn = true;
+                  Game.queueAdvanceTurn = false;
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+               break;
+            case 5:
+               var5 = this.getByteArg();
+               forceRemoveFromScopeZoom();
+               setupCamera(var5);
+               Game.activeCamera.cameraThread = this;
+               if (Canvas.state != 1 && Canvas.state != 18) {
+                  Canvas.setState(18);
+               }
+
+               Game.skipAdvanceTurn = true;
+               Game.queueAdvanceTurn = false;
+               break;
+            case 6:
+               var17 = (short)this.getByteArg();
+               var18 = this.getShortArg();
+               Game.scriptStateVars[var17] = var18;
+               break;
+            case 7:
+               var16 = this.getUShortArg();
+               var6 = this.FP;
+               this.FP = this.stackPtr;
+               this.push(this.IP);
+               this.push(var6);
+               this.IP = var16 - 1;
+               break;
+            case 8:
+               var16 = this.getUShortArg();
+               var6 = var16 & 31;
+               var7 = (var16 & 992) >> 5;
+               var22 = 0;
+               var48 = this.getByteArg();
+               if (var6 == 0) {
+                  var22 = Player.inventory[var7];
+               } else if (var6 == 1) {
+                  if ((Player.weapons & 1 << var7) != 0) {
+                     var22 = 1;
+                  }
+               } else if (var6 == 2) {
+                  var22 = Player.ammo[var7];
+               }
+
+               Game.scriptStateVars[var48] = (short)var22;
+               break;
+            case 9:
+               var16 = this.getUShortArg();
+               var6 = var16 & 31;
+               var7 = var16 >> 5 & 31;
+               byte var51 = this.getByteArg();
+               var50 = 1;
+               Entity var44 = Game.entityDb[var6 + 32 * var7];
+               if (var44 != null) {
+                  while(var44 != null) {
+                     if (var44.def.eType != 12 && (1 << var44.def.eType & 25152) == 0) {
+                        var50 = 0;
+                        break;
+                     }
+
+                     var44 = var44.nextOnTile;
+                  }
+               }
+
+               Game.scriptStateVars[var51] = var50;
+               break;
+            case 10:
+               var5 = this.getByteArg();
+               Game.scriptStateVars[var5 & 127] = (short)Player.ce.weapon;
+               break;
+            case 11:
+               var17 = this.getUByteArg();
+               var6 = this.getUShortArg();
+               var24 = true;
+               var22 = (short)(Canvas.loadMapID - 1);
+               Player.completedLevels |= 1 << var22;
+               Game.spawnParam = (var17 >> 4 & 7) << 10 | var6 & 1023;
+               MenuSystem.LEVEL_STATS_nextMap = (short)(var17 & 15);
+               if (MenuSystem.LEVEL_STATS_nextMap < Canvas.loadMapID) {
+                  var24 = false;
+               }
+
+               Game.snapAllMovers();
+               if ((var17 & 128) != 0) {
+                  var50 = 1;
+                  if (var24) {
+                     var9 = var50 | 8;
+                  } else {
+                     var9 = var50 | 4;
+                  }
+
+                  if (Canvas.state == 6) {
+                     Canvas.setState(3);
+                  }
+
+                  Render.startFade(1000, var9);
+               } else if (var24) {
+                  Canvas.saveState(51, (short)3, (short)194);
+               } else {
+                  Canvas.loadMap(MenuSystem.LEVEL_STATS_nextMap, false, false);
+               }
+
+               Canvas.changeMapStarted = true;
+               break;
+            case 12:
+               var16 = this.getUShortArg();
+               var6 = this.getUShortArg();
+               if (!Game.skippingCinematic) {
+                  var19 = (short)(var16 & 16383);
+                  var8 = (var16 & '耀') >> 15;
+                  Hud.showCinPlayer = (var16 & 16384) != 0;
+                  if (var8 == 1) {
+                     Hud.showCinPlayer = false;
+                  }
+
+                  if (var8 == 0) {
+                     Hud.subTitleID = Text.STRINGID(Canvas.loadMapStringID, var19);
+                     Hud.subTitleTime = App.gameTime + var6;
+                  } else {
+                     Hud.cinTitleID = Text.STRINGID(Canvas.loadMapStringID, var19);
+                     Hud.cinTitleTime = App.gameTime + var6;
+                  }
+
+                  Canvas.repaintFlags |= 16;
+                  Hud.repaintFlags = 16;
+               }
+               break;
+            case 13:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var7 = var18 >> 4;
+               var6 = var18 & 15;
+               if (Canvas.state == 6) {
+                  Canvas.setState(3);
+                  Canvas.invalidateRect();
+               }
+
+               if (!Game.skipDialog) {
+                  if (var6 == 6 || var6 == 7 || var6 == 1) {
+                     Player.inCombat = false;
+                  }
+
+                  if (var6 == 2) {
+                     boolean var49 = false;
+                     Player.prevWeapon = Player.ce.weapon;
+
+                     for(var48 = 0; var48 < 20; ++var48) {
+                        if (Game.scriptThreads[var48] == this) {
+                           var49 = Canvas.enqueueHelpDialog(Canvas.loadMapStringID, (short)var17, var48);
+                           break;
+                        }
+                     }
+
+                     if (!var49) {
+                        break;
+                     }
+                  } else {
+                     if (var6 == 4) {
+                        Player.prevWeapon = Player.ce.weapon;
+                     }
+
+                     Canvas.startDialog(this, Canvas.loadMapStringID, (short)var17, var6, var7, true);
+                  }
+
+                  Game.skipAdvanceTurn = true;
+                  Game.queueAdvanceTurn = false;
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+               break;
+            case 14:
+               var16 = this.getUByteArg() * 100;
+               var1 = this.evWait(var16);
+               break;
+            case 15:
+               if (Game.interpolatingMonsters) {
+                  Game.snapMonsters(true);
+               }
+
+               while(Game.combatMonsters != null) {
+                  Game.combatMonsters.undoAttack();
+               }
+
+               Game.endMonstersTurn();
+               var16 = this.getUShortArg();
+               var52 = (var16 & 16384) != 0;
+               Canvas.destX = (var16 >> 5 & 31) * 64 + 32;
+               Canvas.destY = (var16 & 31) * 64 + 32;
+               Canvas.destZ = Render.getHeight(Canvas.destX, Canvas.destY) + 36;
+               var7 = var16 >> 10 & 15;
+               Canvas.destPitch = 0;
+               Canvas.viewPitch = 0;
+               Canvas.destRoll = 0;
+               Canvas.viewRoll = 0;
+               Canvas.knockbackDist = 0;
+               if (var52) {
+                  if (var7 != 15) {
+                     var8 = Canvas.viewAngle & 1023;
+                     var9 = var7 << 7;
+                     if (var9 - var8 > 512) {
+                        var9 -= 1024;
+                     } else if (var9 - var8 < -512) {
+                        var9 += 1024;
+                     }
+
+                     Canvas.viewAngle = var8;
+                     Canvas.destAngle = var9;
+                  }
+
+                  Canvas.startRotation(false);
+                  Canvas.zStep = (Math.abs(Canvas.destZ - Canvas.viewZ) + Canvas.animFrames - 1) / Canvas.animFrames;
+                  if (Canvas.destX == Canvas.viewX && Canvas.destY == Canvas.viewY && Canvas.viewAngle == Canvas.destAngle) {
+                     Canvas.viewPitch = Canvas.destPitch;
+                  } else {
+                     Canvas.gotoThread = this;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  }
+               } else {
+                  Canvas.viewX = Canvas.destX;
+                  Canvas.viewY = Canvas.destY;
+                  Canvas.viewZ = Canvas.destZ;
+                  if (var7 != 15) {
+                     Canvas.destAngle = Canvas.viewAngle = var7 << 7;
+                     Canvas.finishRotation(true);
+                  }
+
+                  if ((var16 & '耀') != 0) {
+                     Game.advanceTurn();
+                  }
+
+                  if (Canvas.state != 18) {
+                     Canvas.startRotation(false);
+                     Canvas.viewPitch = Canvas.destPitch;
+                  } else {
+                     Canvas.destPitch = 0;
+                     Canvas.viewPitch = 0;
+                  }
+
+                  Game.gotoTriggered = true;
+                  Canvas.automapDrawn = false;
+               }
+
+               Player.relink();
+               Canvas.clearEvents();
+               Canvas.updateFacingEntity = true;
+               Canvas.invalidateRect();
+               break;
+            case 16:
+               Canvas.abortMove = true;
+               break;
+            case 17:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var7 = this.getUByteArg() * 100;
+               var22 = Render.mapSprites[Render.S_ENT + var17];
+               Render.mapSpriteInfo[var17] = Render.mapSpriteInfo[var17] & -65281 | var18 << 8;
+               Canvas.staleView = true;
+               if (var22 != -1) {
+                  var10000 = Game.entities[var22];
+                  var10000.info |= 4194304;
+                  if (Game.entities[var22].monster != null) {
+                     Game.entities[var22].monster.frameTime = Integer.MAX_VALUE;
+                  }
+               }
+
+               if (var7 > 0) {
+                  var1 = this.evWait(var7);
+               }
+               break;
+            case 18:
+               if (Canvas.state != 18 && Canvas.state != 4) {
+                  this.getUByteArg();
+               } else {
+                  Game.activeCamera.keyThreadResumeCount = this.getUByteArg();
+                  Game.activeCamera.keyThread = this;
+                  Game.activeCamera.NextKey();
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+               break;
+            case 19:
+               var17 = this.getUByteArg();
+               var28 = this.getByteArg();
+               var19 = Render.mapSprites[Render.S_ENT + var17];
+               if (var19 != -1) {
+                  var20 = Game.entities[var19];
+                  if (var20.monster != null) {
+                     var20.info |= 131072;
+                     var20.pain(var28, (Entity)null);
+                     if (var20.monster.ce.getStat(0) <= 0) {
+                        var20.died(false, (Entity)null);
+                     }
+                  } else {
+                     var20.died(false, (Entity)null);
+                  }
+               }
+
+               Canvas.staleView = true;
+               break;
+            case 20:
+               var5 = this.getByteArg();
+               var28 = this.getByteArg();
+               var43 = this.getByteArg();
+               if (var5 > 0) {
+                  Player.painEvent((Entity)null, false);
+                  Hud.damageTime = App.time + 1000;
+                  if (var43 != -1) {
+                     var8 = 256 - (Canvas.viewAngle & 1023) >> 7;
+                     var7 = var43 + var8 + 1 & 7;
+                     Hud.damageDir = var7;
+                  }
+
+                  Combat.totalDamage = 1;
+                  Player.pain(var5, (Entity)null, true);
+               } else if (var5 < 0) {
+                  Player.addHealth(-var5);
+               }
+
+               Player.addArmor(-var28);
+               break;
+            case 21:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 10;
+               var24 = (var6 & 4) == 0 && Canvas.state != 6;
+               var6 &= 3;
+               var16 &= 1023;
+               var22 = Render.mapSprites[Render.S_ENT + var16];
+               if (var22 != -1) {
+                  var45 = Game.entities[var22];
+                  if (var6 != 1 && var6 != 0) {
+                     if (var6 == 2) {
+                        Game.setLineLocked(var45, true);
+                        if (var24) {
+                           Sound.playSound(24);
+                        }
+                     } else {
+                        Game.setLineLocked(var45, false);
+                        if (var24) {
+                           Sound.playSound(24);
+                        }
+                     }
+                  } else {
+                     if (var6 == 1 && var45.def.eType == 5) {
+                        Game.setLineLocked(var45, false);
+                     }
+
+                     if (Game.performDoorEvent(var6, var24 ? this : null, var45, var24 ? 1 : 0, false) && var24) {
+                        this.unpauseTime = -1;
+                        var1 = 2;
+                     }
+                  }
+               }
+               break;
+            case 22:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var7 = var18 >> 6 & 3;
+               var6 = 1 << (var18 & 63);
+               var22 = Render.mapSprites[Render.S_ENT + var17];
+               if (var22 != -1) {
+                  var45 = Game.entities[var22];
+                  if (var45.monster != null) {
+                     if (var7 == 0) {
+                        var53 = var45.monster;
+                        var53.flags = (short)(var53.flags | var6);
+                     } else if (var7 == 1) {
+                        var53 = var45.monster;
+                        var53.flags = (short)(var53.flags & ~var6);
+                     } else {
+                        var45.monster.flags = (short)var6;
+                     }
+
+                     var45.info |= 4194304;
+                  }
+               }
+               break;
+            case 23:
+               var16 = this.getUShortArg();
+               var6 = (var16 & '耀') >> 15 << 19;
+               var16 &= 32767;
+               var7 = Render.tileEvents[var16 * 2 + 1] & -524289;
+               Render.tileEvents[var16 * 2 + 1] = var7 | var6;
+               break;
+            case 24:
+               var17 = this.getUByteArg();
+               int[] var56 = Render.mapSpriteInfo;
+               var56[var17] |= 65536;
+               var18 = Render.mapSprites[Render.S_ENT + var17];
+               if (var18 != -1) {
+                  var39 = Game.entities[var18];
+                  var39.info |= 4194304;
+                  Game.unlinkEntity(var39);
+                  var47 = var39.def;
+                  if (var47.eType == 10) {
+                     if (var47.eSubType != 3) {
+                        Game.destroyedObject(var17);
+                     }
+                  } else if (var47.eType == 6 && (var47.eSubType == 1 || var47.eSubType == 2 || var47.eSubType == 0 && var47.parm == 21)) {
+                     Game.foundLoot(var17, 1);
+                  } else if (var47.eType == 2) {
+                     corpsifyMonster(var39.linkIndex % 32, var39.linkIndex / 32, var39, false);
+                     Game.remove(var39);
+                     var39.info |= 4194304;
+                  }
+               }
+
+               Canvas.updateFacingEntity = true;
+               break;
+            case 25:
+               var16 = this.getUShortArg();
+               var18 = this.getUByteArg();
+               var19 = (short)(var16 & 31);
+               var22 = (short)(var16 >> 5 & 31);
+               var46 = (short)(var16 >> 10 & 31);
+               EntityDef var42 = EntityDef.lookup(var18);
+               if (var42 == null) {
+                  App.Error(new Exception("Cannot find an entity to drop"), 109);
+               }
+
+               Game.spawnDropItem((var19 << 6) + 32, (var22 << 6) + 32, var18, var42.eType, var42.eSubType, var42.parm, var46, true);
+               Canvas.staleView = true;
+               break;
+            case 26:
+               var17 = (short)this.getByteArg();
+               --Game.scriptStateVars[var17];
+               break;
+            case 27:
+               var17 = (short)this.getByteArg();
+               ++Game.scriptStateVars[var17];
+               break;
+            case 28:
+               var17 = this.getUByteArg();
+               var18 = Render.mapSprites[Render.S_ENT + var17];
+               if (var18 == -1 || Game.entities[var18].monster == null) {
+                  App.Error(23);
+               }
+
+               var39 = Game.entities[var18];
+               if (var39.def.eType == 2) {
+                  var8 = var39.getSprite();
+                  var39.monster.frameTime = 0;
+                  Render.mapSpriteInfo[var8] = Render.mapSpriteInfo[var8] & -65281 | 0;
+                  Game.activate(var39, true, false, false, true);
+               }
+               break;
+            case 29:
+               Game.cinematicWeapon = this.getByteArg();
+               if (!Game.skippingCinematic && Canvas.state == 18) {
+                  var16 = Game.cinematicWeapon * 9;
+                  Combat.animLoopCount = 10 * Combat.weapons[var16 + 7];
+                  Combat.animTime = Combat.weapons[var16 + 8];
+                  Combat.animTime *= 10;
+                  Combat.animStartTime = App.gameTime;
+                  Combat.animEndTime = Combat.animStartTime + Combat.animTime;
+                  Combat.flashTime = 0;
+                  Combat.flashDoneTime = Combat.animStartTime + Combat.flashTime;
+               }
+               break;
+            case 30:
+               var17 = this.getUByteArg();
+               if (Render.mapSprites[Render.S_ENT + var17] != -1) {
+                  var21 = Game.entities[Render.mapSprites[Render.S_ENT + var17]];
+                  ParticleSystem.spawnMonsterBlood(var21, false);
+               }
+               break;
+            case 31:
+               var17 = this.getUByteArg();
+               var6 = var17 >> 3 & 15;
+               var7 = var17 & 7;
+               var8 = this.getUShortArg();
+               var9 = this.getUByteArg() - 48;
+               if ((var17 & 128) != 0) {
+                  var10 = ((var8 >> 11 & 31) << 6) + 32;
+                  var11 = ((var8 >> 6 & 31) << 6) + 32;
+                  int var35 = var9 + Render.getHeight(var10, var11);
+                  ParticleSystem.spawnParticles(var6, ParticleSystem.levelColors[var7], var10, var11, var35);
+               } else {
+                  ParticleSystem.spawnParticles(var6, ParticleSystem.levelColors[var7], var8);
+               }
+               break;
+            case 32:
+               var16 = this.getUShortArg();
+               var52 = (var16 & '耀') == 32768;
+               if (Game.skippingCinematic) {
+                  if (var52) {
+                     Render.endFade();
+                  }
+               } else if (var52) {
+                  Render.startFade(var16 & 32767, 2);
+               } else {
+                  Render.startFade(var16, 1);
+               }
+               break;
+            case 33:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var43 = this.getByteArg();
+               if (this.throwAwayLoot) {
+                  var15 = 1;
+                  Game.foundLoot(Canvas.viewX + Canvas.viewStepX, Canvas.viewY + Canvas.viewStepY, Canvas.viewZ, 1);
+               } else if (var43 == 0) {
+                  var17 = (short)(var17 << 8 | var18);
+                  var22 = Render.mapSprites[Render.S_ENT + var17];
+                  if (var22 == -1) {
+                     App.Error(new Exception("Sprite index " + var17 + " error."), 16);
+                  }
+
+                  if (!Game.entities[var22].touched()) {
+                     var15 = 1;
+                  }
+               } else {
+                  var47 = EntityDef.lookup(var17);
+                  if (var47 == null) {
+                     App.Error(new Exception("Cannot find an entity to give"), 109);
+                  }
+
+                  var18 = (short)((byte)var18);
+                  if (var18 < 0) {
+                     if (!Player.give(var47.eSubType, var47.parm, var18, true)) {
+                        var15 = 1;
+                     }
+                  } else if (var47.eType == 6 && var47.eSubType == 1 && Player.weaponIsASentryBot(var47.parm)) {
+                     if (!Player.give(var47.eSubType, var47.parm, var18, true)) {
+                        var15 = 1;
+                     }
+                  } else {
+                     var45 = Game.spawnDropItem(0, 0, var17, var47, var18, false);
+                     byte var41 = var45.def.eType;
+                     if (!var45.touched()) {
+                        Game.remove(var45);
+                        var15 = 1;
+                     } else if (var41 != 3 && var18 > 0) {
+                        Game.foundLoot(Canvas.viewX + Canvas.viewStepX, Canvas.viewY + Canvas.viewStepY, Canvas.viewZ, 1);
+                     }
+                  }
+               }
+               break;
+            case 34:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var19 = Render.mapSprites[Render.S_ENT + var17];
+               if (var19 != -1) {
+                  var20 = Game.entities[var19];
+                  var20.info |= 4194304;
+                  var20.name = (short)(var18 | Canvas.loadMapStringID << 10);
+               }
+               break;
+            case 35:
+               var23 = false;
+               var6 = this.getUShortArg();
+               var7 = this.getUByteArg();
+               if ((var6 & '耀') != 0) {
+                  var7 <<= 8;
+                  var7 |= this.getUByteArg();
+                  var6 &= 32767;
+                  var23 = true;
+               }
+
+               var22 = this.getUByteArg();
+               var46 = Render.mapSprites[Render.S_X + var6];
+               var27 = Render.mapSprites[Render.S_Y + var6];
+               if (!var23) {
+                  EntityDef var32 = EntityDef.lookup(var7);
+                  if (var32 == null) {
+                     App.Error(new Exception("Cannot find an entity to drop"), 109);
+                  }
+
+                  Game.spawnDropItem(var46, var27, var7, var32, var22, true);
+               } else {
+                  var30 = Render.mapSprites[Render.S_ENT + var7];
+                  Entity var31 = Game.entities[var30];
+                  int var40 = Render.getHeight(var46, var27);
+                  Render.mapSprites[Render.S_X + var7] = (short)var46;
+                  Render.mapSprites[Render.S_Y + var7] = (short)var27;
+                  Render.mapSprites[Render.S_Z + var7] = (short)(32 + var40);
+                  Render.relinkSprite(var7);
+                  Game.unlinkEntity(var31);
+                  Game.linkEntity(var31, var46 >> 6, var27 >> 6);
+                  Game.throwDropItem(var46, var27, var40, var31);
+                  var31.info |= 4194304;
+               }
+
+               Canvas.staleView = true;
+               break;
+            case 36:
+               var17 = this.getUByteArg();
+               var18 = this.getShortArg();
+               var19 = Render.mapSprites[Render.S_ENT + var17];
+               if (var19 != -1) {
+                  var20 = Game.entities[var19];
+                  if (var18 != -1) {
+                     Game.addEntityDeathFunc(var20, var18);
+                  } else {
+                     Game.removeEntityFunc(var20);
+                  }
+               }
+               break;
+            case 37:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               if (Canvas.inInitMap && Canvas.areSoundsAllowed) {
+                  var24 = Sound.isSoundEnabled();
+                  Sound.setSound(true);
+                  Sound.playSound(var17, 0);
+                  Sound.setSound(var24);
+               } else {
+                  Sound.playSound(var17, 0);
+               }
+               break;
+            case 38:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 14 & 3;
+               var16 &= 16383;
+               var39 = null;
+               if (Render.mapSprites[Render.S_ENT + var16] != -1) {
+                  var39 = Game.entities[Render.mapSprites[Render.S_ENT + var16]];
+                  if (var39.def.eType == 3) {
+                     var39.param = var6;
+                     break;
+                  }
+               }
+
+               App.Error(14);
+            case 41:
+               if (Canvas.showingLoot) {
+                  this.unpauseTime = 1;
+                  return 2;
+               }
+
+               this.composeLootDialog();
+               if (!this.throwAwayLoot) {
+                  Game.skipAdvanceTurn = true;
+                  Game.queueAdvanceTurn = false;
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+               break;
+            case 39:
+            case 44:
+            case 46:
+            case 63:
+            case 64:
+            default:
+               App.Error(new Exception("Cannot handle event: " + var4[this.IP]), 2);
+               break;
+            case 40:
+               var17 = this.getUByteArg();
+               var6 = this.getUShortArg();
+               break;
+            case 42:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 10 & 63;
+               var7 = var16 >> 5 & 31;
+               var8 = var16 & 31;
+               if ((var6 & 1) != 0) {
+                  Entity.setMonsterClip(var7, var8);
+               }
+
+               if ((var6 & 32) != 0) {
+                  Render.mapEntranceAutomap = (short)(var8 * 32 + var7);
+               }
+
+               if ((var6 & 16) != 0) {
+                  Render.mapExitAutomap = (short)(var8 * 32 + var7);
+               }
+
+               if ((var6 & 2) != 0) {
+                  for(var9 = 0; var9 < Render.mapLadders.length && Render.mapLadders[var9] != -1; ++var9) {
+                  }
+
+                  if (var9 != Render.mapLadders.length) {
+                     Render.mapLadders[var9] = (short)(var8 * 32 + var7);
+                  }
+               }
+
+               var6 &= -2;
+               var6 &= -33;
+               var6 &= -17;
+               var6 &= -3;
+               var6 <<= 2;
+               var55 = Render.mapFlags;
+               var55[var8 * 32 + var7] = (byte)(var55[var8 * 32 + var7] | var6);
+               break;
+            case 43:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               Player.updateQuests(var17, var18);
+               if (var18 == 0) {
+                  Player.showHelp((short)5, true);
+               }
+               break;
+            case 45:
+               var17 = this.getUByteArg();
+               Player.modifyStat(var17 >> 5 & 7, (var17 & 31) << 27 >> 27);
+               break;
+            case 47:
+               var16 = this.getUShortArg();
+               var18 = this.getUByteArg();
+               var19 = this.getUByteArg();
+               var20 = null;
+               if (Render.mapSprites[Render.S_ENT + var16] != -1) {
+                  var20 = Game.entities[Render.mapSprites[Render.S_ENT + var16]];
+                  if ((var20.info & 16842752) != 0) {
+                     var45 = Game.findMapEntity(var18, var19, 1030);
+                     if (null == var45) {
+                        var20.resurrect((var18 << 6) + 32, (var19 << 6) + 32, 32);
+                        break;
+                     }
+                  }
+               }
+
+               var15 = -1;
+               break;
+            case 48:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 14 & 3;
+               if (var6 >= 0) {
+                  ++var6;
+               }
+
+               var7 = var16 >> 7 & 127;
+               if (var7 > 0) {
+                  var7 = var7 + 1 << 4;
+               }
+
+               var8 = var16 & 127;
+               if (var8 > 0) {
+                  var8 = var8 + 1 << 4;
+               }
+
+               Canvas.startShake(var7, var6, var8);
+               break;
+            case 49:
+               Hud.showSpeechBubble(this.getUShortArg(), this.getUByteArg());
+               break;
+            case 50:
+               Game.awardSecret(false);
+               break;
+            case 51:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 12 & 15;
+               var43 = this.getByteArg();
+               var16 &= 4095;
+               if (Render.mapSprites[Render.S_ENT + var16] != -1) {
+                  var20 = Game.entities[Render.mapSprites[Render.S_ENT + var16]];
+                  setAIGoal(var20, var6, var43);
+               } else {
+                  App.Error(76);
+               }
+               break;
+            case 52:
+               if (Game.interpolatingMonsters) {
+                  Game.snapMonsters(true);
+               }
+
+               while(Game.combatMonsters != null) {
+                  Game.combatMonsters.undoAttack();
+               }
+
+               Game.endMonstersTurn();
+               Canvas.clearEvents();
+               Game.advanceTurn();
+               break;
+            case 53:
+               var17 = (short)this.getByteArg();
+               var18 = (short)this.getByteArg();
+               var19 = (short)this.getByteArg();
+               var22 = (short)this.getByteArg();
+               if (var17 == 0) {
+                  SentryBotGame.initGame(this, var18);
+                  if (Game.skipMinigames) {
+                     SentryBotGame.forceWin();
+                  }
+
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               } else if (var17 == 4) {
+                  VendingMachine.initGame(this, Canvas.loadMapID, (Canvas.loadMapID - 1) * 2 + var18);
+                  if (Game.skipMinigames) {
+                     VendingMachine.forceWin();
+                  }
+
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               } else if (var17 == 2) {
+                  if (var18 == 1) {
+                     Text var38 = Text.getSmallBuffer();
+                     Text.composeText(Canvas.loadMapStringID, var19, var38);
+                     if (var22 == -1) {
+                        HackingGame.initGame(this, var38);
+                     } else {
+                        HackingGame.initGame(this, var38, var22);
+                     }
+
+                     var38.dispose();
+                  } else if (var18 == 0) {
+                     if (var22 == -1) {
+                        HackingGame.initGame(this, var19);
+                     } else {
+                        HackingGame.initGame(this, var19, var22);
+                     }
+                  }
+
+                  if (Game.skipMinigames) {
+                     HackingGame.forceWin();
+                  }
+
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+            case 54:
+            case 55:
+            case 62:
+            case 65:
+               break;
+            case 56:
+               var6 = this.getUShortArg();
+               var16 = var6 >> 12 & 15;
+               var6 &= 4095;
+               if (Render.mapSprites[Render.S_ENT + var6] != -1) {
+                  var39 = Game.entities[Render.mapSprites[Render.S_ENT + var6]];
+                  Player.ce.weapon = var16;
+                  Combat.performAttack((Entity)null, var39, 0, 0, true);
+               }
+
+               var1 = this.evWait(1);
+               break;
+            case 57:
+               Render.buildFogTables(this.getIntArg());
+               break;
+            case 58:
+               var16 = this.getIntArg();
+               Render.startFogLerp(var16 & 2047, var16 >> 11 & 2047, (var16 >> 22 & 255) * 100);
+               break;
+            case 59:
+               var17 = this.getUByteArg();
+               var10 = this.getUByteArg() * 100;
+               var11 = this.getIntArg();
+               var7 = var11 & 2047;
+               var6 = var11 >> 11 & 2047;
+               var9 = var11 >> 22 & 3;
+               var8 = (var11 >> 24 & 255) - 48;
+               var29 = Game.allocLerpSprite(this, var17, (var9 & 2) != 0);
+               if (var29 == null) {
+                  return 0;
+               }
+
+               var29.dstX = var6;
+               var29.dstY = var7;
+               var36 = Render.mapSprites[Render.S_ENT + var17];
+               if (var36 != -1) {
+                  var10000 = Game.entities[var36];
+                  var10000.info |= 4194304;
+                  if (Game.entities[var36].monster != null) {
+                     var53 = Game.entities[var36].monster;
+                     var53.flags = (short)(var53.flags | 16384);
+                  }
+               }
+
+               var29.dstZ = Render.getHeight(var29.dstX, var29.dstY) + var8;
+               var29.srcX = Render.mapSprites[Render.S_X + var17];
+               var29.srcY = Render.mapSprites[Render.S_Y + var17];
+               var29.srcZ = Render.mapSprites[Render.S_Z + var17];
+               var29.srcScale = var29.dstScale = Render.mapSprites[Render.S_SCALEFACTOR + var17];
+               var29.startTime = App.gameTime;
+               var29.travelTime = var10;
+               var29.calcDist();
+               var29.flags = var9 & 3;
+               if (var10 == 0) {
+                  if ((Game.updateLerpSprite(var29) & 1) != 0) {
+                     Canvas.invalidateRect();
+                  } else {
+                     var1 = 0;
+                  }
+               } else {
+                  if (var10 != 0 && (var9 & 2) != 0) {
+                     this.evWait(var10);
+                  }
+
+                  if ((var29.flags & 1) == 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  }
+               }
+               break;
+            case 60:
+               Player.disabledWeapons = this.getShortArg();
+               if ((Player.disabledWeapons & 1 << Player.ce.weapon) != 0) {
+                  Player.selectNextWeapon();
+               }
+               break;
+            case 61:
+               var9 = this.getUShortArg();
+               var16 = var9 >> 4;
+               var6 = var9 & 15;
+               var7 = this.getUShortArg();
+               var22 = this.getUByteArg();
+               LerpSprite var34 = Game.allocLerpSprite(this, var16, (var6 & 2) != 0);
+               if (var34 == null) {
+                  return 0;
+               }
+
+               var34.srcX = var34.dstX = Render.mapSprites[Render.S_X + var16];
+               var34.srcY = var34.dstY = Render.mapSprites[Render.S_Y + var16];
+               var34.srcZ = var34.dstZ = Render.mapSprites[Render.S_Z + var16];
+               var34.srcScale = Render.mapSprites[Render.S_SCALEFACTOR + var16];
+               var34.dstScale = var22 << 1;
+               var30 = Render.mapSprites[Render.S_ENT + var16];
+               if (var30 != -1) {
+                  var10000 = Game.entities[var30];
+                  var10000.info |= 4194304;
+               }
+
+               var34.startTime = App.gameTime;
+               var34.travelTime = var7;
+               var34.flags = var6 & 3;
+               if (var7 == 0) {
+                  if ((Game.updateLerpSprite(var34) & 1) != 0) {
+                     Canvas.invalidateRect();
+                  } else {
+                     var1 = 0;
+                  }
+               } else {
+                  if (var7 != 0 && (var6 & 2) != 0) {
+                     this.evWait(var7);
+                  }
+
+                  if ((var34.flags & 1) == 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  }
+               }
+               break;
+            case 66:
+               if (this.debugString == null) {
+                  this.debugString = Text.getLargeBuffer();
+               }
+
+               var5 = this.getByteArg();
+               if (var5 == 0) {
+                  for(char var33 = (char)this.getUByteArg(); var33 != 0; var33 = (char)this.getUByteArg()) {
+                     this.debugString.append(var33);
+                  }
+               } else if (var5 == 1) {
+                  var18 = this.getUByteArg();
+                  this.debugString.append((int)Game.scriptStateVars[var18]);
+               }
+
+               if (this.peekNextCmd() != 66) {
+                  this.debugString.dispose();
+                  this.debugString = null;
+               }
+               break;
+            case 67:
+               MenuSystem.setMenu(this.getUByteArg());
+               break;
+            case 68:
+               var17 = this.getUByteArg();
+               setupCamera(var17 & 127);
+               Game.activeCamera.cameraThread = this;
+               Canvas.setState(4);
+               break;
+            case 69:
+               var5 = this.getByteArg();
+               var6 = var5 >> 3;
+               var7 = var5 & 7;
+               var8 = Canvas.viewAngle & 1023;
+               var9 = var7 << 7;
+               if (var9 - var8 > 512) {
+                  var9 -= 1024;
+               } else if (var9 - var8 < -512) {
+                  var9 += 1024;
+               }
+
+               if (var8 != var9) {
+                  if (var6 == 1) {
+                     Canvas.viewAngle = var8;
+                     Canvas.destAngle = var9;
+                     Canvas.startRotation(false);
+                     Canvas.gotoThread = this;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  } else {
+                     Canvas.destAngle = var9;
+                     Canvas.viewAngle = var9;
+                  }
+               }
+               break;
+            case 70:
+               var17 = this.getUByteArg();
+               if ((var17 & 128) != 0) {
+                  Player.removeStatusEffect(var17 & 127);
+               } else {
+                  var28 = this.getByteArg();
+                  byte var26 = 30;
+                  if (var17 == 2) {
+                     var26 = 20;
+                  } else if (var17 == 9) {
+                     var26 = 10;
+                  } else if (var17 == 1) {
+                     var26 = 10;
+                  } else if (var17 == 11) {
+                     var26 = 6;
+                  } else if (var17 == 17) {
+                     var26 = 5;
+                  }
+
+                  Player.addStatusEffect(var17, var28, var26);
+                  Player.translateStatusEffects();
+               }
+               break;
+            case 71:
+               var17 = this.getUByteArg();
+               var6 = this.getUByteArg() & 31;
+               var7 = this.getUByteArg() & 31;
+               Player.setQuestTile(var17, var6, var7);
+               break;
+            case 72:
+               var16 = this.getUShortArg();
+               var18 = (short)((this.getUByteArg() << 6) + 32);
+               var19 = (short)((this.getUByteArg() << 6) + 32);
+               var20 = Game.entities[Render.mapSprites[Render.S_ENT + var16]];
+               if (var20.monster != null) {
+                  corpsifyMonster(var18, var19, var20, true);
+               }
+               break;
+            case 73:
+               var5 = this.getByteArg();
+               if (var5 == 2) {
+                  restoreInventory();
+               } else if (var5 == 1) {
+                  stripInventoryForTargetPractice();
+               } else if (var5 == 0) {
+                  stripInventoryForViosBattle();
+               }
+               break;
+            case 74:
+               Player.gameCompleted = true;
+               Canvas.endingGame = true;
+               Canvas.setState(14);
+               break;
+            case 75:
+               var16 = this.getIntArg();
+               var6 = this.getUShortArg();
+               var7 = var16 >> 22 & 1023;
+               var8 = var16 >> 17 & 31;
+               var9 = var16 >> 12 & 31;
+               var11 = (var16 >> 4 & 255) - 48;
+               var10 = var16 & 15;
+               var29 = Game.allocLerpSprite(this, var7, (var10 & 2) != 0);
+               if (var29 == null) {
+                  return 0;
+               }
+
+               var29.dstX = 32 + (var8 << 6);
+               var29.dstY = 32 + (var9 << 6);
+               var36 = Render.mapSprites[Render.S_ENT + var7];
+               if (var36 != -1) {
+                  var10000 = Game.entities[var36];
+                  var10000.info |= 4194304;
+                  if (Game.entities[var36].monster != null) {
+                     var53 = Game.entities[var36].monster;
+                     var53.flags &= -16385;
+                  }
+               }
+
+               var29.srcX = Render.mapSprites[Render.S_X + var7];
+               var29.srcY = Render.mapSprites[Render.S_Y + var7];
+               var29.srcZ = Render.mapSprites[Render.S_Z + var7];
+               var29.dstZ = Render.getHeight(var29.dstX, var29.dstY) + (var29.srcZ - Render.getHeight(var29.srcX, var29.srcY));
+               var29.srcScale = var29.dstScale = Render.mapSprites[Render.S_SCALEFACTOR + var7];
+               var29.height = var11;
+               var29.startTime = App.gameTime;
+               var29.travelTime = var6;
+               var29.calcDist();
+               var29.flags = var10 & 3;
+               var29.flags |= 4;
+               if (var6 == 0) {
+                  if ((Game.updateLerpSprite(var29) & 1) != 0) {
+                     Canvas.invalidateRect();
+                  } else {
+                     var1 = 0;
+                  }
+               } else {
+                  if (var6 != 0 && (var10 & 2) != 0) {
+                     this.evWait(var6);
+                  }
+
+                  if ((var29.flags & 1) == 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  }
+               }
+               break;
+            case 76:
+               Image var25 = Hud.imgCockpitOverlay;
+               if (Hud.cockpitOverlayRaw == null && var25 != null) {
+                  Hud.cockpitOverlayRaw = new int[var25.getWidth() * var25.getHeight()];
+               } else {
+                  Hud.cockpitOverlayRaw = null;
+                  System.gc();
+               }
+               break;
+            case 77:
+               var5 = this.getByteArg();
+               Render.fogAffectsSkyMap = var5 != 0;
+               break;
+            case 78:
+               var5 = this.getByteArg();
+               Player.enableHelp = var5 != 0;
+               break;
+            case 79:
+               var5 = this.getByteArg();
+               Render.useMastermindHack = var5 != 0;
+               break;
+            case 80:
+               var23 = Canvas.startArmorRepair(this);
+               if (var23) {
+                  this.unpauseTime = -1;
+                  var1 = 2;
+               }
+               break;
+            case 81:
+               if (Player.isFamiliar) {
+                  Player.familiarReturnsToPlayer(false);
+               }
+               break;
+            case 82:
+               var16 = this.getUShortArg();
+               var6 = var16 >> 10 & 63;
+               var7 = var16 >> 5 & 31;
+               var8 = var16 & 31;
+               if ((var6 & 1) != 0) {
+                  Entity.unsetMonsterClip(var7, var8);
+               }
+
+               if ((var6 & 32) != 0 && Render.mapEntranceAutomap == var8 * 32 + var7) {
+                  Render.mapEntranceAutomap = -1;
+               }
+
+               if ((var6 & 16) != 0 && Render.mapExitAutomap == var8 * 32 + var7) {
+                  Render.mapExitAutomap = -1;
+               }
+
+               if ((var6 & 2) != 0) {
+                  for(var9 = 0; var9 < Render.mapLadders.length; ++var9) {
+                     if (Render.mapLadders[var9] == var8 * 32 + var7) {
+                        Render.mapLadders[var9] = -1;
+                     }
+                  }
+               }
+
+               var6 &= -2;
+               var6 &= -33;
+               var6 &= -17;
+               var6 &= -3;
+               var6 <<= 2;
+               var55 = Render.mapFlags;
+               var55[var8 * 32 + var7] = (byte)(var55[var8 * 32 + var7] & ~var6);
+               break;
+            case 83:
+               var16 = this.getUShortArg();
+               var16 &= 4095;
+               if (Render.mapSprites[Render.S_ENT + var16] != -1) {
+                  var21 = Game.entities[Render.mapSprites[Render.S_ENT + var16]];
+                  var24 = var21.lootSet != null;
+                  var22 = this.getUByteArg();
+
+                  for(var9 = 0; var9 < var22; ++var9) {
+                     var10 = this.getUShortArg();
+                     if (var24) {
+                        var21.lootSet[var9] = var10;
+                     }
+                  }
+
+                  if (var24) {
+                     for(var9 = var22; var9 < 3; ++var9) {
+                        var21.lootSet[var9] = 0;
+                     }
+                  }
+               } else {
+                  App.Error(117);
+               }
+               break;
+            case 84:
+               var16 = this.getUShortArg();
+               var6 = var16 & 7;
+               var7 = var16 >> 8 & 31;
+               var8 = var16 >> 3 & 31;
+               Player.enterTargetPractice(var7, var8, var6, this);
+               this.unpauseTime = -1;
+               var1 = 2;
+               break;
+            case 85:
+               Game.givemap(0, 0, 32, 32);
+               break;
+            case 86:
+               var5 = this.getByteArg();
+               Game.angryVIOS = var5 != 0;
+               break;
+            case 87:
+               var17 = (short)this.getByteArg();
+               var18 = (short)this.getByteArg();
+               var19 = (short)this.getByteArg();
+               var22 = (short)this.getByteArg();
+
+               for(var9 = var18; var9 <= var22; ++var9) {
+                  for(var10 = var17; var10 <= var19; ++var10) {
+                     var55 = Render.mapFlags;
+                     var55[var9 * 32 + var10] &= -9;
+                  }
+               }
+
+               Canvas.automapDrawn = false;
+               break;
+            case 88:
+               var17 = (short)this.getByteArg();
+               var18 = (short)this.getByteArg();
+               var19 = (short)this.getByteArg();
+               var22 = (short)this.getByteArg();
+
+               for(var9 = var18; var9 <= var22; ++var9) {
+                  for(var10 = var17; var10 <= var19; ++var10) {
+                     var55 = Render.mapFlags;
+                     var55[var9 * 32 + var10] = (byte)(var55[var9 * 32 + var10] | 8);
+                  }
+               }
+
+               Canvas.automapDrawn = false;
+               break;
+            case 89:
+               var5 = this.getByteArg();
+               var6 = var5 & 15;
+               var7 = var5 >> 4 & 15;
+               if (var6 == 4) {
+                  Render.portalScripted = false;
+               } else {
+                  Render.portalScripted = true;
+                  Render.portalState = var6;
+                  Render.previousPortalState = var7;
+               }
+               break;
+            case 90:
+               var16 = this.getUShortArg();
+               var6 = var16 & 7;
+               var7 = var16 >> 8 & 31;
+               var8 = var16 >> 3 & 31;
+               var9 = var16 >> 13 & 1;
+               if (var9 == 0) {
+                  for(var10 = 0; var10 < Render.mapKeepPitchLevelTiles.length && Render.mapKeepPitchLevelTiles[var10] != -1; ++var10) {
+                  }
+
+                  if (var10 != Render.mapKeepPitchLevelTiles.length) {
+                     Render.mapKeepPitchLevelTiles[var10] = (short)var7;
+                     short[] var54 = Render.mapKeepPitchLevelTiles;
+                     var54[var10] |= (short)(var8 << 5);
+                     var54 = Render.mapKeepPitchLevelTiles;
+                     var54[var10] |= (short)(var6 << 10);
+                  }
+               } else if (var9 == 1) {
+                  for(var11 = 0; var11 < Render.mapKeepPitchLevelTiles.length; ++var11) {
+                     if (Render.mapKeepPitchLevelTiles[var11] != -1) {
+                        var27 = Render.mapKeepPitchLevelTiles[var11];
+                        if ((var8 << 5) + var7 == (var27 & 1023) && var6 == (var27 & -1024) >> 10) {
+                           Render.mapKeepPitchLevelTiles[var11] = -1;
+                        }
+                     }
+                  }
+               }
+               break;
+            case 91:
+               Player.usedChainsaw(false);
+               break;
+            case 92:
+               var17 = this.getUByteArg();
+               var18 = this.getUByteArg();
+               var19 = Render.mapSprites[Render.S_ENT + var17];
+               if (var19 != -1) {
+                  var20 = Game.entities[var19];
+                  if (var18 == 1) {
+                     var20.info &= -536870913;
+                  } else if (var18 == 0) {
+                     var20.info |= 536870912;
+                  }
+               }
+               break;
+            case 93:
+               var17 = (short)this.getByteArg();
+               if (!Player.noclip) {
+                  var6 = Player.isFamiliar ? Player.ammo[7] : Player.ce.getStat(0);
+                  if (!Player.isFamiliar) {
+                     Player.painEvent((Entity)null, false);
+                  }
+
+                  Hud.damageTime = App.time + 1000;
+                  Combat.totalDamage = 1;
+                  Player.pain(var6, (Entity)null, true);
+                  if (Player.isFamiliar) {
+                     if (var17 == 0) {
+                        Player.noFamiliarRemains = true;
+                     }
+                  } else {
+                     Player.addArmor(-Player.ce.getStat(2));
+                  }
+               }
+               break;
+            case 94:
+               Canvas.setState(24);
+               break;
+            case 95:
+               var16 = this.getIntArg();
+               var6 = this.getUShortArg();
+               var7 = var16 >> 22 & 1023;
+               var8 = var16 >> 17 & 31;
+               var9 = var16 >> 12 & 31;
+               var11 = (var16 >> 4 & 255) - 48;
+               var10 = var16 & 15;
+               short var12 = this.getUByteArg();
+               var13 = Game.allocLerpSprite(this, var7, (var10 & 2) != 0);
+               if (var13 == null) {
+                  return 0;
+               }
+
+               var13.dstX = 32 + (var8 << 6);
+               var13.dstY = 32 + (var9 << 6);
+               var14 = Render.mapSprites[Render.S_ENT + var7];
+               if (var14 != -1) {
+                  var10000 = Game.entities[var14];
+                  var10000.info |= 4194304;
+                  if (Game.entities[var14].monster != null) {
+                     var53 = Game.entities[var14].monster;
+                     var53.flags &= -16385;
+                  }
+               }
+
+               var13.srcX = Render.mapSprites[Render.S_X + var7];
+               var13.srcY = Render.mapSprites[Render.S_Y + var7];
+               var13.srcZ = Render.mapSprites[Render.S_Z + var7];
+               var13.dstZ = Render.getHeight(var13.dstX, var13.dstY) + (var13.srcZ - Render.getHeight(var13.srcX, var13.srcY));
+               var13.srcScale = Render.mapSprites[Render.S_SCALEFACTOR + var7];
+               var13.dstScale = var12 << 1;
+               var13.height = var11;
+               var13.startTime = App.gameTime;
+               var13.travelTime = var6;
+               var13.calcDist();
+               var13.flags = var10 & 3;
+               var13.flags |= 4;
+               if (var6 == 0) {
+                  if ((Game.updateLerpSprite(var13) & 1) != 0) {
+                     Canvas.invalidateRect();
+                  } else {
+                     var1 = 0;
+                  }
+               } else {
+                  if (var6 != 0 && (var10 & 2) != 0) {
+                     this.evWait(var6);
+                  }
+
+                  if ((var13.flags & 1) == 0) {
+                     Game.skipAdvanceTurn = true;
+                     Game.queueAdvanceTurn = false;
+                     this.unpauseTime = -1;
+                     var1 = 2;
+                  }
+               }
+               break;
+            case 96:
+               var5 = this.getByteArg();
+               Render.useCaldexHack = var5 != 0;
+            }
+
+            if (var3) {
+               Game.scriptStateVars[7] = var15;
+            }
+         }
+
+         return var1;
+      }
+   }
+
+   public void init() {
+      this.FP = this.IP = this.stackPtr = 0;
+      this.unpauseTime = 0;
+      this.state = 2;
+      this.throwAwayLoot = false;
+   }
+
+   public void reset() {
+      this.inuse = false;
+      this.init();
+   }
+
+   public int attemptResume(int var1) {
+      if (this.stackPtr == 0) {
+         return 1;
+      } else if (this.unpauseTime != -1 && var1 >= this.unpauseTime) {
+         this.unpauseTime = 0;
+         return this.run();
+      } else {
+         return 2;
+      }
+   }
+
+   public int getIndex() {
+      for(int var1 = 0; var1 < Game.scriptThreads.length; ++var1) {
+         if (this == Game.scriptThreads[var1]) {
+            return var1;
+         }
+      }
+
+      return -1;
+   }
+
+   private int pop() {
+      return this.scriptStack[--this.stackPtr];
+   }
+
+   private void push(boolean var1) {
+      if (var1) {
+         this.push(1);
+      } else {
+         this.push(0);
+      }
+
+   }
+
+   private void push(int var1) {
+      this.scriptStack[this.stackPtr++] = var1;
+   }
+
+   private short getUByteArg() {
+      return (short)(Render.mapByteCode[++this.IP] & 255);
+   }
+
+   private byte getByteArg() {
+      return Render.mapByteCode[++this.IP];
+   }
+
+   private int getUShortArg() {
+      int var1 = (Render.mapByteCode[this.IP + 1] & 255) << 8 | Render.mapByteCode[this.IP + 2] & 255;
+      this.IP += 2;
+      return var1;
+   }
+
+   private short getShortArg() {
+      short var1 = (short)(Render.mapByteCode[this.IP + 1] << 8 | Render.mapByteCode[this.IP + 2] & 255);
+      this.IP += 2;
+      return var1;
+   }
+
+   private int getIntArg() {
+      int var1 = Render.mapByteCode[this.IP + 1] << 24 | (Render.mapByteCode[this.IP + 2] & 255) << 16 | (Render.mapByteCode[this.IP + 3] & 255) << 8 | Render.mapByteCode[this.IP + 4] & 255;
+      this.IP += 4;
+      return var1;
+   }
+
+   private void composeLootDialog() {
+      Text var1 = Text.getLargeBuffer();
+      if (lootSource != -1) {
+         Text.composeTextField(lootSource, var1);
+         Text.composeText((short)0, (short)129, var1);
+         lootSource = -1;
+      } else {
+         Text.composeText((short)0, (short)130, var1);
+      }
+
+      if (!this.throwAwayLoot) {
+         Canvas.showingLoot = true;
+         Canvas.setState(8);
+      }
+
+      int var2 = 0;
+      byte var3 = this.getByteArg();
+      int var4 = 0;
+
+      for(int var5 = 0; var5 < var3; ++var5) {
+         int var6 = this.getUShortArg();
+         int var7 = var6 >> 12 & 15;
+         short var12;
+         if (var7 == 6) {
+            var12 = (short)(var6 & 4095);
+            var1.append('\u0088');
+            Text.composeText(Canvas.loadMapStringID, var12, var1);
+            var1.append("|");
+         } else if (var7 == 5) {
+            var12 = (short)(var6 & 4095);
+            Player.updateQuests(var12, 0);
+         } else {
+            int var8 = (var6 & 4032) >> 6;
+            int var9 = var6 & 63;
+            ++var2;
+            if (!this.throwAwayLoot) {
+               if (var7 == 0) {
+                  if (var8 == 24) {
+                     var4 += var9;
+                     continue;
+                  }
+
+                  if (var8 == 25) {
+                     var4 += var9 * 100;
+                     continue;
+                  }
+               }
+
+               Text.resetTextArgs();
+               Text.addTextArg('\u0088');
+               EntityDef var10;
+               switch(var7) {
+               case 0:
+               case 3:
+                  Player.give(var7, var8, var9, false);
+                  var10 = EntityDef.find(6, var7, var8);
+                  Text.addTextArg(var9);
+                  Text.addTextArg((short)1, var10.longName);
+                  Text.composeText((short)0, (short)90, var1);
+                  break;
+               case 1:
+                  Player.give(1, var8, var9, true);
+                  int var11 = var8 * 9;
+                  if (Combat.weapons[var11 + 5] != 0) {
+                     Player.give(2, Combat.weapons[var11 + 4], 10, true);
+                  }
+
+                  var10 = EntityDef.find(6, var7, var8);
+                  Text.addTextArg((short)1, var10.longName);
+                  Text.composeText((short)0, (short)91, var1);
+                  break;
+               case 2:
+                  if (Game.difficulty != 4) {
+                     Player.give(2, var8, var9, false);
+                     var10 = EntityDef.find(6, var7, var8);
+                     Text.addTextArg(var9);
+                     Text.addTextArg((short)1, var10.longName);
+                     Text.composeText((short)0, (short)90, var1);
+                  }
+               }
+            }
+         }
+      }
+
+      if (var4 != 0) {
+         Player.give(0, 24, var4, false);
+         Text.resetTextArgs();
+         Text.addTextArg('\u0088');
+         Text.addTextArg(var4);
+         Text.addTextArg((short)1, (short)157);
+         Text.composeText((short)0, (short)90, var1);
+      }
+
+      if (!this.throwAwayLoot) {
+         var1.setLength(var1.length() - 1);
+         Canvas.startDialog(this, var1, 4, 0, true);
+      } else {
+         var1.setLength(0);
+         Text.resetTextArgs();
+         Text.addTextArg((int)var3);
+         Text.composeText((short)0, (short)145, var1);
+         Hud.addMessage(var1, 3);
+      }
+
+      var1.dispose();
+      Game.foundLoot(Canvas.viewX + Canvas.viewStepX, Canvas.viewY + Canvas.viewStepY, Canvas.viewZ, var2);
+   }
+
+   private static final void setAIGoal(Entity var0, int var1, int var2) {
+      var0.monster.resetGoal();
+      var0.monster.goalType = (byte)var1;
+      if (var1 != 2 && var1 != 3) {
+         if (var1 == 4 || var1 == 6) {
+            var0.monster.goalParam = var2;
+         }
+      } else {
+         var0.monster.goalParam = 1;
+      }
+
+      if (!Player.noclip) {
+         if ((var0.info & 262144) == 0) {
+            Game.activate(var0, true, false, false, true);
+         }
+
+         var0.aiThink(true);
+      }
+
+      if (var1 == 3) {
+         EntityMonster var10000 = var0.monster;
+         var10000.goalFlags &= -9;
+         if (Game.combatMonsters != null) {
+            Combat.performAttack(Game.combatMonsters, Game.combatMonsters.monster.target, 0, 0, false);
+         }
+      }
+
+   }
+
+   private static final void corpsifyMonster(int var0, int var1, Entity var2, boolean var3) {
+      int var4 = var2.getSprite();
+      Game.snapLerpSprites(var4);
+      var2.monster.resetGoal();
+      var2.monster.clearEffects();
+      var2.undoAttack();
+      Game.deactivate(var2);
+      Render.mapSpriteInfo[var4] = Render.mapSpriteInfo[var4] & -130817 | 28672;
+      Render.mapSprites[Render.S_X + var4] = (short)var0;
+      Render.mapSprites[Render.S_Y + var4] = (short)var1;
+      Render.mapSprites[Render.S_Z + var4] = (short)(Render.getHeight(var0, var1) + 32);
+      Render.relinkSprite(var4);
+      var2.info = var2.info & '\uffff' | 16777216 | 131072 | 4194304;
+      var2.def = EntityDef.find(9, var2.def.eSubType, var2.def.parm);
+      Game.unlinkEntity(var2);
+      Game.linkEntity(var2, var0 >> 6, var1 >> 6);
+      var2.checkMonsterDeath(false, var3);
+   }
+
+   private static final void stripInventoryForViosBattle() {
+      Player.weaponsCopy = 0;
+      Player.ammoCopy[3] = Player.ammo[3];
+      Player.ammo[3] = 0;
+      if ((Player.weapons & 4) != 0) {
+         Player.give(1, 2, -1);
+         Player.weaponsCopy |= 4;
+      }
+
+      if ((Player.weapons & 8192) != 0) {
+         Player.give(1, 13, -1);
+         Player.weaponsCopy |= 8192;
+      }
+
+      if ((Player.weapons & 8) != 0) {
+         Player.give(1, 3, -1);
+         Player.weaponsCopy |= 8;
+      } else if ((Player.weapons & 16) != 0) {
+         Player.give(1, 4, -1);
+         Player.weaponsCopy |= 16;
+      } else if ((Player.weapons & 32) != 0) {
+         Player.give(1, 5, -1);
+         Player.weaponsCopy |= 32;
+      } else if ((Player.weapons & 64) != 0) {
+         Player.give(1, 6, -1);
+         Player.weaponsCopy |= 64;
+      }
+
+   }
+
+   public static final void stripInventoryForTargetPractice() {
+      Player.currentWeaponCopy = Player.ce.weapon;
+      System.arraycopy(Player.ammo, 0, Player.ammoCopy, 0, Player.ammo.length);
+      Player.weaponsCopy = Player.weapons & -1;
+
+      for(int var0 = 0; var0 < 9; ++var0) {
+         Player.ammo[var0] = 0;
+      }
+
+      Player.weapons = 0;
+      Player.give(1, 9, 1, true);
+      Player.give(2, 1, 8, true);
+   }
+
+   public static final void restoreInventory() {
+      if ((Player.weapons & 1) != 0) {
+         Player.currentWeaponCopy = Player.ce.weapon;
+         Player.ammo[3] = Player.ammoCopy[3];
+         if ((Player.weaponsCopy & 4) != 0) {
+            Player.give(1, 2, 1, true);
+         }
+
+         if ((Player.weaponsCopy & 8192) != 0) {
+            Player.give(1, 13, 1, true);
+         }
+
+         short var0;
+         if ((Player.weaponsCopy & 8) != 0) {
+            var0 = Player.ammo[7];
+            Player.give(1, 3, 1, true);
+            Player.ammo[7] = var0;
+         } else if ((Player.weaponsCopy & 16) != 0) {
+            var0 = Player.ammo[7];
+            Player.give(1, 4, 1, true);
+            Player.ammo[7] = var0;
+         } else if ((Player.weaponsCopy & 32) != 0) {
+            var0 = Player.ammo[7];
+            Player.give(1, 5, 1, true);
+            Player.ammo[7] = var0;
+         } else if ((Player.weaponsCopy & 64) != 0) {
+            var0 = Player.ammo[7];
+            Player.give(1, 6, 1, true);
+            Player.ammo[7] = var0;
+         }
+
+         forceRemoveFromScopeZoom();
+         Player.selectWeapon(Player.currentWeaponCopy);
+         Game.angryVIOS = false;
+      } else {
+         boolean var3 = (Player.weaponsCopy & 512) != 0;
+
+         int var1;
+         for(var1 = 0; var1 < 9; ++var1) {
+            Player.ammo[var1] = 0;
+            Player.give(2, var1, Player.ammoCopy[var1], true);
+         }
+
+         for(var1 = 0; var1 < 15; ++var1) {
+            int var2 = 1 << var1;
+            if ((var2 & Player.weaponsCopy) != 0) {
+               Player.give(1, var1, 1, true);
+            }
+         }
+
+         forceRemoveFromScopeZoom();
+         if (!var3) {
+            Player.give(1, 9, -1);
+         }
+
+         Player.selectWeapon(Player.currentWeaponCopy);
+      }
+
+   }
+
+   private static final void forceRemoveFromScopeZoom() {
+      if (Canvas.isZoomedIn) {
+         Canvas.zoomTurn = 0;
+         Canvas.handleZoomEvents(-6, 15, true);
+      }
+
+   }
+}

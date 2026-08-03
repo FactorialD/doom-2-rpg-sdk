@@ -1,0 +1,2772 @@
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+
+final class Player {
+   public static int touchMe = 1;
+   private static final int EXPIRE_DURATION = 5;
+   private static final int MAX_DISPLAY_BUFFS = 6;
+   public static final int ICE_FOG_DIST = 1024;
+   public static final int MAX_NOTEBOOK_INDEXES = 8;
+   public static Entity facingEntity;
+   public static final short[] inventory = new short[26];
+   public static final short[] ammo = new short[9];
+   public static int weapons;
+   public static final short[] inventoryCopy = new short[26];
+   public static final short[] ammoCopy = new short[9];
+   public static int weaponsCopy;
+   public static int goldCopy;
+   public static int currentWeaponCopy;
+   public static boolean tookBotsInventory;
+   public static boolean botReturnedDueToMonster;
+   public static boolean unsetFamiliarOnceOutOfCinematic;
+   public static int disabledWeapons;
+   public static int level;
+   public static int currentXP;
+   public static int nextLevelXP;
+   public static CombatEntity baseCe = new CombatEntity();
+   public static CombatEntity ce = new CombatEntity();
+   public static EntityDef activeWeaponDef;
+   public static boolean noclip;
+   public static boolean god;
+   public static short characterChoice = 2;
+   public static boolean isFamiliar;
+   public static short familiarType;
+   public static boolean attemptingToSelfDestructFamiliar;
+   private static int chainsawStrengthBonusCount;
+   public static byte lastSkipCode;
+   public static boolean inTargetPractice;
+   public static int targetPracticeScore;
+   public static final int NUMBER_OF_TARGET_PRACTICE_SHOTS = 8;
+   private static final int HEAD_SHOT_POINTS = 30;
+   private static final int BODY_SHOT_POINTS = 20;
+   private static final int LEG_SHOT_POINTS = 10;
+   public static int playTime;
+   public static int totalTime;
+   public static int moves;
+   public static int totalMoves;
+   public static int completedLevels;
+   public static int killedMonstersLevels;
+   public static int foundSecretsLevels;
+   public static int xpGained;
+   public static int currentLevelDeaths;
+   public static int totalDeaths;
+   public static int currentGrades;
+   public static int bestGrades;
+   public static final short[] notebookIndexes = new short[8];
+   public static final short[] notebookPositions = new short[8];
+   public static byte questComplete;
+   public static byte questFailed;
+   private static int hackedVendingMachines;
+   private static int vendingMachineHackTriesLeft1;
+   private static int vendingMachineHackTriesLeft2;
+   private static final int NUMBER_OF_BITS_PER_VM_TRY = 3;
+   public static int numNotebookIndexes;
+   public static int helpBitmask;
+   public static int invHelpBitmask;
+   public static int ammoHelpBitmask;
+   public static int weaponHelpBitmask;
+   public static int armorHelpBitmask;
+   public static int gamePlayedMask;
+   public static int lastCombatTurn;
+   public static boolean inCombat;
+   public static boolean enableHelp;
+   private static int turnTime;
+   public static int highestMap;
+   public static int prevWeapon;
+   public static boolean noDeathFlag = false;
+   public static boolean noFamiliarRemains = false;
+   private static int numStatusEffects;
+   private static int numStatusEffectsCopy;
+   public static int[] statusEffects = new int[54];
+   public static int[] statusEffectsCopy = new int[54];
+   public static final int BUFF_TURNS = 0;
+   public static final int BUFF_AMOUNT = 15;
+   public static short[] buffs = new short[30];
+   public static short[] buffsCopy = new short[30];
+   public static int numbuffs;
+   public static int numbuffsCopy;
+   public static boolean gameCompleted;
+   public static int playerEntityCopyIndex = -1;
+   public static int[] counters = new int[8];
+   public static final int[] monsterStats = new int[2];
+   public static final int DEF_STATUS_TURNS = 30;
+   public static final int ANTI_FIRE_TURNS = 10;
+   public static final int AGILITY_TURNS = 20;
+   public static final int PURIFY_TURNS = 10;
+   public static final int FEAR_TURNS = 6;
+   public static final int COLD_TURNS = 5;
+   private static final int BOX_X1 = 17;
+   private static final int BOX_X2 = 31;
+   private static final int BOX_X3 = 43;
+   private static final int BOX_X4 = 55;
+
+   public static final boolean startup() {
+      isFamiliar = false;
+      noclip = false;
+      god = false;
+      helpBitmask = 0;
+      invHelpBitmask = 0;
+      weaponHelpBitmask = 0;
+      armorHelpBitmask = 0;
+      enableHelp = true;
+      currentLevelDeaths = 0;
+      totalDeaths = 0;
+      currentGrades = 0;
+      bestGrades = 0;
+      reset();
+      return true;
+   }
+
+   public static boolean modifyCollision(Entity var0) {
+      if (null != var0 && var0.def.eType == 12) {
+         int var1 = Render.mapSpriteInfo[(var0.info & '\uffff') - 1] & 255;
+         if (var1 == 131) {
+            return true;
+         }
+      }
+
+      return false;
+   }
+
+   public static final void advanceTurn() {
+      ++moves;
+      ++totalMoves;
+      updateStatusEffects();
+      boolean var0 = false;
+      if (buffs[3] > 0) {
+         addHealth(buffs[18], false);
+      }
+
+      if (statusEffects[53] > 0) {
+         addHealth(-statusEffects[35]);
+         var0 = true;
+      }
+
+      if (statusEffects[13] > 0) {
+         addHealth(-3);
+         Text var1 = Hud.getMessageBuffer(0);
+         Text.composeText((short)0, (short)82, var1);
+         var1.append(' ');
+         Text.resetTextArgs();
+         Text.addTextArg((int)3);
+         Text.composeText((short)0, (short)71, var1);
+         Hud.finishMessageBuffer();
+         var0 = true;
+      }
+
+      if (inCombat && totalMoves - lastCombatTurn >= 4) {
+         inCombat = false;
+      }
+
+      if (statusEffects[15] > 0) {
+         int var10002 = counters[3]++;
+      }
+
+      turnTime = App.time;
+      if (var0 && Canvas.state == 6) {
+         Canvas.setState(3);
+      }
+
+   }
+
+   public static final void levelInit() {
+      moves = 0;
+      numNotebookIndexes = 0;
+      questComplete = 0;
+      questFailed = 0;
+      turnTime = App.time;
+      inCombat = false;
+      if (ce.getStat(0) == 0) {
+         ce.setStat(0, 1);
+      }
+
+   }
+
+   public static final void fillMonsterStats() {
+      int var0 = 0;
+      int var1 = 0;
+
+      for(int var2 = 0; var2 < Game.numEntities; ++var2) {
+         Entity var3 = Game.entities[var2];
+         if (null != var3.monster && (var3.monster.flags & 128) == 0) {
+            ++var0;
+            if ((Game.entities[var2].info & 16842752) != 0) {
+               ++var1;
+            }
+         }
+      }
+
+      monsterStats[0] = var1;
+      monsterStats[1] = var0;
+   }
+
+   public static final void readyWeapon() {
+      Canvas.readyWeaponSound = 2;
+   }
+
+   public static final void selectWeapon(int var0) {
+      if (!isFamiliar) {
+         if (var0 != 14) {
+            weapons &= -16385;
+            ammo[8] = 0;
+         }
+
+         if (Canvas.isZoomedIn) {
+            Canvas.zoomOut();
+         }
+
+         int var1 = weapons & ~disabledWeapons;
+         if ((var1 & 1 << var0) == 0) {
+            ce.weapon = var0;
+            selectNextWeapon();
+         }
+
+         if (ce.weapon != var0) {
+            Canvas.invalidateRect();
+            prevWeapon = ce.weapon;
+         }
+
+         ce.weapon = var0;
+         if (Canvas.state != 8 && Canvas.state != 18) {
+            Canvas.drawPlayingSoftKeys();
+         }
+
+         if (var0 != prevWeapon) {
+            readyWeapon();
+         }
+
+         activeWeaponDef = EntityDef.find(6, 1, var0);
+         Canvas.updateFacingEntity = true;
+         Hud.repaintFlags |= 4;
+      }
+   }
+
+   public static final void selectPrevWeapon() {
+      int var0 = ce.weapon;
+      int var1 = weapons & ~disabledWeapons;
+
+      int var2;
+      int var3;
+      for(var2 = var0 - 1; var2 >= 0; --var2) {
+         if ((var1 & 1 << var2) != 0) {
+            var3 = var2 * 9;
+            if (Combat.weapons[var3 + 5] == 0 || ammo[Combat.weapons[var3 + 4]] != 0 || var2 == 2) {
+               selectWeapon(var2);
+               return;
+            }
+         }
+      }
+
+      if (ce.weapon == var0 && var0 != 14) {
+         for(var2 = 14; var2 > var0; --var2) {
+            if ((var1 & 1 << var2) != 0) {
+               var3 = var2 * 9;
+               if (Combat.weapons[var3 + 5] == 0 || ammo[Combat.weapons[var3 + 4]] != 0 || var2 == 2) {
+                  selectWeapon(var2);
+                  return;
+               }
+            }
+         }
+      }
+
+   }
+
+   public static final void selectNextWeapon() {
+      int var0 = ce.weapon;
+      int var1 = weapons & ~disabledWeapons;
+
+      int var2;
+      int var3;
+      for(var2 = var0 + 1; var2 < 15; ++var2) {
+         if ((var1 & 1 << var2) != 0) {
+            var3 = var2 * 9;
+            if (Combat.weapons[var3 + 5] == 0 || ammo[Combat.weapons[var3 + 4]] != 0 || var2 == 2) {
+               selectWeapon(var2);
+               return;
+            }
+         }
+      }
+
+      if (ce.weapon == var0 && var0 != 0) {
+         for(var2 = 0; var2 < var0; ++var2) {
+            if ((var1 & 1 << var2) != 0) {
+               var3 = var2 * 9;
+               if (Combat.weapons[var3 + 5] == 0 || ammo[Combat.weapons[var3 + 4]] != 0 || var2 == 2) {
+                  selectWeapon(var2);
+                  return;
+               }
+            }
+         }
+      }
+
+   }
+
+   public static final int getHealth() {
+      return isFamiliar ? ammo[7] : ce.getStat(0);
+   }
+
+   public static final int modifyStat(int var0, int var1) {
+      int var2;
+      int var3;
+      if (var0 == 0) {
+         var2 = getHealth();
+         addHealth(var1);
+         if (var1 < 0) {
+            painEvent((Entity)null, false);
+         }
+
+         var3 = getHealth();
+      } else {
+         var2 = baseCe.getStat(var0);
+         int var4 = var0 == 7 ? 200 : 99;
+         if (var2 + var1 > var4) {
+            var1 = var4 - var2;
+         }
+
+         if (var1 != 0) {
+            baseCe.setStat(var0, var2 + var1);
+         }
+
+         updateStats();
+         var3 = baseCe.getStat(var0);
+      }
+
+      return var3 - var2;
+   }
+
+   public static final boolean requireStat(int var0, int var1) {
+      return ce.getStat(var0) >= var1;
+   }
+
+   public static final boolean requireItem(int var0, int var1, int var2, int var3) {
+      int var4 = 1 << var1;
+      if (var0 == 1) {
+         if (var3 != 0) {
+            return (weapons & var4) != 0;
+         } else {
+            return (weapons & var4) == 0;
+         }
+      } else if (var0 != 0) {
+         return false;
+      } else {
+         return inventory[var1 - 0] >= var2 && inventory[var1 - 0] <= var3;
+      }
+   }
+
+   public static final void addXP(int var0) {
+      Text.resetTextArgs();
+      Text.addTextArg(var0);
+      if (var0 < 0) {
+         Hud.addMessage((short)102);
+      } else {
+         Hud.addMessage((short)103);
+      }
+
+      currentXP += var0;
+      xpGained += var0;
+
+      while(currentXP >= nextLevelXP) {
+         addLevel();
+      }
+
+      int[] var10000 = counters;
+      var10000[5] += var0;
+   }
+
+   public static final void addLevel() {
+      ++level;
+      nextLevelXP = calcLevelXP(level);
+      Text var2 = Text.getLargeBuffer();
+      var2.setLength(0);
+      Text.resetTextArgs();
+      Text.addTextArg(level);
+      Text.composeText((short)0, (short)104, var2);
+      int var0 = 10;
+      int var1 = baseCe.getStat(1);
+      if (var1 + var0 > 999) {
+         var0 = 999 - var1;
+      }
+
+      if (var0 != 0) {
+         baseCe.setStat(1, var1 + var0);
+         Text.resetTextArgs();
+         Text.addTextArg(var0);
+         Text.composeText((short)0, (short)105, var2);
+      }
+
+      byte var4 = 1;
+      var1 = baseCe.getStat(3);
+      var0 = modifyStat(3, var4);
+      if (var0 != 0) {
+         Text.resetTextArgs();
+         Text.addTextArg(var0);
+         Text.composeText((short)0, (short)106, var2);
+      }
+
+      var4 = 2;
+      var1 = baseCe.getStat(4);
+      var0 = modifyStat(4, var4);
+      if (var0 != 0) {
+         Text.resetTextArgs();
+         Text.addTextArg(var0);
+         Text.composeText((short)0, (short)107, var2);
+      }
+
+      var4 = 1;
+      var1 = baseCe.getStat(5);
+      var0 = modifyStat(5, var4);
+      if (var0 != 0) {
+         Text.resetTextArgs();
+         Text.addTextArg(var0);
+         Text.composeText((short)0, (short)108, var2);
+      }
+
+      var4 = 3;
+      var1 = baseCe.getStat(6);
+      var0 = modifyStat(6, var4);
+      if (var0 != 0) {
+         Text.resetTextArgs();
+         Text.addTextArg(var0);
+         Text.composeText((short)0, (short)109, var2);
+      }
+
+      Text.composeText((short)0, (short)110, var2);
+      ce.setStat(0, ce.getStat(1));
+      if ((weapons & 120) != 0) {
+         ammo[7] = 100;
+      }
+
+      Hud.repaintFlags |= 4;
+      boolean var3 = true;
+      if (Canvas.state != 1) {
+         Sound.playSound(8);
+         var3 = !Canvas.enqueueHelpDialog(var2, 0);
+      }
+
+      if (var3) {
+         var2.dispose();
+      }
+
+   }
+
+   public static final int calcLevelXP(int var0) {
+      return 500 * var0 + 100 * ((var0 - 1) * (var0 - 1) * (var0 - 1) + (var0 - 1));
+   }
+
+   public static final int calcScore() {
+      int var0 = 0;
+      boolean var1 = false;
+      boolean var2 = true;
+
+      int var5;
+      for(var5 = 0; var5 <= 8; ++var5) {
+         if ((killedMonstersLevels & 1 << var5) != 0) {
+            var0 += 1000;
+         } else {
+            var2 = false;
+         }
+      }
+
+      if (var2) {
+         var0 += 1000;
+      }
+
+      if (totalDeaths == 0) {
+         var0 += 1000;
+      } else if (totalDeaths < 10) {
+         var0 += (5 - totalDeaths) * 50;
+      } else {
+         var0 -= 250;
+      }
+
+      int var3 = (totalTime + (App.gameTime - playTime)) / '\uea60';
+      if (var3 < 120) {
+         var0 += (120 - var3) * 15;
+      }
+
+      if (totalMoves < 5000) {
+         var0 += (5000 - totalMoves) / 2;
+      }
+
+      boolean var4;
+      for(var4 = true; var5 <= 8; ++var5) {
+         if ((foundSecretsLevels & 1 << var5) != 0) {
+            var0 += 1000;
+         } else {
+            var4 = false;
+         }
+      }
+
+      if (var4) {
+         var0 += 1000;
+      }
+
+      return var0;
+   }
+
+   public static final boolean addHealth(int var0) {
+      return addHealth(var0, true);
+   }
+
+   public static final boolean addHealth(int var0, boolean var1) {
+      Hud.repaintFlags |= 4;
+      int var2;
+      int var3;
+      if (isFamiliar) {
+         var2 = ammo[7];
+         var3 = 100;
+      } else {
+         var2 = ce.getStat(0);
+         var3 = ce.getStat(1);
+      }
+
+      if (var0 > 0) {
+         if (var2 == var3) {
+            return false;
+         }
+      } else if (god) {
+         return false;
+      }
+
+      if (isFamiliar) {
+         ammo[7] = (short)Math.max(0, ammo[7] + var0);
+      } else {
+         Hud.playerStartHealth = var2;
+         ce.addStat(0, var0);
+      }
+
+      var3 = isFamiliar ? ammo[7] : ce.getStat(0);
+      if (var1 && var3 > var2) {
+         Text.resetTextArgs();
+         Text.addTextArg(var3 - var2);
+         Hud.addMessage((short)111);
+      }
+
+      return true;
+   }
+
+   public static final void setStatsAccordingToCharacterChoice() {
+      byte var0 = 0;
+      switch(characterChoice) {
+      case 1:
+         baseCe.setStat(3, 8);
+         baseCe.setStat(4, 9);
+         baseCe.setStat(5, 97);
+         baseCe.setStat(6, 12);
+         baseCe.setStat(7, 110);
+         var0 = 30;
+         break;
+      case 2:
+         baseCe.setStat(3, 12);
+         baseCe.setStat(4, 14);
+         baseCe.setStat(5, 92);
+         baseCe.setStat(6, 6);
+         baseCe.setStat(7, 100);
+         var0 = 10;
+         break;
+      case 3:
+         baseCe.setStat(3, 8);
+         baseCe.setStat(4, 8);
+         baseCe.setStat(5, 87);
+         baseCe.setStat(6, 6);
+         baseCe.setStat(7, 150);
+         var0 = 80;
+      }
+
+      give(0, 24, var0, true);
+   }
+
+   public static final void reset() {
+      Hud.msgCount = 0;
+      numNotebookIndexes = 0;
+      resetCounters();
+      level = 1;
+      currentXP = 0;
+      nextLevelXP = calcLevelXP(level);
+      facingEntity = null;
+      noclip = false;
+      questComplete = 0;
+      questFailed = 0;
+      isFamiliar = false;
+      setFamiliarType((short)0);
+      attemptingToSelfDestructFamiliar = false;
+      inTargetPractice = false;
+      targetPracticeScore = 0;
+      hackedVendingMachines = 0;
+      botReturnedDueToMonster = false;
+      unsetFamiliarOnceOutOfCinematic = false;
+      vendingMachineHackTriesLeft1 = 0;
+      vendingMachineHackTriesLeft2 = 0;
+
+      int var0;
+      for(var0 = 0; var0 < 9; ++var0) {
+         vendingMachineHackTriesLeft1 += 4;
+         vendingMachineHackTriesLeft2 += 4;
+         if (var0 < 8) {
+            vendingMachineHackTriesLeft1 <<= 3;
+            vendingMachineHackTriesLeft2 <<= 3;
+         }
+      }
+
+      chainsawStrengthBonusCount = 0;
+      lastSkipCode = 0;
+      playerEntityCopyIndex = -1;
+      Canvas.prevX = 0;
+      Canvas.saveX = 0;
+      Canvas.destX = 0;
+      Canvas.viewX = 0;
+      Canvas.prevY = 0;
+      Canvas.saveY = 0;
+      Canvas.destY = 0;
+      Canvas.viewY = 0;
+      Canvas.destZ = 36;
+      Canvas.viewZ = 36;
+      Canvas.saveAngle = 0;
+      Canvas.destAngle = 0;
+      Canvas.viewAngle = 0;
+      Canvas.savePitch = 0;
+      Canvas.destPitch = 0;
+      Canvas.viewPitch = 0;
+      boolean var1 = false;
+      inCombat = false;
+
+      for(var0 = 0; var0 < 9; ++var0) {
+         ammo[var0] = 0;
+      }
+
+      for(var0 = 0; var0 < 26; ++var0) {
+         inventory[var0] = 0;
+      }
+
+      give(0, 18, 1, true);
+      numbuffs = 0;
+
+      for(var0 = 0; var0 < 15; ++var0) {
+         buffs[15 + var0] = buffs[0 + var0] = 0;
+      }
+
+      numStatusEffects = 0;
+
+      for(var0 = 0; var0 < 18; ++var0) {
+         statusEffects[18 + var0] = statusEffects[36 + var0] = statusEffects[0 + var0] = 0;
+      }
+
+      numbuffsCopy = 0;
+
+      for(var0 = 0; var0 < 15; ++var0) {
+         buffsCopy[15 + var0] = buffsCopy[0 + var0] = 0;
+      }
+
+      numStatusEffectsCopy = 0;
+
+      for(var0 = 0; var0 < 18; ++var0) {
+         statusEffectsCopy[18 + var0] = statusEffectsCopy[36 + var0] = statusEffectsCopy[0 + var0] = 0;
+      }
+
+      weapons = 0;
+      foundSecretsLevels = 0;
+      killedMonstersLevels = 0;
+      baseCe.setStat(1, 100);
+      setStatsAccordingToCharacterChoice();
+      if (Game.difficulty == 2) {
+         baseCe.setStat(3, 0);
+      }
+
+      updateStats();
+      ce.setStat(0, 100);
+      baseCe.setStat(2, 0);
+      ce.setStat(2, 0);
+      totalTime = 0;
+      totalMoves = 0;
+      completedLevels = 0;
+      highestMap = 1;
+      gameCompleted = false;
+      gamePlayedMask = 0;
+   }
+
+   public static final int calcDamageDir(int var0, int var1, int var2, int var3, int var4) {
+      int var6 = var3 - var0;
+      int var7 = var4 - var1;
+      var2 &= 1023;
+      if (var6 == 0 && var7 == 0) {
+         return 3;
+      } else {
+         short var5;
+         if (var6 > 0) {
+            if (var7 < 0) {
+               var5 = 128;
+            } else if (var7 > 0) {
+               var5 = 896;
+            } else {
+               var5 = 0;
+            }
+         } else if (var6 < 0) {
+            if (var7 < 0) {
+               var5 = 384;
+            } else if (var7 > 0) {
+               var5 = 640;
+            } else {
+               var5 = 512;
+            }
+         } else if (var7 > 0) {
+            var5 = 768;
+         } else {
+            var5 = 256;
+         }
+
+         int var8 = var5 - var2 & 1023;
+         if (var8 > 512) {
+            var8 = -(1024 - var8);
+         }
+
+         var8 = 3 + var8 / 128;
+         if (var8 < 0) {
+            var8 = 7;
+         }
+
+         return var8;
+      }
+   }
+
+   public static final void painEvent(Entity var0, boolean var1) {
+      if (var0 == null) {
+         Hud.damageDir = 3;
+      }
+
+      Hud.damageCount = 1;
+      if (!var1) {
+         Canvas.startShake(500, 2, 150);
+      }
+
+   }
+
+   public static final void pain(int var0, Entity var1, boolean var2) {
+      if (!god) {
+         if (var2) {
+            Text.resetTextArgs();
+            if (var1 != null) {
+               Text var5 = Text.getSmallBuffer();
+               Text.composeText((short)1, (short)(var1.def.name & 1023), var5);
+               Text.addTextArg(var5);
+               Text.addTextArg(var0);
+               Hud.addMessage((short)0, (short)112);
+               var5.dispose();
+            } else {
+               Text.addTextArg(var0);
+               Hud.addMessage((short)0, (short)71);
+            }
+         }
+
+         if (var0 != 0) {
+            if (isFamiliar) {
+               addHealth(-var0);
+            } else {
+               int var6 = ce.getStat(0);
+               if (var0 >= var6 && noDeathFlag) {
+                  var0 = var6 - 1;
+               }
+
+               int var3 = (var6 << 16) / (ce.getStat(1) << 8);
+               int var4 = (var6 - var0 << 16) / (ce.getStat(1) << 8);
+               if (var4 > 0) {
+                  if (var3 > 26 && var4 <= 26) {
+                     Hud.addMessage((short)113, (int)3);
+                  } else if (var3 > 78 && var4 <= 78) {
+                     Hud.addMessage((short)114, (int)3);
+                  } else if (var3 > 128 && var4 <= 128 && (helpBitmask & 3072) == 0) {
+                     if (inventory[17] == 0 && inventory[16] == 0) {
+                        showHelp((short)11, true);
+                     } else {
+                        showHelp((short)10, true);
+                     }
+                  }
+               }
+
+               addHealth(-var0);
+            }
+
+            if (Canvas.state == 6) {
+               Canvas.setState(3);
+            }
+
+            if (ce.getStat(0) <= 0) {
+               died();
+            }
+
+         }
+      }
+   }
+
+   public static final void died() {
+      if (Canvas.state != 13) {
+         ++currentLevelDeaths;
+         ++totalDeaths;
+         Sound.playSound(11);
+         Canvas.startShake(350, 5, 500);
+         ce.setStat(0, 0);
+         Canvas.setState(13);
+         Game.combatMonsters = null;
+      }
+   }
+
+   public static final void familiarDying(boolean var0) {
+      if (Canvas.state != 25) {
+         if (var0) {
+            Combat.curAttacker = null;
+         } else {
+            Sound.playSound(11);
+            Canvas.startShake(350, 5, 500);
+         }
+
+         Canvas.familiarSelfDestructed = var0;
+         Canvas.setState(25);
+      }
+   }
+
+   public static final boolean fireWeapon(Entity var0, int var1, int var2) {
+      if (ce.weapon == 13 && var0.monster == null) {
+         return false;
+      } else if (!Combat.weaponDown && (disabledWeapons == 0 || (weapons & 1 << ce.weapon) != 0)) {
+         if (Combat.lerpingWeapon) {
+            if (Combat.lerpWpDown) {
+               return false;
+            }
+
+            Combat.lerpingWeapon = false;
+            Combat.weaponDown = false;
+         }
+
+         if (var0.monster != null) {
+            EntityMonster var10000 = var0.monster;
+            var10000.flags = (short)(var10000.flags & -9);
+         }
+
+         if (ce.weapon == 1 && (var0.def.eType == 9 || var0.def.eType == 10 && (var0.def.eSubType == 1 || var0.def.eSubType == 0))) {
+            usedChainsaw(false);
+         }
+
+         int var3 = ce.weapon * 9;
+         if (Combat.weapons[var3 + 4] != 0) {
+            short var4 = ammo[Combat.weapons[var3 + 4]];
+            if (Combat.weapons[var3 + 5] > 0 && var4 - Combat.weapons[var3 + 5] < 0) {
+               if (ce.weapon == 13) {
+                  Hud.addMessage((short)117, (int)3);
+               } else if (var4 == 0) {
+                  Hud.addMessage((short)115, (int)3);
+               } else {
+                  Hud.addMessage((short)116, (int)3);
+               }
+
+               return false;
+            }
+         }
+
+         Combat.performAttack((Entity)null, var0, var1, var2, false);
+         return true;
+      } else {
+         return false;
+      }
+   }
+
+   public static final boolean useItem(int var0) {
+      if (inventory[var0] == 0 && var0 != 22) {
+         return false;
+      } else {
+         boolean var1 = true;
+         boolean var2 = true;
+         boolean var3;
+         switch(var0) {
+         case 0:
+            if (!addStatusEffect(10, 20, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            addHealth(20);
+            break;
+         case 1:
+            if (!addStatusEffect(7, 5, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 2:
+            if (!addStatusEffect(9, 0, 11)) {
+               return false;
+            }
+
+            removeStatusEffect(13);
+            translateStatusEffects();
+            break;
+         case 3:
+            var3 = false;
+            if (addStatusEffect(8, 25, 31)) {
+               var3 = true;
+            }
+
+            if (addStatusEffect(5, 20, 31)) {
+               var3 = true;
+            }
+
+            if (!var3) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 4:
+            if (!addStatusEffect(12, 10, 11)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 5:
+            if (!addStatusEffect(3, 5, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 6:
+            if (!addStatusEffect(4, 25, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 7:
+            if (!addStatusEffect(6, 25, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 8:
+            if (statusEffects[2] != 0) {
+               return false;
+            }
+
+            var1 = false;
+            addStatusEffect(2, 0, 21);
+            translateStatusEffects();
+            break;
+         case 9:
+            if (!addStatusEffect(8, 100, 31)) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 10:
+            var3 = false;
+            if (addStatusEffect(6, 25, 31)) {
+               var3 = true;
+            }
+
+            if (addStatusEffect(8, 25, 31)) {
+               var3 = true;
+            }
+
+            if (addStatusEffect(4, 25, 31)) {
+               var3 = true;
+            }
+
+            if (addStatusEffect(7, 5, 31)) {
+               var3 = true;
+            }
+
+            if (!var3) {
+               return false;
+            }
+
+            translateStatusEffects();
+            break;
+         case 11:
+            if (!addArmor(50)) {
+               return false;
+            }
+            break;
+         case 12:
+            if (!addArmor(10)) {
+               return false;
+            }
+            break;
+         case 13:
+         case 14:
+         case 15:
+         case 18:
+         case 19:
+         case 20:
+         case 21:
+         default:
+            return false;
+         case 16:
+            if (!addHealth(20)) {
+               return false;
+            }
+            break;
+         case 17:
+            if (!addHealth(80)) {
+               return false;
+            }
+            break;
+         case 22:
+            var3 = addHealth(25);
+            var3 |= addStatusEffect(11, 100, 3);
+            var2 = false;
+            if (!var3) {
+               return false;
+            }
+
+            short[] var10000 = ammo;
+            var10000[3] = (short)(var10000[3] - 25);
+            translateStatusEffects();
+            break;
+         case 23:
+            return true;
+         }
+
+         Sound.playSound(13);
+         if (var2) {
+            --inventory[var0];
+         }
+
+         if (var1) {
+            Game.advanceTurn();
+         }
+
+         return true;
+      }
+   }
+
+   public static final boolean give(int var0, int var1, int var2) {
+      return give(var0, var1, var2, false);
+   }
+
+   public static final boolean give(int var0, int var1, int var2, boolean var3) {
+      return give(var0, var1, var2, var3, false);
+   }
+
+   public static final boolean give(int var0, int var1, int var2, boolean var3, boolean var4) {
+      if (var2 == 0) {
+         return false;
+      } else {
+         int var6 = 1 << var1;
+         int var5;
+         switch(var0) {
+         case 0:
+            short[] var9 = isFamiliar && !var4 ? inventoryCopy : inventory;
+            var5 = var2 + var9[var1 - 0];
+            if (var1 == 24) {
+               if (var5 > 9999) {
+                  var5 = 9999;
+               }
+            } else if (var5 > 999) {
+               var5 = 999;
+            }
+
+            if (var5 < 0) {
+               return false;
+            }
+
+            if (var1 != 13 || isFamiliar && !var4) {
+               var9[var1 - 0] = (short)var5;
+            } else {
+               give(2, 3, var5 * 20, true, true);
+            }
+
+            if (!var3) {
+               showInvHelp(var1 - 0, false);
+            }
+            break;
+         case 1:
+            if (weaponIsASentryBot(var1) && var2 > 0) {
+               if (isFamiliar) {
+                  return false;
+               }
+
+               give(2, 7, 100, true);
+               weapons &= -17;
+               weapons &= -9;
+               weapons &= -65;
+               weapons &= -33;
+            }
+
+            boolean var7 = (weapons & var6) == 0;
+            if (var2 < 0) {
+               if (!isFamiliar || var4) {
+                  weapons &= ~var6;
+                  if (var1 == ce.weapon) {
+                     selectNextWeapon();
+                  }
+               }
+
+               return true;
+            }
+
+            if (isFamiliar && !var4) {
+               weaponsCopy |= var6;
+            } else {
+               weapons |= var6;
+            }
+
+            if (!var3) {
+               showWeaponHelp(var1, false);
+            }
+
+            if (var7 && !isFamiliar) {
+               selectWeapon(var1);
+            }
+            break;
+         case 2:
+            short[] var8 = isFamiliar && !var4 && var1 != 6 ? ammoCopy : ammo;
+            var5 = var2 + var8[var1];
+            if (var5 > 100) {
+               var5 = 100;
+            }
+
+            if (var1 == 6 && var5 > 5) {
+               var5 = 5;
+            }
+
+            if (var5 < 0) {
+               return false;
+            }
+
+            var8[var1] = (short)var5;
+            if (!var3) {
+               showAmmoHelp(var1, false);
+            }
+
+            Hud.repaintFlags |= 4;
+            break;
+         case 3:
+            addHealth(var2);
+            break;
+         default:
+            return false;
+         }
+
+         return true;
+      }
+   }
+
+   public static final void giveAmmoWeapon(int var0, boolean var1) {
+      weapons |= 1 << var0;
+      selectWeapon(var0);
+      if (!var1) {
+         showWeaponHelp(var0, false);
+      }
+
+   }
+
+   public static final void updateQuests(short var0, int var1) {
+      if (var1 == 0) {
+         if (numNotebookIndexes == 8) {
+            App.Error(39);
+            return;
+         }
+
+         questComplete = (byte)(questComplete & ~(1 << numNotebookIndexes));
+         questFailed = (byte)(questFailed & ~(1 << numNotebookIndexes));
+         notebookIndexes[numNotebookIndexes++] = var0;
+      } else {
+         for(int var2 = 0; var2 < numNotebookIndexes; ++var2) {
+            if (var0 == notebookIndexes[var2]) {
+               if (var1 == 1) {
+                  questComplete = (byte)(questComplete | 1 << var2);
+               } else if (var1 == 2) {
+                  questFailed = (byte)(questFailed | 1 << var2);
+               }
+
+               return;
+            }
+         }
+
+         if (var1 == 1) {
+            questComplete = (byte)(questComplete | 1 << numNotebookIndexes);
+            questFailed = (byte)(questFailed & ~(1 << numNotebookIndexes));
+         } else if (var1 == 2) {
+            questComplete = (byte)(questComplete & ~(1 << numNotebookIndexes));
+            questFailed = (byte)(questFailed | 1 << numNotebookIndexes);
+         }
+
+         notebookPositions[numNotebookIndexes] = 0;
+         notebookIndexes[numNotebookIndexes++] = var0;
+      }
+
+   }
+
+   public static final void setQuestTile(int var0, int var1, int var2) {
+      for(int var3 = 0; var3 < numNotebookIndexes; ++var3) {
+         if (var0 == notebookIndexes[var3]) {
+            notebookPositions[var3] = (short)(var1 << 5 | var2);
+            return;
+         }
+      }
+
+   }
+
+   public static final boolean isQuestDone(int var0) {
+      return (questComplete & 1 << var0) != 0;
+   }
+
+   public static final boolean isQuestFailed(int var0) {
+      return (questFailed & 1 << var0) != 0;
+   }
+
+   public static final void formatTime(int var0, Text var1) {
+      var1.setLength(0);
+      int var2 = var0 / 1000;
+      int var3 = var2 / 60;
+      int var4 = var3 / 60;
+      int var5 = var3 % 60;
+      var1.append(var4);
+      var1.append(":");
+      if (var5 < 10) {
+         var1.append("0");
+      }
+
+      var1.append(var5);
+      var1.append(":");
+      var2 -= var3 * 60;
+      if (var2 < 10) {
+         var1.append("0");
+      }
+
+      var1.append(var2);
+   }
+
+   public static final void showInvHelp(int var0, boolean var1) {
+      if (enableHelp || var1) {
+         int var2 = var0 - 0;
+         if ((invHelpBitmask & 1 << var2) == 0) {
+            invHelpBitmask |= 1 << var2;
+            EntityDef var3 = EntityDef.find(6, 0, var0);
+            Canvas.enqueueHelpDialog(var3);
+         }
+      }
+   }
+
+   public static final void showAmmoHelp(int var0, boolean var1) {
+      if (enableHelp || var1) {
+         int var2 = 1 << var0;
+         if ((ammoHelpBitmask & var2) == 0) {
+            ammoHelpBitmask |= var2;
+            EntityDef var3 = EntityDef.find(6, 2, var0);
+            Canvas.enqueueHelpDialog(var3);
+         }
+      }
+   }
+
+   public static final boolean showHelp(short var0, boolean var1) {
+      if (Game.isCameraActive()) {
+         return false;
+      } else if (!enableHelp && !var1) {
+         return false;
+      } else if ((helpBitmask & 1 << var0) != 0 && !var1) {
+         return false;
+      } else {
+         helpBitmask |= 1 << var0;
+         Canvas.enqueueHelpDialog(var0);
+         if (var0 != 5 && Canvas.state == 3) {
+            Canvas.dequeueHelpDialog();
+         }
+
+         return true;
+      }
+   }
+
+   public static final void showWeaponHelp(int var0, boolean var1) {
+      if (enableHelp || var1) {
+         if ((weaponHelpBitmask & 1 << var0) == 0) {
+            weaponHelpBitmask |= 1 << var0;
+            EntityDef var2 = EntityDef.find(6, 1, var0);
+            Canvas.enqueueHelpDialog(var2);
+         }
+      }
+   }
+
+   public static final void drawBuffs(Graphics var0) {
+      if (numbuffs != 0 && Canvas.state != 8) {
+         int var1 = Canvas.viewRect[0] + Canvas.viewRect[2];
+         int var2 = var1 - 17;
+         int var3 = Canvas.viewRect[1] + 30;
+         int var4 = 0;
+         boolean var5 = false;
+         int var6 = numbuffs;
+         if (var6 > 6) {
+            var6 = 6;
+            var5 = true;
+         }
+
+         int var7 = var6 * 13 + 6;
+
+         int var8;
+         for(var8 = 0; var8 < 15 && var4 < 6; ++var8) {
+            if (buffs[0 + var8] > 0 && (1 << var8 & 14855) == 0) {
+               if (buffs[15 + var8] > 99 || buffs[15 + var8] < -99) {
+                  var2 = var1 - 55;
+                  break;
+               }
+
+               if (buffs[15 + var8] <= 9 && buffs[15 + var8] >= -9) {
+                  if (var2 == var1 - 17) {
+                     var2 = var1 - 31;
+                  }
+               } else {
+                  var2 = var1 - 43;
+               }
+            }
+         }
+
+         var8 = var1 - var2 + 4;
+         if (var5) {
+            var7 += 5;
+         }
+
+         var0.setColor(0);
+         var0.fillRect(var2 - 5, var3 - 2, var8, var7);
+         var0.setColor(-5592406);
+         var0.drawRect(var2 - 5, var3 - 2, var8, var7);
+         int var9 = var1 - 18;
+
+         for(int var10 = 0; var10 < 15 && var4 < 6; ++var10) {
+            if (buffs[0 + var10] != 0) {
+               ++var4;
+               drawStatusEffectIcon(var0, var10, buffs[15 + var10], buffs[0 + var10], var9, var3);
+               var3 += 13;
+            }
+         }
+
+         if (var5) {
+            Text var11 = Text.getSmallBuffer();
+            var11.setLength(0);
+            var11.append('\u0085');
+            var0.drawString(var11, var2 + var8 / 2 - 4, var3 - 4, 1);
+            var11.dispose();
+         }
+
+      }
+   }
+
+   public static final void setCharacterChoice(short var0) {
+      characterChoice = var0;
+      Game.scriptStateVars[14] = characterChoice;
+   }
+
+   public static final boolean loadState(DataInputStream var0) throws IOException {
+      baseCe.loadState(var0, true);
+      ce.loadState(var0, true);
+      setCharacterChoice(var0.readShort());
+      weapons = var0.readInt();
+      weaponsCopy = var0.readInt();
+      level = var0.readByte() & 255;
+      currentXP = var0.readInt();
+      nextLevelXP = calcLevelXP(level);
+      totalTime = var0.readInt();
+      totalMoves = var0.readInt();
+      completedLevels = var0.readInt();
+      killedMonstersLevels = var0.readInt();
+      foundSecretsLevels = var0.readInt();
+      disabledWeapons = var0.readInt();
+      prevWeapon = var0.readByte();
+      gamePlayedMask = var0.readInt();
+      lastCombatTurn = var0.readInt();
+      inCombat = var0.readBoolean();
+      highestMap = var0.readShort();
+      isFamiliar = var0.readBoolean();
+      short var1 = var0.readShort();
+      setFamiliarType(var1);
+      playerEntityCopyIndex = var0.readInt();
+      hackedVendingMachines = var0.readInt();
+      vendingMachineHackTriesLeft1 = var0.readInt();
+      vendingMachineHackTriesLeft2 = var0.readInt();
+      chainsawStrengthBonusCount = var0.readInt();
+      lastSkipCode = var0.readByte();
+      byte var3 = 9;
+
+      int var2;
+      for(var2 = 0; var2 < var3; ++var2) {
+         ammo[var2] = var0.readShort();
+      }
+
+      for(var2 = 0; var2 < var3; ++var2) {
+         ammoCopy[var2] = var0.readShort();
+      }
+
+      var3 = 26;
+
+      for(var2 = 0; var2 < var3; ++var2) {
+         inventory[var2] = var0.readShort();
+      }
+
+      for(var2 = 0; var2 < var3; ++var2) {
+         inventoryCopy[var2] = var0.readShort();
+      }
+
+      numStatusEffects = var0.readByte();
+      if (numStatusEffects == 0) {
+         for(var2 = 0; var2 < 18; ++var2) {
+            statusEffects[36 + var2] = 0;
+            statusEffects[0 + var2] = 0;
+            statusEffects[18 + var2] = 0;
+         }
+      } else {
+         for(var2 = 0; var2 < 18; ++var2) {
+            statusEffects[36 + var2] = var0.readShort();
+            statusEffects[0 + var2] = var0.readShort();
+            statusEffects[18 + var2] = var0.readShort();
+         }
+      }
+
+      numStatusEffectsCopy = isFamiliar ? var0.readByte() : 0;
+      if (numStatusEffectsCopy == 0) {
+         for(var2 = 0; var2 < 18; ++var2) {
+            statusEffectsCopy[36 + var2] = 0;
+            statusEffectsCopy[0 + var2] = 0;
+            statusEffectsCopy[18 + var2] = 0;
+         }
+      } else {
+         for(var2 = 0; var2 < 18; ++var2) {
+            statusEffectsCopy[36 + var2] = var0.readShort();
+            statusEffectsCopy[0 + var2] = var0.readShort();
+            statusEffectsCopy[18 + var2] = var0.readShort();
+         }
+      }
+
+      for(var2 = 0; var2 < 8; ++var2) {
+         counters[var2] = var0.readInt();
+      }
+
+      gameCompleted = var0.readBoolean();
+      translateStatusEffects();
+      updateStats();
+      return true;
+   }
+
+   public static final boolean saveState(DataOutputStream var0) throws IOException {
+      baseCe.saveState(var0, true);
+      ce.saveState(var0, true);
+      var0.writeShort(characterChoice);
+      var0.writeInt(weapons);
+      var0.writeInt(weaponsCopy);
+      var0.writeByte(level);
+      var0.writeInt(currentXP);
+      int var1 = App.gameTime;
+      totalTime += var1 - playTime;
+      playTime = var1;
+      var0.writeInt(totalTime);
+      var0.writeInt(totalMoves);
+      var0.writeInt(completedLevels);
+      var0.writeInt(killedMonstersLevels);
+      var0.writeInt(foundSecretsLevels);
+      var0.writeInt(disabledWeapons);
+      var0.writeByte(prevWeapon);
+      var0.writeInt(gamePlayedMask);
+      var0.writeInt(lastCombatTurn);
+      var0.writeBoolean(inCombat);
+      var0.writeShort(highestMap);
+      var0.writeBoolean(isFamiliar);
+      var0.writeShort(familiarType);
+      var0.writeInt(playerEntityCopyIndex);
+      var0.writeInt(hackedVendingMachines);
+      var0.writeInt(vendingMachineHackTriesLeft1);
+      var0.writeInt(vendingMachineHackTriesLeft2);
+      var0.writeInt(chainsawStrengthBonusCount);
+      var0.writeByte(lastSkipCode);
+      byte var2 = 9;
+      boolean var3 = false;
+
+      int var4;
+      for(var4 = 0; var4 < var2; ++var4) {
+         var0.writeShort(ammo[var4]);
+      }
+
+      for(var4 = 0; var4 < var2; ++var4) {
+         var0.writeShort(ammoCopy[var4]);
+      }
+
+      var2 = 26;
+
+      for(var4 = 0; var4 < var2; ++var4) {
+         var0.writeShort(inventory[var4]);
+      }
+
+      for(var4 = 0; var4 < var2; ++var4) {
+         var0.writeShort(inventoryCopy[var4]);
+      }
+
+      var0.writeByte(numStatusEffects);
+      if (numStatusEffects != 0) {
+         for(var4 = 0; var4 < 18; ++var4) {
+            var0.writeShort(statusEffects[36 + var4]);
+            var0.writeShort(statusEffects[0 + var4]);
+            var0.writeShort(statusEffects[18 + var4]);
+         }
+      }
+
+      if (isFamiliar) {
+         var0.writeByte(numStatusEffectsCopy);
+         if (numStatusEffectsCopy != 0) {
+            for(var4 = 0; var4 < 18; ++var4) {
+               var0.writeShort(statusEffectsCopy[36 + var4]);
+               var0.writeShort(statusEffectsCopy[0 + var4]);
+               var0.writeShort(statusEffectsCopy[18 + var4]);
+            }
+         }
+      }
+
+      for(var4 = 0; var4 < 8; ++var4) {
+         var0.writeInt(counters[var4]);
+      }
+
+      var0.writeBoolean(gameCompleted);
+      return true;
+   }
+
+   public static final void unpause(int var0) {
+      if (var0 > 0) {
+         ;
+      }
+   }
+
+   public static final void relink() {
+      unlink();
+      link();
+   }
+
+   public static final void unlink() {
+      Entity var0 = getPlayerEnt();
+      if ((var0.info & 1048576) != 0) {
+         Game.unlinkEntity(var0);
+      }
+
+   }
+
+   public static final void link() {
+      Entity var0 = getPlayerEnt();
+      if (Canvas.destX >= 0 && Canvas.destX <= 2047 && Canvas.destY >= 0 && Canvas.destY <= 2047) {
+         Game.linkEntity(var0, Canvas.destX >> 6, Canvas.destY >> 6);
+      }
+
+   }
+
+   public static final void updateStats() {
+      int var0 = baseCe.getStat(1) + buffs[25];
+      ce.setStat(1, var0);
+      ce.setStat(0, ce.getStat(0));
+      ce.setStat(4, baseCe.getStat(4) + buffs[20]);
+      ce.setStat(5, baseCe.getStat(5) + buffs[22] - buffs[28]);
+      ce.setStat(3, baseCe.getStat(3) + buffs[19]);
+      ce.setStat(6, baseCe.getStat(6) + buffs[21]);
+      ce.setStat(7, baseCe.getStat(7));
+   }
+
+   private static final void updateStatusEffects() {
+      if (numStatusEffects != 0) {
+         for(int var0 = 0; var0 < 18; ++var0) {
+            if (statusEffects[0 + var0] != 0) {
+               if (statusEffects[0 + var0] <= 5 && statusEffects[0 + var0] == 1) {
+                  removeStatusEffect(var0);
+               } else if (statusEffects[0 + var0] != 0) {
+                  int var10002 = statusEffects[0 + var0]--;
+               }
+            }
+         }
+
+         translateStatusEffects();
+      }
+   }
+
+   public static final void translateStatusEffects() {
+      int var0;
+      for(var0 = 0; var0 < 15; ++var0) {
+         buffs[0 + var0] = buffs[15 + var0] = 0;
+      }
+
+      numbuffs = 0;
+
+      for(var0 = 0; var0 < 18; ++var0) {
+         int var1 = statusEffects[0 + var0];
+         int var2 = statusEffects[18 + var0];
+         if (var1 != 0 && var1 > 0) {
+            int var3;
+            switch(var0) {
+            case 14:
+               var3 = buffs[20] - var2;
+               buffs[20] = (short)var3;
+               buffs[5] = (short)var1;
+               var3 = buffs[19] - var2;
+               buffs[19] = (short)var3;
+               buffs[4] = (short)var1;
+               var3 = buffs[29] - statusEffects[36 + var0] * 4;
+               buffs[29] = (short)var3;
+               buffs[14] = (short)var1;
+               break;
+            case 15:
+            case 17:
+               var3 = buffs[20] + var2;
+               buffs[20] = (short)var3;
+               buffs[5] = (short)var1;
+               var3 = buffs[19] + var2;
+               buffs[19] = (short)var3;
+               buffs[4] = (short)var1;
+               var3 = buffs[22] - (var2 + var2 / 2);
+               buffs[22] = (short)var3;
+               buffs[7] = (short)var1;
+               break;
+            case 16:
+               var3 = buffs[22] - var2;
+               buffs[22] = (short)var3;
+               buffs[7] = (short)var1;
+               break;
+            default:
+               var3 = buffs[15 + var0] + var2;
+               buffs[15 + var0] = (short)var3;
+               buffs[0 + var0] = (short)var1;
+            }
+         }
+      }
+
+      for(var0 = 0; var0 < 15; ++var0) {
+         if (buffs[0 + var0] > 0) {
+            if ((6663 & 1 << var0) == 0 && buffs[15 + var0] == 0) {
+               buffs[0 + var0] = 0;
+            } else {
+               ++numbuffs;
+            }
+         }
+      }
+
+      updateStats();
+   }
+
+   public static final void removeStatusEffect(int var0) {
+      if (var0 == 18) {
+         numStatusEffects = 0;
+
+         for(int var1 = 0; var1 < 18; ++var1) {
+            statusEffects[18 + var1] = statusEffects[36 + var1] = statusEffects[0 + var1] = 0;
+         }
+      } else {
+         if (statusEffects[36 + var0] == 0) {
+            return;
+         }
+
+         if (var0 == 17) {
+            Render.startFogLerp(1, 0, 2000);
+         }
+
+         statusEffects[18 + var0] = 0;
+         statusEffects[36 + var0] = 0;
+         statusEffects[0 + var0] = 0;
+         --numStatusEffects;
+      }
+
+      translateStatusEffects();
+   }
+
+   public static final boolean addStatusEffect(int var0, int var1, int var2) {
+      if (isFamiliar) {
+         return false;
+      } else if (var0 == 13 && buffs[9] > 0) {
+         return false;
+      } else {
+         int var3 = statusEffects[36 + var0] + 1;
+         if (var3 > 3 || (var0 == 12 || var0 == 9) && var3 > 1) {
+            if (var0 == 14) {
+               statusEffects[0 + var0] = var2;
+            }
+
+            return false;
+         } else {
+            if (var3 == 1) {
+               ++numStatusEffects;
+               if (var0 == 17) {
+                  TinyGL.fogMin = 0;
+                  if (TinyGL.fogRange > 0) {
+                     TinyGL.fogRange = -1;
+                  }
+
+                  Render.startFogLerp(1024, 0, 2000);
+               }
+            }
+
+            int[] var10000 = statusEffects;
+            var10000[18 + var0] += var1;
+            statusEffects[0 + var0] = var2;
+            statusEffects[36 + var0] = var3;
+            return true;
+         }
+      }
+   }
+
+   private static final void drawStatusEffectIcon(Graphics var0, int var1, int var2, int var3, int var4, int var5) {
+      Text var6 = Text.getSmallBuffer();
+      var6.setLength(0);
+      if (var1 == 8) {
+         var6.append('%');
+         var6.append(var2);
+      } else if ((1 << var1 & 14855) == 0) {
+         if (var2 >= 0) {
+            var6.append('+');
+            var6.append(var2);
+         } else {
+            var6.append(var2);
+         }
+      }
+
+      var0.drawString(var6, var4, var5 + 2, 24);
+      var0.drawBuffIcon(var1, var4 + 3, var5 + 1, 0);
+      if (App.time - turnTime < 600) {
+         var6.setLength(0);
+         var6.append(var3);
+         var0.drawString(var6, var4 + 8, var5 + 2, 17);
+         Canvas.forcePump = true;
+      }
+
+      var6.dispose();
+   }
+
+   private static final void resetCounters() {
+      for(int var0 = 0; var0 < 8; ++var0) {
+         counters[var0] = 0;
+      }
+
+   }
+
+   public static final Entity getPlayerEnt() {
+      return Game.entities[1];
+   }
+
+   public static final void setPickUpWeapon(int var0) {
+      EntityDef var1 = null;
+      EntityDef var2 = EntityDef.find(6, 1, 14);
+      if (var0 != 15) {
+         var1 = EntityDef.lookup(var0);
+      }
+
+      if (null != var1) {
+         var2.tileIndex = var1.tileIndex;
+         var2.name = var1.name;
+         var2.longName = var1.longName;
+         var2.description = var1.description;
+      } else {
+         var2.tileIndex = 15;
+         var2.name = 159;
+         var2.longName = 159;
+         var2.description = 159;
+      }
+
+   }
+
+   public static final void giveAll() {
+      int var0;
+      if (!isFamiliar) {
+         if (hasASentryBot()) {
+            for(var0 = 0; var0 <= 3; ++var0) {
+               int var1 = 3 + var0;
+               if ((weapons & 1 << var1) != 0) {
+                  weapons &= ~(1 << var1);
+                  weapons |= 1 << 3 + (var0 + 1) % 4;
+                  break;
+               }
+            }
+         } else {
+            weapons |= 8;
+         }
+
+         short var2 = 16383;
+         var0 = var2 & -9;
+         var0 &= -17;
+         var0 &= -33;
+         var0 &= -65;
+         weapons |= var0;
+         selectPrevWeapon();
+         selectNextWeapon();
+      }
+
+      for(var0 = 0; var0 < 9; ++var0) {
+         if (var0 != 8) {
+            give(2, var0, 100, true);
+         }
+      }
+
+      for(var0 = 0; var0 < 26; ++var0) {
+         if (var0 != 24) {
+            give(0, (byte)var0, 999, true);
+            Canvas.numHelpMessages = 0;
+         }
+      }
+
+      give(0, 24, 9999, true);
+      ce.setStat(0, ce.getStat(1));
+   }
+
+   public static void equipForLevel(int var0) {
+      if (isFamiliar) {
+         familiarReturnsToPlayer(false);
+      }
+
+      int var1 = Canvas.viewX;
+      int var2 = Canvas.viewY;
+      int var3 = Canvas.viewAngle;
+      reset();
+      Canvas.prevX = var1;
+      Canvas.saveX = var1;
+      Canvas.destX = var1;
+      Canvas.viewX = var1;
+      Canvas.prevY = var2;
+      Canvas.saveY = var2;
+      Canvas.destY = var2;
+      Canvas.viewY = var2;
+      Canvas.viewZ = Canvas.destZ = Render.getHeight(Canvas.viewX, Canvas.viewY) + 36;
+      Canvas.saveAngle = var3;
+      Canvas.destAngle = var3;
+      Canvas.viewAngle = var3;
+      Canvas.destPitch = 0;
+      Canvas.viewPitch = 0;
+      highestMap = var0;
+      boolean var4 = enableHelp;
+      enableHelp = false;
+      weapons = 0;
+      Game.numMallocsForVIOS = 0;
+      switch(var0) {
+      case 1:
+      default:
+         break;
+      case 2:
+         give(1, 1, 1);
+         give(1, 0, 1);
+         addArmor(33);
+         give(0, 17, 23);
+         give(0, 11, 4);
+         give(0, 12, 3);
+         give(2, 1, 100);
+         give(0, 24, 4);
+         addXP(638);
+         modifyStat(3, 4);
+         modifyStat(4, 2);
+         modifyStat(5, 11);
+         modifyStat(7, 4);
+         break;
+      case 3:
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 3, 100);
+         addArmor(4);
+         give(0, 17, 34);
+         give(0, 11, 12);
+         give(0, 12, 6);
+         give(2, 1, 100);
+         give(2, 3, 90);
+         give(0, 24, 39);
+         addXP(1519);
+         modifyStat(3, 13);
+         modifyStat(4, 5);
+         modifyStat(5, 10);
+         modifyStat(6, 6);
+         modifyStat(7, 10);
+         Game.numMallocsForVIOS = 1;
+         break;
+      case 4:
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 4, 100);
+         addArmor(4);
+         give(0, 17, 44);
+         give(0, 11, 5);
+         give(0, 12, 26);
+         give(2, 1, 73);
+         give(2, 3, 30);
+         give(2, 2, 24);
+         give(0, 24, 59);
+         addXP(2622);
+         modifyStat(3, 14);
+         modifyStat(4, 10);
+         modifyStat(5, 9);
+         modifyStat(6, 14);
+         modifyStat(7, 20);
+         Game.numMallocsForVIOS = 1;
+         break;
+      case 5:
+         give(1, 9, 1);
+         give(1, 8, 1);
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 5, 100);
+         addArmor(34);
+         give(0, 17, 79);
+         give(0, 16, 31);
+         give(0, 11, 9);
+         give(0, 12, 40);
+         give(2, 1, 84);
+         give(2, 3, 85);
+         give(2, 2, 88);
+         give(2, 4, 55);
+         give(0, 24, 73);
+         addXP(3594);
+         modifyStat(3, 14);
+         modifyStat(4, 12);
+         modifyStat(5, 9);
+         modifyStat(6, 18);
+         modifyStat(7, 28);
+         Game.numMallocsForVIOS = 2;
+         break;
+      case 6:
+         give(1, 10, 1);
+         give(1, 9, 1);
+         give(1, 8, 1);
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 5, 100);
+         addArmor(24);
+         give(0, 17, 116);
+         give(0, 16, 54);
+         give(0, 11, 22);
+         give(0, 12, 2);
+         give(2, 1, 88);
+         give(2, 3, 60);
+         give(2, 2, 100);
+         give(2, 4, 100);
+         give(2, 5, 20);
+         give(0, 24, 101);
+         addXP(4749);
+         modifyStat(3, 24);
+         modifyStat(4, 13);
+         modifyStat(5, 9);
+         modifyStat(6, 18);
+         modifyStat(7, 34);
+         Game.numMallocsForVIOS = 3;
+         break;
+      case 7:
+         give(1, 11, 1);
+         give(1, 10, 1);
+         give(1, 9, 1);
+         give(1, 8, 1);
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 5, 100);
+         addArmor(44);
+         give(0, 17, 132);
+         give(0, 16, 72);
+         give(0, 11, 23);
+         give(0, 12, 12);
+         give(2, 1, 70);
+         give(2, 3, 40);
+         give(2, 2, 66);
+         give(2, 4, 60);
+         give(2, 5, 63);
+         give(0, 24, 168);
+         addXP(5971);
+         modifyStat(3, 25);
+         modifyStat(4, 14);
+         modifyStat(5, 8);
+         modifyStat(6, 18);
+         modifyStat(7, 40);
+         Game.numMallocsForVIOS = 3;
+         break;
+      case 8:
+         give(1, 12, 1);
+         give(1, 11, 1);
+         give(1, 10, 1);
+         give(1, 9, 1);
+         give(1, 8, 1);
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 5, 100);
+         addArmor(38);
+         give(0, 17, 146);
+         give(0, 16, 94);
+         give(0, 11, 27);
+         give(0, 12, 20);
+         give(2, 1, 89);
+         give(2, 3, 25);
+         give(2, 2, 94);
+         give(2, 4, 52);
+         give(2, 5, 100);
+         give(0, 24, 168);
+         addXP(7198);
+         modifyStat(3, 27);
+         modifyStat(4, 16);
+         modifyStat(5, 8);
+         modifyStat(6, 22);
+         modifyStat(7, 46);
+         Game.numMallocsForVIOS = 4;
+         break;
+      case 9:
+      case 10:
+         give(1, 13, 1);
+         give(1, 12, 1);
+         give(1, 11, 1);
+         give(1, 10, 1);
+         give(1, 9, 1);
+         give(1, 8, 1);
+         give(1, 7, 1);
+         give(1, 2, 1);
+         give(1, 1, 1);
+         give(1, 0, 1);
+         give(1, 5, 100);
+         addArmor(27);
+         give(0, 17, 160);
+         give(0, 16, 90);
+         give(0, 11, 23);
+         give(0, 12, 28);
+         give(2, 1, 29);
+         give(2, 3, 8);
+         give(2, 2, 44);
+         give(2, 4, 55);
+         give(2, 5, 90);
+         give(2, 6, 5);
+         give(0, 24, 174);
+         addXP(8281);
+         modifyStat(3, 27);
+         modifyStat(4, 17);
+         modifyStat(5, 8);
+         modifyStat(6, 22);
+         modifyStat(7, 46);
+         Game.numMallocsForVIOS = 4;
+      }
+
+      give(0, 18, 1);
+      enableHelp = var4;
+      selectNextWeapon();
+      Canvas.updateFacingEntity = true;
+   }
+
+   public static boolean addArmor(int var0) {
+      int var1 = ce.getStat(2);
+      if (var1 >= 200 && var0 > 0) {
+         return false;
+      } else if (var0 < 0 && god) {
+         return false;
+      } else {
+         Hud.repaintFlags |= 4;
+         ce.setStat(2, Math.max(0, Math.min(200, var1 + var0)));
+         return true;
+      }
+   }
+
+   public static int distFrom(Entity var0) {
+      return var0.distFrom(Canvas.destX, Canvas.destY);
+   }
+
+   public static void showAchievementMessage(int var0) {
+      Text var1 = Text.getSmallBuffer();
+      Text var2 = Text.getSmallBuffer();
+      Text.resetTextArgs();
+      switch(var0) {
+      case 0:
+         Text.composeText(136, var1);
+         break;
+      case 1:
+         Text.composeText(137, var1);
+         break;
+      case 2:
+         Text.composeText(138, var1);
+         break;
+      case 3:
+         Text.composeText(139, var1);
+      }
+
+      Text.addTextArg(var1);
+      var1.dispose();
+      Text.composeText((short)0, (short)135, var2);
+      if (!Canvas.enqueueHelpDialog(var2, 3)) {
+         var2.dispose();
+      }
+
+      int var3 = 10;
+      if (var0 == 2) {
+         var3 = calcLevelXP(level) - calcLevelXP(level - 1) >> 4;
+      }
+
+      addXP(var3);
+      Sound.playSound(14);
+   }
+
+   public static short gradeToString(int var0) {
+      byte var1 = 44;
+      switch(var0) {
+      case 1:
+         var1 = 43;
+         break;
+      case 2:
+         var1 = 42;
+         break;
+      case 3:
+         var1 = 41;
+         break;
+      case 4:
+         var1 = 40;
+         break;
+      case 5:
+         var1 = 39;
+         break;
+      case 6:
+         var1 = 38;
+      }
+
+      return var1;
+   }
+
+   public static int levelGrade(boolean var0) {
+      int var1 = getCurrentGrade(Canvas.loadMapID);
+      if (var1 != 0) {
+         return var1;
+      } else {
+         fillMonsterStats();
+         if (monsterStats[1] != 0 && Game.totalSecrets != 0) {
+            int var2 = (monsterStats[0] << 8) / monsterStats[1];
+            int var3 = 6 * var2 >> 8;
+            int var4 = (Game.mapSecretsFound << 8) / Game.totalSecrets;
+            int var5 = 6 * var4 >> 8;
+            int var6 = Math.max((var3 + var5 >> 1) - currentLevelDeaths, 1);
+            if (var0) {
+               int var7 = getBestGrade(Canvas.loadMapID);
+               if (var6 > var7) {
+                  setBestGrade(Canvas.loadMapID, var6);
+               }
+
+               setCurrentGrade(Canvas.loadMapID, var6);
+            }
+
+            return var6;
+         } else {
+            return 0;
+         }
+      }
+   }
+
+   public static int finalCurrentGrade() {
+      int var0 = 0;
+
+      for(int var1 = 1; var1 <= 9; ++var1) {
+         var0 += getCurrentGrade(var1);
+      }
+
+      return var0 / 9;
+   }
+
+   public static int finalBestGrade() {
+      int var0 = 0;
+
+      for(int var1 = 1; var1 <= 9; ++var1) {
+         var0 += getBestGrade(var1);
+      }
+
+      return var0 / 9;
+   }
+
+   public static int getCurrentGrade(int var0) {
+      --var0;
+      return currentGrades >> 3 * var0 & 7;
+   }
+
+   public static void setCurrentGrade(int var0, int var1) {
+      --var0;
+      currentGrades |= var1 << 3 * var0;
+   }
+
+   public static int getBestGrade(int var0) {
+      --var0;
+      return bestGrades >> 3 * var0 & 7;
+   }
+
+   public static void setBestGrade(int var0, int var1) {
+      --var0;
+      bestGrades &= ~(7 << 3 * var0);
+      bestGrades |= var1 << 3 * var0;
+   }
+
+   public static boolean hasPurifyEffect() {
+      return statusEffects[1] != 0;
+   }
+
+   public static void setFamiliar(short var0) {
+      if (Canvas.state != 6) {
+         Game.scriptStateVars[16] = 1;
+         Canvas.saveX = Canvas.viewX;
+         Canvas.saveY = Canvas.viewY;
+         Canvas.saveZ = Canvas.viewZ;
+         Canvas.saveAngle = Canvas.viewAngle;
+         Canvas.savePitch = Canvas.viewPitch;
+         isFamiliar = true;
+         setFamiliarType(var0);
+         Game.updateScriptVars();
+         if (!Canvas.attemptMove(Canvas.viewX + Canvas.viewStepX, Canvas.viewY + Canvas.viewStepY)) {
+            Game.scriptStateVars[16] = 0;
+            isFamiliar = false;
+            setFamiliarType((short)0);
+            Game.updateScriptVars();
+            Hud.addMessage((short)0, (short)190, 3);
+         } else {
+            Render.savePlayerFog();
+            Render.startFade(400, 2);
+            playerEntityCopyIndex = Game.spawnPlayerEntityCopy((short)Canvas.saveX, (short)Canvas.saveY).getIndex();
+            weaponsCopy = 0;
+
+            int var1;
+            for(var1 = 0; var1 < ammoCopy.length; ++var1) {
+               ammoCopy[var1] = 0;
+            }
+
+            for(var1 = 0; var1 < inventoryCopy.length; ++var1) {
+               inventoryCopy[var1] = 0;
+            }
+
+            clearOutFamiliarsStatusEffects();
+            swapStatusEffects();
+            boolean var2 = false;
+            if (familiarType != 1 && familiarType != 3) {
+               var2 = showHelp((short)13, false);
+            } else {
+               var2 = showHelp((short)12, false);
+            }
+
+            if (!var2) {
+               Canvas.drawPlayingSoftKeys();
+            }
+
+         }
+      }
+   }
+
+   public static short unsetFamiliar(boolean var0) {
+      Hud.stopBrightenScreen();
+      Hud.stopScreenSmack();
+      int var1 = Canvas.saveAngle;
+      if (var0) {
+         if (Canvas.saveX > Canvas.viewX) {
+            var1 = 512;
+         } else if (Canvas.saveX < Canvas.viewX) {
+            var1 = 0;
+         } else if (Canvas.saveY > Canvas.viewY) {
+            var1 = 256;
+         } else if (Canvas.saveY < Canvas.viewY) {
+            var1 = 768;
+         }
+      }
+
+      Canvas.viewAngle = var1;
+      Canvas.destAngle = var1;
+      Canvas.destPitch = Canvas.viewPitch = Canvas.savePitch;
+      if (!var0) {
+         Canvas.destX = Canvas.saveX;
+         Canvas.destY = Canvas.saveY;
+         Canvas.destZ = Canvas.saveZ;
+         Canvas.viewX = Canvas.destX;
+         Canvas.viewY = Canvas.destY;
+         Canvas.viewZ = Canvas.destZ;
+      }
+
+      swapStatusEffects();
+      if (!var0) {
+         Render.loadPlayerFog();
+      }
+
+      Render.startFade(400, 2);
+      Game.remove(Game.entities[playerEntityCopyIndex]);
+      playerEntityCopyIndex = -1;
+      unlink();
+      Canvas.finishRotation(true);
+      relink();
+      isFamiliar = false;
+      short var2 = familiarType;
+      setFamiliarType((short)0);
+      Game.updateScriptVars();
+      Canvas.drawPlayingSoftKeys();
+      return var2;
+   }
+
+   public static void clearOutFamiliarsStatusEffects() {
+      boolean var0 = false;
+      numbuffsCopy = 0;
+
+      int var1;
+      for(var1 = 0; var1 < 15; ++var1) {
+         buffsCopy[15 + var1] = buffsCopy[0 + var1] = 0;
+      }
+
+      numStatusEffectsCopy = 0;
+
+      for(var1 = 0; var1 < 18; ++var1) {
+         statusEffectsCopy[18 + var1] = statusEffectsCopy[36 + var1] = statusEffectsCopy[0 + var1] = 0;
+      }
+
+   }
+
+   public static void swapStatusEffects() {
+      int var0 = numbuffs;
+      numbuffs = numbuffsCopy;
+      numbuffsCopy = var0;
+      short[] var1 = buffs;
+      buffs = buffsCopy;
+      buffsCopy = var1;
+      int var2 = numStatusEffects;
+      numStatusEffects = numStatusEffectsCopy;
+      numStatusEffectsCopy = var2;
+      int[] var3 = statusEffects;
+      statusEffects = statusEffectsCopy;
+      statusEffectsCopy = var3;
+   }
+
+   public static void familiarDied() {
+      int var0;
+      if (Combat.curAttacker != null) {
+         var0 = Combat.curAttacker.getSprite();
+         if (Combat.curAttacker.def.eType == 2) {
+            Render.mapSpriteInfo[var0] = Render.mapSpriteInfo[var0] & -65281 | 0;
+         }
+
+         Text.resetTextArgs();
+         if (Combat.accumRoundDamage > 0) {
+            Text.addTextArg((short)1, (short)(Combat.curAttacker.def.name & 1023));
+            Text.addTextArg(Combat.accumRoundDamage);
+            Hud.addMessage((short)0, (short)112);
+         }
+
+         Canvas.shakeTime = 0;
+         Hud.damageDir = 0;
+         Hud.damageTime = 0;
+         EntityMonster var10000 = Combat.curAttacker.monster;
+         var10000.flags = (short)(var10000.flags | 1024);
+         Game.gsprite_clear(64);
+         Canvas.invalidateRect();
+      }
+
+      var0 = Canvas.viewX;
+      int var1 = Canvas.viewY;
+      short var2 = unsetFamiliar(false);
+      Hud.addMessage((short)0, (short)192, 2);
+      if (var2 == 2 || var2 == 4) {
+         explodeFamiliar(var0 >> 6, var1 >> 6, var2);
+      }
+
+      byte var3;
+      switch(var2) {
+      case 2:
+         var3 = 4;
+         break;
+      case 3:
+         var3 = 5;
+         break;
+      case 4:
+         var3 = 6;
+         break;
+      default:
+         var3 = 3;
+      }
+
+      if (noFamiliarRemains) {
+         noFamiliarRemains = false;
+      } else {
+         handleBotRemains(var0, var1, var3);
+      }
+
+      give(1, var3, -1, true);
+   }
+
+   public static void explodeFamiliar(int var0, int var1, int var2) {
+      int var3 = var2 == 2 ? 4 : 6;
+      int var4 = var3 * 9;
+      int var5 = Combat.weapons[var4 + 0] & 255;
+      int var6 = Combat.weapons[var4 + 1] & 255;
+      if (var5 != var6) {
+         var5 += App.nextByte() % (var6 - var5);
+      }
+
+      Combat.radiusHurtEntities(var0, var1, 0, var5, getPlayerEnt(), (Entity)null);
+   }
+
+   public static void familiarReturnsToPlayer(boolean var0) {
+      unsetFamiliar(var0);
+      tookBotsInventory = stealFamiliarsInventory();
+   }
+
+   public static boolean stealFamiliarsInventory() {
+      int var0 = weaponsCopy;
+      short[] var1 = inventoryCopy;
+      short[] var2 = ammoCopy;
+      boolean var3 = false;
+
+      int var4;
+      for(var4 = 0; var4 < 26; ++var4) {
+         if (var1[var4] != 0) {
+            give(0, var4, var1[var4], true);
+            var3 = true;
+         }
+      }
+
+      for(var4 = 0; var4 < 9; ++var4) {
+         if (var2[var4] != 0) {
+            give(2, var4, var2[var4], true);
+            var3 = true;
+         }
+      }
+
+      for(var4 = 0; var4 < 15; ++var4) {
+         int var5 = 1 << var4;
+         if ((var5 & var0) != 0) {
+            give(1, var4, 1, true);
+            var3 = true;
+         }
+      }
+
+      return var3;
+   }
+
+   public static void handleBotRemains(int var0, int var1, int var2) {
+      int var3 = weaponsCopy;
+      short[] var4 = inventoryCopy;
+      short[] var5 = ammoCopy;
+      short var6 = 0;
+      short var7 = 0;
+
+      int var8;
+      EntityDef var13;
+      short var15;
+      for(var8 = 0; var8 < 26; ++var8) {
+         if (var4[var8] != 0) {
+            if (var8 != 24 && (var8 < 0 || var8 >= 11)) {
+               switch(var8) {
+               case 11:
+               case 12:
+               case 17:
+               case 19:
+               case 20:
+                  var13 = EntityDef.find(6, 0, var8);
+                  var15 = var13.tileIndex;
+                  Game.spawnDropItem(var0, var1, var15, var13, var4[var8], true);
+                  break;
+               case 13:
+                  var7 += var4[var8];
+               case 14:
+               case 15:
+               case 18:
+               default:
+                  break;
+               case 16:
+                  var6 += var4[var8];
+               }
+            } else {
+               short var9 = var4[var8];
+               give(0, var8, var9, true, true);
+               EntityDef var10 = EntityDef.find(6, 0, var8);
+               Text var11 = Hud.getMessageBuffer();
+               Text.resetTextArgs();
+               Text.addTextArg((int)var9);
+               Text var12 = Text.getSmallBuffer();
+               Text.composeText((short)1, var10.longName, var12);
+               Text.addTextArg(var12);
+               Text.composeText((short)0, (short)86, var11);
+               var12.dispose();
+               Hud.finishMessageBuffer();
+            }
+         }
+      }
+
+      for(var8 = 1; var8 < 9; ++var8) {
+         if (var5[var8] != 0) {
+            switch(var8) {
+            case 1:
+            case 2:
+            case 4:
+            case 5:
+               var13 = EntityDef.find(6, 2, var8);
+               var15 = var13.tileIndex;
+               Game.spawnDropItem(var0, var1, var15, var13, var5[var8], true);
+            case 3:
+            }
+         }
+      }
+
+      for(var8 = 0; var8 < 15; ++var8) {
+         int var14 = 1 << var8;
+         if ((var14 & var3) != 0) {
+            int var16 = Combat.getWeaponTileNum(var8);
+            EntityDef var17 = EntityDef.lookup(var16);
+            Game.spawnDropItem(var0, var1, var16, var17, 1, true);
+         }
+      }
+
+      Game.spawnSentryBotCorpse(var0, var1, var2, var6, var7);
+   }
+
+   public static final void forceFamiliarReturnDueToMonster() {
+      familiarReturnsToPlayer(false);
+      botReturnedDueToMonster = true;
+   }
+
+   public static final void attemptToDeploySentryBot() {
+      if (Game.activeMonsters != null) {
+         Entity var0 = Game.activeMonsters;
+
+         Entity var1;
+         do {
+            var1 = var0.monster.nextOnList;
+            if (var0.distFrom(Canvas.destX, Canvas.destY) <= Combat.tileDistances[0] && var0.aiIsAttackValid()) {
+               Hud.addMessage((short)0, (short)219, 3);
+               return;
+            }
+
+            var0 = var1;
+         } while(var1 != Game.activeMonsters && Game.activeMonsters != null);
+      }
+
+      int var3 = Canvas.viewX + Canvas.viewStepX >> 6;
+      int var4 = Canvas.viewY + Canvas.viewStepY >> 6;
+      if ((Render.mapFlags[var4 * 32 + var3] & 16) != 0) {
+         Hud.addMessage((short)0, (short)217, 3);
+      } else {
+         byte var2;
+         switch(ce.weapon) {
+         case 4:
+            var2 = 2;
+            break;
+         case 5:
+            var2 = 3;
+            break;
+         case 6:
+            var2 = 4;
+            break;
+         default:
+            var2 = 1;
+         }
+
+         setFamiliar(var2);
+      }
+   }
+
+   public static final void attemptToDiscardFamiliar(int var0) {
+      int var1 = Canvas.viewX >> 6;
+      int var2 = Canvas.viewY >> 6;
+      if ((Render.mapFlags[var2 * 32 + var1] & 32) != 0) {
+         Hud.addMessage((short)0, (short)221, 3);
+      } else {
+         int var3 = Combat.getWeaponTileNum(var0);
+         Game.spawnDropItem(Canvas.viewX, Canvas.viewY, var3, 6, 1, var0, ammo[7], false);
+         give(1, var0, -1);
+      }
+
+   }
+
+   public static final void startSelfDestructDialog() {
+      if (Canvas.state != 6) {
+         attemptingToSelfDestructFamiliar = true;
+         Text var0 = Text.getSmallBuffer();
+         Text.composeText((short)0, (short)194, var0);
+         Canvas.startDialog((ScriptThread)null, var0, 12, 1, false);
+         var0.dispose();
+      }
+
+   }
+
+   public static final boolean vendingMachineIsHacked(int var0) {
+      return (hackedVendingMachines & 1 << var0) == 1 << var0;
+   }
+
+   public static final void setVendingMachineHack(int var0) {
+      hackedVendingMachines |= 1 << var0;
+   }
+
+   public static final int getVendingMachineTriesLeft(int var0) {
+      var0 = Math.max(Math.min(var0, 18), 1);
+      int var1;
+      if (var0 > 9) {
+         var1 = vendingMachineHackTriesLeft2;
+         var0 -= 9;
+      } else {
+         var1 = vendingMachineHackTriesLeft1;
+      }
+
+      byte var2 = 7;
+      return var1 >> 3 * (var0 - 1) & var2;
+   }
+
+   public static final void removeOneVendingMachineTry(int var0) {
+      var0 = Math.max(Math.min(var0, 18), 1);
+      if (getVendingMachineTriesLeft(var0) > 0) {
+         if (var0 > 9) {
+            var0 -= 9;
+            vendingMachineHackTriesLeft2 -= 1 << 3 * (var0 - 1);
+         } else {
+            vendingMachineHackTriesLeft1 -= 1 << 3 * (var0 - 1);
+         }
+      }
+
+   }
+
+   public static final boolean weaponIsASentryBot(int var0) {
+      return (1 << var0 & 120) != 0;
+   }
+
+   public static final boolean hasASentryBot() {
+      boolean var0 = (weapons & 8) != 0 || (weapons & 32) != 0;
+      boolean var1 = (weapons & 16) != 0 || (weapons & 64) != 0;
+      return var0 || var1;
+   }
+
+   private static final void setFamiliarType(short var0) {
+      familiarType = var0;
+      calcViewMode();
+   }
+
+   private static final void calcViewMode() {
+      switch(familiarType) {
+      case 0:
+         Render.postProcessMode = 0;
+         break;
+      case 1:
+      case 2:
+         Render.postProcessMode = 1;
+         break;
+      case 3:
+      case 4:
+         Render.postProcessMode = 2;
+      }
+
+   }
+
+   public static final void enterTargetPractice(int var0, int var1, int var2, ScriptThread var3) {
+      inTargetPractice = true;
+      Canvas.targetPracticeThread = var3;
+      Canvas.saveX = Canvas.viewX;
+      Canvas.saveY = Canvas.viewY;
+      Canvas.saveZ = Canvas.viewZ;
+      Canvas.saveAngle = Canvas.viewAngle;
+      short var4;
+      if (var2 == 4) {
+         var4 = 512;
+      } else if (var2 == 0) {
+         var4 = 0;
+      } else if (var2 == 2) {
+         var4 = 256;
+      } else {
+         var4 = 768;
+      }
+
+      Canvas.viewAngle = var4;
+      Canvas.destAngle = var4;
+      Canvas.destX = Canvas.viewX = (var0 << 6) + 32;
+      Canvas.destY = Canvas.viewY = (var1 << 6) + 32;
+      Canvas.destZ = Canvas.viewZ = Render.getHeight(Canvas.viewX, Canvas.viewY) + 36;
+      showHelp((short)17, false);
+      ScriptThread.stripInventoryForTargetPractice();
+      targetPracticeScore = 0;
+      Render.startFade(750, 2);
+   }
+
+   public static final void assessTargetPracticeShot(Entity var0) {
+      int var1 = var0.getSprite();
+      int var2 = Canvas.zoomCollisionX - Render.mapSprites[Render.S_X + var1];
+      int var3 = Canvas.zoomCollisionY - Render.mapSprites[Render.S_Y + var1];
+      int var4 = Canvas.zoomCollisionZ - Render.mapSprites[Render.S_Z + var1];
+      int var5 = Render.mapSpriteInfo[var1] >> 8 & 240;
+      int[][] var6 = Render.getImageFrameBounds(var0.def.tileIndex, 3, 2, 0);
+      int var7 = -1;
+
+      for(int var8 = 0; var8 < 3; ++var8) {
+         if (var2 > var6[var8][0] && var2 < var6[var8][1] && var3 > var6[var8][0] && var3 < var6[var8][1] && var4 > var6[var8][2] && var4 < var6[var8][3]) {
+            var7 = var8;
+            break;
+         }
+      }
+
+      if (var7 != -1) {
+         if (var7 != 0 && var5 != 16) {
+            if (var7 == 1) {
+               Hud.addMessage((short)231, (int)4);
+               targetPracticeScore += 20;
+            } else {
+               Hud.addMessage((short)232, (int)4);
+               targetPracticeScore += 10;
+            }
+         } else {
+            Hud.addMessage((short)230, (int)4);
+            targetPracticeScore += 30;
+         }
+      } else {
+         Hud.addMessage((short)68, (int)4);
+      }
+
+   }
+
+   public static final void exitTargetPractice() {
+      inTargetPractice = false;
+      Canvas.destAngle = Canvas.viewAngle = Canvas.saveAngle;
+      Canvas.destX = Canvas.viewX = Canvas.saveX;
+      Canvas.destY = Canvas.viewY = Canvas.saveY;
+      Canvas.destZ = Canvas.viewZ = Canvas.saveZ;
+      ScriptThread.restoreInventory();
+      Render.startFade(750, 2);
+      boolean var0 = false;
+      short var1 = 240;
+      Text.resetTextArgs();
+      Text.addTextArg(targetPracticeScore);
+      if (targetPracticeScore > var1 / 2) {
+         byte var2 = 1;
+         int var3 = modifyStat(5, var2);
+         if (var3 > 0) {
+            Text.addTextArg(var3);
+            Hud.addMessage((short)233, (int)3);
+         } else {
+            Hud.addMessage((short)235, (int)3);
+         }
+      } else {
+         Hud.addMessage((short)234, (int)3);
+      }
+
+      if (Canvas.targetPracticeThread != null) {
+         Canvas.setState(3);
+         Canvas.targetPracticeThread.run();
+         Canvas.targetPracticeThread = null;
+      }
+
+   }
+
+   public static final void usedChainsaw(boolean var0) {
+      ++chainsawStrengthBonusCount;
+      if (var0 && (Combat.crFlags & 2) != 0) {
+         ++chainsawStrengthBonusCount;
+      }
+
+      if (chainsawStrengthBonusCount >= 30) {
+         chainsawStrengthBonusCount %= 30;
+         byte var4 = 2;
+         int var5 = modifyStat(4, var4);
+         if (var5 != 0) {
+            Text.resetTextArgs();
+            Text.addTextArg(var5);
+            Hud.addMessage((short)241, (int)3);
+         }
+      }
+
+      Canvas.startShake(666, 1, 0);
+   }
+
+   public static final boolean hasANanoDrink() {
+      for(int var0 = 0; var0 < 11; ++var0) {
+         if (inventory[var0] > 0) {
+            return true;
+         }
+      }
+
+      return false;
+   }
+}

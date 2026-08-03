@@ -1,0 +1,5 @@
+{
+  "name": "Doom 2 RPG Map Editor",
+  "description": "A visual level editor for the J2ME Doom 2 RPG engine. Features a 32x32 grid, layer management (Walls, Flats, Entities), and ID mapping based on the original game source code.",
+  "requestFramePermissions": []
+}

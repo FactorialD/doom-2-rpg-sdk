@@ -1,0 +1,1860 @@
+final class Combat {
+   public static int touchMe = 1;
+   private static final int SEQ_INVALID = -1;
+   private static final int SEQ_STARTATTACK = 0;
+   public static final int SEQ_ENDATTACK = 1;
+   private static final int FIELD_COUNT = 6;
+   private static final int FLD_WPIDLEX = 0;
+   private static final int FLD_WPIDLEY = 1;
+   private static final int FLD_WPATKX = 2;
+   private static final int FLD_WPATKY = 3;
+   private static final int FLD_WPFLASHX = 4;
+   private static final int FLD_WPFLASHY = 5;
+   public static final int OUTOFCOMBAT_TURNS = 4;
+   private static final int MAX_TILEDISTANCES = 16;
+   public static final int[] tileDistances = new int[16];
+   private static short[] monsterAttacks = null;
+   private static byte[] wpinfo = null;
+   private static byte[] monsterStats = null;
+   public static Entity curAttacker;
+   public static Entity curTarget;
+   public static Entity lastTarget;
+   public static int dodgeDir;
+   private static EntityMonster targetMonster;
+   private static EntityMonster attackerMonster;
+   private static int targetSubType;
+   private static int targetType;
+   public static int stage;
+   public static int nextStageTime;
+   public static int nextStage;
+   static final int EXPLOSION_OFFSET2 = 38;
+   private static final int MAX_ACTIVE_MISSILES = 8;
+   private static GameSprite[] activeMissiles = new GameSprite[8];
+   public static int numActiveMissiles;
+   public static int missileAnim;
+   public static final int EXPLOSION_OFFSET = 48;
+   public static boolean targetKilled;
+   private static boolean exploded;
+   public static ScriptThread explodeThread = null;
+   public static int damage;
+   public static int totalDamage;
+   public static int deathAmt;
+   public static int accumRoundDamage;
+   private static int totalArmorDamage;
+   private static int hitType;
+   public static int animStartTime;
+   public static int animTime;
+   public static int animEndTime;
+   public static int attackerWeaponId;
+   public static int attackerWeaponProj;
+   public static int attackerWeapon;
+   public static int weaponDistance;
+   public static boolean lerpingWeapon = false;
+   public static boolean weaponDown = false;
+   public static boolean lerpWpDown;
+   private static int lerpWpStartTime;
+   private static int lerpWpDur;
+   public static boolean flashDone;
+   public static int flashDoneTime;
+   public static int flashTime;
+   public static boolean settingDynamite;
+   public static boolean dynamitePlaced;
+   public static int settingDynamiteTime;
+   public static int currentBombIndex;
+   public static final int DEF_PLACING_BOMB_Z = 18;
+   public static int placingBombZ;
+   public static final int PLACING_BOMB_TIME = 750;
+   public static final int BOMB_RECOVER_TIME = 500;
+   private static int attackFrame;
+   public static int animLoopCount;
+   private static boolean gotCrit;
+   private static boolean gotHit;
+   public static boolean isGibbed;
+   public static int reflectionDmg = 0;
+   public static int playerMissRepetition;
+   public static int monsterMissRepetition;
+   public static int renderTime;
+   private static int attackX;
+   private static int attackY;
+   public static final int WEAPON_FIELD_STRMIN = 0;
+   public static final int WEAPON_FIELD_STRMAX = 1;
+   public static final int WEAPON_FIELD_RANGEMIN = 2;
+   public static final int WEAPON_FIELD_RANGEMAX = 3;
+   public static final int WEAPON_FIELD_AMMOTYPE = 4;
+   public static final int WEAPON_FIELD_AMMOUSAGE = 5;
+   public static final int WEAPON_FIELD_PROJTYPE = 6;
+   public static final int WEAPON_FIELD_NUMSHOTS = 7;
+   public static final int WEAPON_FIELD_SHOTHOLD = 8;
+   public static final int WEAPON_MAX_FIELDS = 9;
+   public static byte[] weapons = null;
+   public static byte[] monsterWeakness = null;
+   public static final int WEAPON_STRIDE = 8;
+   public static final int MONSTER_FIELD_ATTACK1 = 0;
+   public static final int MONSTER_FIELD_ATTACK2 = 1;
+   public static final int MONSTER_FIELD_CHANCE = 2;
+   public static final int MAX_WRAITH_DRAIN = 45;
+   static final int MAP_03_BOOST = 9;
+   public static CombatEntity[] monsters = new CombatEntity[51];
+   public static int worldDist;
+   public static int tileDist;
+   public static int crFlags;
+   public static int crDamage;
+   public static int crArmorDamage;
+   public static int crCritChance;
+   public static int crHitChance;
+   public static final int PUNCH_PREP = 1;
+   public static final int PUNCH_RIGHTHAND = 2;
+   public static final int PUNCH_LEFTHAND = 3;
+   public static int punchingMonster = 0;
+   public static boolean punchMissed = false;
+   public static boolean oneShotCheat = false;
+   private static int numThornParticleSystems = 0;
+   private static final int ONE_FP = 65536;
+   private static final int LOWEREDWEAPON_Y = 38;
+   private static final int LOWERWEAPON_TIME = 200;
+   public static final int WEAPON_SCALE = 131072;
+   static final int COMBAT_DONE = 0;
+   static final int COMBAT_CONTINUE = 1;
+   private static int[] tableCombatMasks = null;
+   public static final int REBOUNDOFFSET = 31;
+   private static boolean soulCubeIsAttacking = false;
+
+   public static final short getWeaponWeakness(int var0, int var1, int var2) {
+      byte[] var3 = monsterWeakness;
+      int var4 = var3[(var1 * 3 + var2) * 8 + var0 / 2] >> ((var0 & 1) << 2) & 15;
+      return (short)(var4 + 1 << 5);
+   }
+
+   public static final boolean startup() {
+      tableCombatMasks = App.TBL_COMBAT_COMBATMASKS;
+      monsterAttacks = App.TBL_COMBAT_MONSTERATTACKS;
+      wpinfo = App.TBL_COMBAT_WEAPONINFO;
+      monsterStats = App.TBL_COMBAT_MONSTERSTATS;
+      weapons = App.TBL_COMBAT_WEAPONDATA;
+      monsterWeakness = App.TBL_MONSTER_WEAKNESS;
+      int var0 = 0;
+
+      int var1;
+      for(var1 = 0; var1 < 51; var0 += 6) {
+         monsters[var1] = new CombatEntity(5 * (monsterStats[var0 + 0] & 255), monsterStats[var0 + 1], monsterStats[var0 + 2], monsterStats[var0 + 3], monsterStats[var0 + 4], monsterStats[var0 + 5]);
+         ++var1;
+      }
+
+      for(var1 = 0; var1 < 16; ++var1) {
+         tileDistances[var1] = 64 * (var1 + 1) * 64 * (var1 + 1);
+      }
+
+      gotCrit = false;
+      gotHit = false;
+      settingDynamite = false;
+      String var2 = App.app.getAppProperty("App-OneShotKill");
+      if (var2 != null && var2.length() != 0) {
+         oneShotCheat = Integer.parseInt(var2) != 0;
+      } else {
+         oneShotCheat = false;
+      }
+
+      return true;
+   }
+
+   public static final void performAttack(Entity var0, Entity var1, int var2, int var3, boolean var4) {
+      attackX = var2;
+      attackY = var3;
+      curAttacker = var0;
+      curTarget = var1;
+      accumRoundDamage = 0;
+      if (var0 == null || var1 == null) {
+         Player.updateStats();
+      }
+
+      if (var0 != null) {
+         var0.info |= 2097152;
+      }
+
+      if (var1 != null) {
+         var1.info |= 2097152;
+      }
+
+      if (var1 == null || var0 == null && var1.def.eType == 2) {
+         Player.lastCombatTurn = Player.totalMoves;
+         Player.inCombat = true;
+      }
+
+      if (var1 != null) {
+         targetType = var1.def.eType;
+         targetSubType = var1.def.eSubType;
+         targetMonster = var1.monster;
+      } else {
+         targetSubType = 0;
+         targetType = 0;
+         targetMonster = null;
+      }
+
+      if (curAttacker == null) {
+         attackerWeaponId = Player.ce.weapon;
+         attackerMonster = null;
+      } else {
+         attackerMonster = curAttacker.monster;
+         attackerWeaponId = attackerMonster.ce.weapon;
+         if (attackerWeaponId == 18) {
+            attackFrame = 64;
+         } else if (attackerWeaponId == getMonsterField(curAttacker.def, 1)) {
+            attackFrame = 80;
+         } else {
+            attackFrame = 64;
+         }
+      }
+
+      attackerWeapon = attackerWeaponId * 9;
+      if (punchingMonster > 0 && !punchMissed) {
+         stage = -1;
+         nextStage = 0;
+         nextStageTime = App.gameTime + 300;
+      } else {
+         stage = 0;
+         nextStageTime = 0;
+      }
+
+      animEndTime = 0;
+      animLoopCount = weapons[attackerWeapon + 7];
+      if (curAttacker == null) {
+         short var5 = Player.ammo[weapons[attackerWeapon + 4]];
+         byte var6 = weapons[attackerWeapon + 5];
+         if (var6 > 0) {
+            animLoopCount = Math.min(var5 / var6, animLoopCount);
+         }
+      }
+
+      attackerWeaponProj = weapons[attackerWeapon + 6];
+      if (curAttacker != null) {
+         worldDist = curAttacker.distFrom(Canvas.viewX, Canvas.viewY);
+         tileDist = WorldDistToTileDist(worldDist);
+      } else {
+         worldDist = curTarget.distFrom(Canvas.viewX, Canvas.viewY);
+         tileDist = WorldDistToTileDist(worldDist);
+      }
+
+      short[] var13 = Render.mapSprites;
+      if (attackerWeaponId == 18) {
+         int var14 = curAttacker.getSprite();
+         int var7 = var13[Render.S_X + var14] - Canvas.viewX;
+         int var8 = var13[Render.S_Y + var14] - Canvas.viewY;
+         int var9 = var7;
+         int var10 = var8;
+         if (var7 != 0) {
+            var9 = var7 / Math.abs(var7);
+         }
+
+         if (var8 != 0) {
+            var10 = var8 / Math.abs(var8);
+         }
+
+         int var11 = Math.abs(var7 + var8) >> 6;
+         var7 = Canvas.viewX + var9 * 64;
+         var8 = Canvas.viewY + var10 * 64;
+         LerpSprite var12 = Game.allocLerpSprite((ScriptThread)null, var14, true);
+         var12.startTime = App.gameTime;
+         var12.travelTime = var11 * 200;
+         var12.flags |= 16;
+         var12.srcScale = var12.dstScale = Render.mapSprites[Render.S_SCALEFACTOR + var14];
+         var12.srcX = var13[Render.S_X + var14];
+         var12.srcY = var13[Render.S_Y + var14];
+         var12.srcZ = var13[Render.S_Z + var14];
+         var12.dstX = var7 - var9 * 28;
+         var12.dstY = var8 - var10 * 28;
+         var12.dstZ = Render.getHeight(var12.dstX, var12.dstY) + 32;
+         Render.mapSpriteInfo[var14] = Render.mapSpriteInfo[var14] & -65281 | attackFrame << 8;
+         curAttacker.monster.frameTime = Integer.MAX_VALUE;
+         Game.unlinkEntity(curAttacker);
+         Game.linkEntity(curAttacker, var7 >> 6, var8 >> 6);
+         stage = -1;
+         nextStage = 0;
+         nextStageTime = App.gameTime + var12.travelTime;
+      }
+
+      Canvas.setState(5);
+   }
+
+   private static final void checkMonsterFX() {
+      EntityMonster var0 = curTarget.monster;
+      int var1 = var0.monsterEffects;
+      boolean var2 = Player.statusEffects[12] > 0;
+      if (var2) {
+         int var3 = Player.statusEffects[30];
+         var1 |= var3 - 1 << 5 | 1;
+      }
+
+      var0.monsterEffects = var1;
+   }
+
+   private static final int playerSeq() {
+      int var0 = 0;
+      boolean var1 = false;
+      if (nextStageTime != 0 && App.gameTime > nextStageTime && numActiveMissiles == 0 && Game.animatingEffects == 0) {
+         stage = nextStage;
+         nextStageTime = 0;
+         nextStage = -1;
+      }
+
+      int var2;
+      Entity var10000;
+      if (stage == 0) {
+         isGibbed = false;
+         totalDamage = 0;
+         totalArmorDamage = 0;
+         hitType = 0;
+         deathAmt = 0;
+         gotCrit = false;
+         gotHit = false;
+         crFlags = 0;
+         damage = 0;
+         targetKilled = false;
+         flashTime = 0;
+         int var10002 = Player.counters[6]++;
+         if (punchingMonster == 1) {
+            punchingMonster = 2;
+         }
+
+         if ((1 << attackerWeaponId & 30719) == 0) {
+            crFlags |= 64;
+         }
+
+         if (weapons[attackerWeapon + 4] != 0) {
+            var1 = true;
+            if (weapons[attackerWeapon + 5] != 0) {
+               var0 = Player.ammo[weapons[attackerWeapon + 4]] / weapons[attackerWeapon + 5];
+            }
+         }
+
+         if (var1 && targetType != 2 && attackerWeaponId != 14 && !Player.weaponIsASentryBot(attackerWeaponId)) {
+            if (var0 == 2) {
+               Hud.addMessage((short)62);
+            } else if (var0 < 5 && var0 > 1) {
+               Text.resetTextArgs();
+               Text.addTextArg(var0 - 1);
+               Hud.addMessage((short)63);
+            }
+         }
+
+         byte var3;
+         if (targetType == 2) {
+            if ((1 << attackerWeaponId & 2) == 0) {
+               crFlags |= 32;
+            }
+
+            CombatEntity.calcCombat(Player.ce, curTarget, false, worldDist, targetSubType);
+            if ((crFlags & 4103) != 0) {
+               var10000 = curTarget;
+               var10000.info |= 67108864;
+               if ((crFlags & 2) != 0) {
+                  gotCrit = true;
+                  hitType = 2;
+               } else if ((crFlags & 1) != 0 || (crFlags & 4) != 0) {
+                  hitType = 1;
+               }
+
+               gotHit = true;
+               damage = crDamage;
+               var2 = targetMonster.ce.getStat(0);
+               deathAmt = var2 - damage;
+               if (damage > 0 && gotHit) {
+                  int[] var10 = Player.counters;
+                  var10[2] += damage;
+                  if (damage > Player.counters[1]) {
+                     Player.counters[1] = damage;
+                  }
+               }
+            }
+         } else {
+            hitType = calcHit(curTarget);
+            var2 = weapons[attackerWeapon + 0];
+            var3 = weapons[attackerWeapon + 1];
+            if (var2 != var3) {
+               var2 += App.nextByte() % (var3 - var2);
+            }
+
+            if (Game.difficulty == 4) {
+               var2 -= var2 >> 2;
+            }
+
+            damage = var2;
+         }
+
+         byte var6 = -1;
+         switch(attackerWeaponId) {
+         case 0:
+         case 3:
+         case 5:
+         case 9:
+            var6 = 15;
+            break;
+         case 1:
+            var6 = 16;
+            break;
+         case 2:
+            var6 = 17;
+         case 4:
+         case 6:
+         case 11:
+         default:
+            break;
+         case 7:
+            var6 = 18;
+            break;
+         case 8:
+            var6 = 19;
+            break;
+         case 10:
+            var6 = 20;
+            break;
+         case 12:
+            var6 = 22;
+            break;
+         case 13:
+            var6 = 23;
+         }
+
+         if (var6 != -1) {
+            Sound.playSound(var6);
+         }
+
+         totalDamage += damage;
+         totalArmorDamage += crArmorDamage;
+         animTime = weapons[attackerWeapon + 8];
+         if (Player.statusEffects[2] > 0) {
+            animTime *= 5;
+         } else {
+            animTime *= 10;
+         }
+
+         animStartTime = App.gameTime;
+         animEndTime = animStartTime + animTime;
+         flashDone = false;
+         flashDoneTime = animStartTime + flashTime;
+         if (var1 && var0 < animLoopCount) {
+            animLoopCount = var0;
+         }
+
+         launchProjectile();
+         if ((1 << attackerWeaponId & 9222) == 0) {
+            byte var5 = 2;
+            if (attackerWeaponId == 11) {
+               var5 = 6;
+            }
+
+            Render.rockView(animTime, Canvas.viewX - var5 * (Canvas.viewStepX >> 6), Canvas.viewY - var5 * (Canvas.viewStepY >> 6), Canvas.viewZ);
+         }
+
+         if (totalDamage == 0) {
+            if (targetType == 2) {
+               if ((crFlags & 256) != 0) {
+                  Hud.addMessage((short)59, (int)1);
+               } else if ((crFlags & 1024) != 0) {
+                  Hud.addMessage((short)64);
+               } else if ((crFlags & 1) == 0) {
+                  Hud.addMessage((short)68);
+               }
+            }
+         } else if (targetType == 2) {
+            accumRoundDamage += totalDamage;
+         } else if (hitType != 0) {
+            targetKilled = true;
+         }
+
+         stage = -1;
+         Hud.repaintFlags |= 4;
+         Hud.repaintFlags |= 64;
+         var3 = weapons[attackerWeapon + 5];
+         byte var4 = weapons[attackerWeapon + 4];
+         short[] var11 = Player.ammo;
+         var11[var4] = (short)(var11[var4] - var3);
+         Player.ammo[var4] = (short)Math.max(Player.ammo[var4], 0);
+         nextStage = 1;
+         nextStageTime = animEndTime;
+         updateProjectile();
+         Canvas.invalidateRect();
+         if (totalDamage == 0 || hitType == 0) {
+            var10002 = Player.counters[7]++;
+         }
+      } else {
+         if (stage == 1) {
+            settingDynamite = false;
+            dynamitePlaced = false;
+            Canvas.invalidateRect();
+            if (targetType == 2) {
+               var10000 = curTarget;
+               var10000.info &= -67108865;
+            }
+
+            if (targetType == 9 && targetSubType == 17) {
+               var2 = curTarget.getSprite();
+               Game.executeTile(Render.mapSprites[Render.S_X + var2] >> 6, Render.mapSprites[Render.S_Y + var2] >> 6, 4084 | Canvas.flagForWeapon(attackerWeaponId), true);
+            }
+
+            if (attackerWeaponProj == 5) {
+               checkForBFGDeaths(attackX >> 6, attackY >> 6);
+            }
+
+            short var9 = 4385;
+            if (targetKilled || targetType == 2 && targetMonster.ce.getStat(0) <= 0) {
+               curTarget.died(true, Player.getPlayerEnt());
+               targetKilled = true;
+            } else if (--animLoopCount > 0 && (1 << targetType & var9) == 0 && !punchMissed && targetType != 10) {
+               stage = 0;
+               animTime = 0;
+               animEndTime = 0;
+               nextStageTime = 0;
+               return 1;
+            }
+
+            if (punchingMonster > 0 && !targetKilled && !punchMissed) {
+               int var7 = curTarget.getSprite();
+               if (var7 != -1 && curTarget.monster != null) {
+                  Render.mapSpriteInfo[var7] = Render.mapSpriteInfo[var7] & -65281 | 0;
+               }
+            }
+
+            punchingMonster = 0;
+            punchMissed = false;
+            if (targetType == 2 && accumRoundDamage != 0 && (curTarget.info & 131072) != 0) {
+               Text var8 = Hud.getMessageBuffer();
+               Text.resetTextArgs();
+               if (gotCrit) {
+                  Text.composeText((short)0, (short)70, var8);
+               }
+
+               Text.addTextArg(accumRoundDamage);
+               Text.composeText((short)0, (short)71, var8);
+               Hud.finishMessageBuffer();
+            }
+
+            if (attackerWeaponId == 14) {
+               Player.weapons &= -16385;
+               Player.selectWeapon(Player.currentWeaponCopy);
+            }
+
+            return 0;
+         }
+
+         if (stage == -1) {
+            Canvas.staleView = true;
+            if (numActiveMissiles != 0) {
+               updateProjectile();
+            }
+         }
+      }
+
+      return 1;
+   }
+
+   private static final int monsterSeq() {
+      int var0 = curAttacker.getSprite();
+      int var1 = Render.mapSpriteInfo[var0];
+      int var2 = (var1 & '\uff00') >> 8;
+      int var3 = var2 & 240;
+      int var4 = var2 & 15;
+      if ((var3 == 64 || var3 == 80) && var4 == 0) {
+         if (App.time >= curAttacker.monster.frameTime) {
+            curAttacker.monster.frameTime = App.time + weapons[attackerWeapon + 8] * 10;
+            nextStageTime = App.gameTime + weapons[attackerWeapon + 8] * 10;
+            var1 = Render.mapSpriteInfo[var0] = var1 & -65281 | (var3 | var4 + 1) << 8;
+            launchProjectile();
+         }
+      } else if (nextStageTime != 0 && App.gameTime > nextStageTime && numActiveMissiles == 0 && Game.animatingEffects == 0) {
+         if (reflectionDmg > 0 && curAttacker != null && curAttacker.monster != null) {
+            ParticleSystem.spawnMonsterBlood(curAttacker, false);
+            curAttacker.pain(reflectionDmg / 2, Player.getPlayerEnt());
+            reflectionDmg = 0;
+            if (curAttacker.monster.ce.getStat(0) <= 0) {
+               curAttacker.died(true, Player.getPlayerEnt());
+            } else {
+               curAttacker.monster.frameTime = App.time + 250;
+               nextStageTime = App.gameTime + 250;
+            }
+         } else {
+            stage = nextStage;
+            nextStageTime = 0;
+            nextStage = -1;
+         }
+      }
+
+      if (stage == 0) {
+         totalDamage = 0;
+         totalArmorDamage = 0;
+         hitType = 0;
+         crFlags = 0;
+         gotCrit = false;
+         gotHit = false;
+         targetKilled = false;
+         reflectionDmg = 0;
+         if (curAttacker.def.eSubType != 11 && (curAttacker.def.eSubType != 14 || curAttacker.def.parm == 0)) {
+            Sound.playSound(5);
+         } else {
+            Sound.playSound(15);
+         }
+
+         if (weapons[attackerWeapon + 1] > 0) {
+            if (curTarget == null) {
+               CombatEntity.calcCombat(attackerMonster.ce, Player.getPlayerEnt(), true, Player.distFrom(curAttacker), -1);
+               if ((crFlags & 4103) != 0) {
+                  if ((crFlags & 2) != 0) {
+                     gotCrit = true;
+                     hitType = 2;
+                  } else {
+                     hitType = 1;
+                  }
+
+                  gotHit = true;
+                  damage = crDamage;
+               } else {
+                  damage = 0;
+               }
+            } else {
+               hitType = 1;
+               damage = 1;
+            }
+
+            totalDamage += damage;
+            totalArmorDamage += crArmorDamage;
+         }
+
+         --animLoopCount;
+         animTime = weapons[attackerWeapon + 8] * 10;
+         animStartTime = App.gameTime;
+         animEndTime = animStartTime + animTime;
+         if (attackerWeaponId != 18) {
+            Render.mapSpriteInfo[var0] = Render.mapSpriteInfo[var0] & -65281 | attackFrame << 8;
+            curAttacker.monster.frameTime = App.time + animTime;
+         }
+
+         if (curTarget != null) {
+            targetKilled = true;
+         }
+
+         if (attackerWeaponId == 18) {
+            short[] var5 = Render.mapSprites;
+            LerpSprite var6 = Game.allocLerpSprite((ScriptThread)null, var0, true);
+            var6.startTime = App.gameTime;
+            var6.travelTime = 500;
+            var6.flags |= 16;
+            var6.srcScale = var6.dstScale = Render.mapSprites[Render.S_SCALEFACTOR + var0];
+            var6.srcX = var5[Render.S_X + var0];
+            var6.srcY = var5[Render.S_Y + var0];
+            var6.srcZ = var5[Render.S_Z + var0];
+            var6.dstX = (curAttacker.linkIndex % 32 << 6) + 32;
+            var6.dstY = (curAttacker.linkIndex / 32 << 6) + 32;
+            var6.dstZ = Render.getHeight(var6.dstX, var6.dstY) + 32;
+            var6.calcDist();
+            Render.mapSpriteInfo[var0] = Render.mapSpriteInfo[var0] & -65281 | 0;
+            curAttacker.monster.frameTime = App.time + var6.travelTime;
+            launchProjectile();
+         }
+
+         if (gotHit && (attackerWeaponId == 23 || curAttacker.def.eSubType == 2)) {
+            Player.addStatusEffect(13, 5, 3);
+            Player.translateStatusEffects();
+         }
+
+         stage = -1;
+         if (animLoopCount <= 0) {
+            nextStage = 1;
+         } else {
+            nextStage = 0;
+         }
+
+         nextStageTime = animEndTime;
+         if (Render.isImp(curAttacker.def.tileIndex) && attackerWeaponId == 16 && animLoopCount == 0) {
+            int[] var10000 = Render.mapSpriteInfo;
+            var10000[var0] ^= 131072;
+         }
+
+         updateProjectile();
+         if ((crFlags & 128) != 0) {
+            Hud.addMessage((short)67);
+         }
+
+         Canvas.invalidateRect();
+      } else {
+         if (stage == 1) {
+            if (curAttacker.def.eType == 2) {
+               Render.mapSpriteInfo[var0] = Render.mapSpriteInfo[var0] & -65281 | 0;
+            }
+
+            if (targetKilled) {
+               curTarget.died(false, (Entity)null);
+            }
+
+            Text.resetTextArgs();
+            if (accumRoundDamage > 0 && Player.buffs[0] > 0 && !curAttacker.isBoss()) {
+               Text.addTextArg(accumRoundDamage);
+               Hud.addMessage((short)0, (short)131);
+            } else if (accumRoundDamage > 0) {
+               Text.addTextArg((short)1, (short)(curAttacker.def.name & 1023));
+               Text.addTextArg(accumRoundDamage);
+               Hud.addMessage((short)0, (short)112);
+            }
+
+            Canvas.shakeTime = 0;
+            Hud.damageDir = 0;
+            Hud.damageTime = 0;
+            EntityMonster var7 = attackerMonster;
+            var7.flags = (short)(var7.flags | 1024);
+            Game.gsprite_clear(64);
+            Canvas.invalidateRect();
+            return 0;
+         }
+
+         if (stage == -1) {
+            Canvas.staleView = true;
+            if (numActiveMissiles != 0 || exploded) {
+               updateProjectile();
+            }
+         }
+      }
+
+      return Canvas.state != 13 && Canvas.state != 25 ? 1 : 0;
+   }
+
+   public static final void drawEffects() {
+      if (Player.statusEffects[13] > 0) {
+         int var0 = 131072;
+         int var1 = 64 * var0 / 65536;
+         Render.draw2DSprite(234, App.time / 256 & 3, TinyGL.screenWidth / 2 - var1 / 2, TinyGL.screenHeight - var1 / 4, 0, 3, 0, var0);
+      }
+
+   }
+
+   public static final void drawWeapon(int var0, int var1) {
+      boolean var4 = false;
+      byte var5 = 0;
+      int var6 = 0;
+      byte var7 = 0;
+      int var8 = Render.screenWidth / 2;
+      int var9 = Render.screenHeight;
+      renderTime = App.getUpTimeMs();
+      if (punchingMonster == 0 && !lerpingWeapon && weaponDown) {
+         var9 += 38;
+      }
+
+      boolean var10 = Canvas.state == 18 && Game.cinematicWeapon != -1;
+      int var11 = Player.ce.weapon;
+      if (Player.isFamiliar) {
+         if (Player.familiarType != 1 && Player.familiarType != 3) {
+            return;
+         }
+
+         var11 = 0;
+      }
+
+      if (var10) {
+         var11 = Game.cinematicWeapon;
+         var9 -= Canvas.CAMERAVIEW_BAR_HEIGHT;
+      }
+
+      int var12 = var11 * 6;
+      if (Canvas.state != 13 && Player.weapons != 0 && var11 != -1) {
+         var1 = -Math.abs(var1);
+         if (!var10 && App.time < Hud.damageTime && Hud.damageCount >= 0 && totalDamage > 0) {
+            var6 |= 256;
+         }
+
+         byte var16 = wpinfo[var12 + 0];
+         byte var17 = wpinfo[var12 + 1];
+         int var18 = wpinfo[var12 + 2];
+         int var19 = wpinfo[var12 + 3];
+         if (Player.isFamiliar && (Player.familiarType == 1 || Player.familiarType == 3)) {
+            var18 = 1 + (var18 - var16);
+            var19 = 46 + (var19 - var17);
+            var16 = 1;
+            var17 = 46;
+         }
+
+         byte var20 = wpinfo[var12 + 4];
+         byte var21 = wpinfo[var12 + 5];
+         int var2 = var16;
+         int var3 = var17;
+         int var22 = App.gameTime;
+         int var23 = 1 << var11;
+         if ((1 << var11 & 0) != 0 && (punchingMonster == 2 || punchingMonster == 3)) {
+            var4 = true;
+         }
+
+         boolean var25 = var10 || Canvas.state == 5 && curAttacker == null && nextStage == 1;
+         boolean var26 = false;
+         int var24;
+         byte var27;
+         if (var25) {
+            var2 = var18;
+            var3 = var19;
+            if (!flashDone) {
+               var4 = (var23 & 512) == 0;
+               if (var22 >= flashDoneTime) {
+                  flashDone = true;
+               }
+            } else {
+               var24 = (var22 - animStartTime << 16) / animTime;
+               if (var24 >= 65536) {
+                  var2 = var16;
+                  var3 = var17;
+               } else if (var11 == 1) {
+                  if (var24 < 43690) {
+                     var27 = 2;
+                     byte var28 = -1;
+                     boolean var29 = (var24 & 8) == 8;
+                     var2 = var18 + (var29 ? var27 : 0);
+                     var3 = var19 + (var29 ? var28 : 0);
+                  } else {
+                     var26 = true;
+                     var2 = 3 * ((65536 - var24) * var18 + (var24 - 'ꪪ') * var16) >> 16;
+                     var3 = 3 * ((65536 - var24) * var19 + (var24 - 'ꪪ') * var17) >> 16;
+                  }
+               } else {
+                  var2 = (65536 - var24) * var18 + var24 * var16 >> 16;
+                  var3 = (65536 - var24) * var19 + var24 * var17 >> 16;
+               }
+            }
+         } else if (punchingMonster == 0 && lerpingWeapon) {
+            if (lerpWpDown && lerpWpStartTime + lerpWpDur > var22) {
+               var24 = (var22 - lerpWpStartTime << 16) / lerpWpDur;
+               var9 += var24 * 38 >> 16;
+            } else if (!lerpWpDown && lerpWpStartTime + lerpWpDur > var22) {
+               var24 = (var22 - lerpWpStartTime << 16) / lerpWpDur;
+               var9 += (65536 - var24) * 38 >> 16;
+            } else {
+               lerpWpStartTime = 0;
+               lerpingWeapon = false;
+               weaponDown = lerpWpDown;
+               if (lerpWpDown) {
+                  var9 += 38;
+               }
+            }
+         }
+
+         byte var15 = 0;
+         int var13 = var8 + (var2 + var0 << 1);
+         int var14 = var9 - (var3 + var1 << 1);
+         if (Player.weaponIsASentryBot(var11)) {
+            if (var11 != 4 && var11 != 3) {
+               var27 = 18;
+            } else {
+               var27 = 19;
+            }
+
+            int var31 = var7;
+            int var32 = (App.time + var27 * 1337) / 1024 & 15;
+            if (var32 == 0 || var32 >= 4 && var32 <= 7 || var32 >= 10 && var32 <= 12) {
+               var31 = var7 ^ 131072;
+            }
+
+            int var30 = (var32 & 2) == 2 ? 1 : 2;
+            Render.draw2DSprite(var27, 2, var13, var14, var7, var15, var6, 131072);
+            Render.draw2DSprite(var27, 3, var13, var14 + var30, var31, var15, var6, 131072);
+         } else if (var11 == 14) {
+            if (Player.ammo[8] > 0) {
+               Render.draw2DSprite(Player.activeWeaponDef.tileIndex, 1, var13 + var20, var14 + var21, var7, var15, var6, 131072);
+            } else {
+               Render.draw2DSprite(getWeaponTileNum(var11), 0, var13, var14, var7, var15, var6, 131072);
+            }
+         } else {
+            var26 |= (var11 == 13 || var11 == 8) && var25;
+            if (var26) {
+               var5 = 1;
+            }
+
+            if (var4 && (385 & 1 << var11) != 0) {
+               var27 = 0;
+               Render.draw2DSprite(getWeaponTileNum(var27), 3, var13 + var20, var14 + var21, var7, 5, 0, 65536);
+            }
+
+            if (var11 == 9) {
+               Render.draw2DSprite(getWeaponTileNum(0), var5, var13, var14, var7, var15, var6, 131072);
+            }
+
+            Render.draw2DSprite(getWeaponTileNum(var11), var5, var13, var14, var7, var15, var6, 131072);
+         }
+
+         drawEffects();
+         renderTime = App.getUpTimeMs() - renderTime;
+      }
+   }
+
+   public static final void shiftWeapon(boolean var0) {
+      if (var0 != lerpWpDown && var0 != weaponDown) {
+         lerpingWeapon = true;
+         lerpWpDown = var0;
+         lerpWpStartTime = App.gameTime;
+         lerpWpDur = 200;
+      }
+   }
+
+   public static final int runFrame() {
+      return curAttacker == null ? playerSeq() : monsterSeq();
+   }
+
+   private static final int calcHit(Entity var0) {
+      int var1 = Player.ce.weapon * 9;
+      int var2 = var0.distFrom(Canvas.destX, Canvas.destY);
+      int var3 = WorldDistToTileDist(var2);
+      byte var4 = weapons[var1 + 3];
+      if (var3 >= weapons[var1 + 2] && var3 <= var4) {
+         if ((var0.info & 131072) != 0) {
+            if (var0.def.eType == 10) {
+               return (tableCombatMasks[var0.def.parm] & 1 << Player.ce.weapon) != 0 ? 1 : 0;
+            } else {
+               return 1;
+            }
+         } else {
+            return 0;
+         }
+      } else {
+         crFlags |= 1024;
+         return 0;
+      }
+   }
+
+   private static final void explodeOnMonster() {
+      if (explodeThread != null) {
+         explodeThread.run();
+         explodeThread = null;
+      }
+
+      Render.shotsFired = true;
+      if ((1 << attackerWeaponId & 2) != 0 && hitType == 0) {
+         Render.shotsFired = false;
+      } else if (curTarget.monster != null && curTarget.def.eType == 2 && (curTarget.info & 262144) == 0) {
+         Game.activate(curTarget, true, false, true, true);
+      }
+
+      if (hitType == 0) {
+         if (targetType != 2 && attackerWeaponId == 11) {
+            radiusHurtEntities(attackX >> 6, attackY >> 6, 1, damage + crArmorDamage >> 2, Player.getPlayerEnt(), (Entity)null);
+         }
+
+      } else {
+         if (targetType == 2) {
+            if (totalDamage > 0) {
+               checkMonsterFX();
+               boolean var0 = curTarget.pain(totalDamage, Player.getPlayerEnt());
+               if (attackerWeaponId != 14) {
+                  ParticleSystem.spawnMonsterBlood(curTarget, false);
+               }
+
+               int var1 = targetMonster.ce.getStat(0);
+               if (var1 > 0) {
+                  byte var2 = 0;
+                  if (0 != (targetMonster.monsterEffects & 2) || (targetMonster.flags & 4096) != 0 || var0) {
+                     var2 = 0;
+                  }
+
+                  if (var2 > 0) {
+                     Player.unlink();
+                     curTarget.knockback(Canvas.viewX, Canvas.viewY, var2);
+                     Player.link();
+                  }
+               }
+
+               if (attackerWeaponId == 11 || attackerWeaponId == 12) {
+                  int var4 = attackerWeaponId == 12 ? 1 : 2;
+                  radiusHurtEntities(attackX >> 6, attackY >> 6, 1, crDamage >> var4, Player.getPlayerEnt(), curTarget);
+               }
+            } else if (totalDamage < 0) {
+               if (targetMonster.ce.getStat(0) - totalDamage > targetMonster.ce.getStat(1)) {
+                  totalDamage = -(targetMonster.ce.getStat(1) - targetMonster.ce.getStat(0));
+               }
+
+               targetMonster.ce.setStat(0, targetMonster.ce.getStat(0) - totalDamage);
+            }
+         } else if (targetType == 10) {
+            if (totalDamage > 0) {
+               curTarget.pain(totalDamage, Player.getPlayerEnt());
+            }
+         } else if (targetType == 9) {
+            int var3 = curTarget.getSprite();
+            int[] var10000 = Render.mapSpriteInfo;
+            var10000[var3] |= 65536;
+            isGibbed = true;
+            ParticleSystem.spawnMonsterBlood(curTarget, isGibbed);
+            Game.spawnDropItem(curTarget);
+         }
+
+      }
+   }
+
+   private static final void explodeOnPlayer() {
+      if (curTarget == null) {
+         int var0 = curAttacker.getSprite();
+         int var1 = Canvas.viewAngle;
+         if (Canvas.isZoomedIn) {
+            var1 += Canvas.zoomAngle;
+         }
+
+         Hud.damageDir = Player.calcDamageDir(Canvas.viewX, Canvas.viewY, var1, Render.mapSprites[Render.S_X + var0], Render.mapSprites[Render.S_Y + var0]);
+         if (animLoopCount > 0) {
+            Hud.damageTime = App.time + 150;
+         } else {
+            Hud.damageTime = App.time + 1000;
+         }
+
+         if (Hud.damageDir != 3) {
+            Canvas.staleTime = Hud.damageTime + 1;
+         }
+
+         boolean var2 = false;
+         if (Player.buffs[0] > 0 && !curAttacker.isBoss()) {
+            var2 = true;
+         }
+
+         if (gotHit && (totalDamage > 0 || totalArmorDamage > 0)) {
+            Player.painEvent(curAttacker, true);
+            if (curAttacker != null) {
+               Entity var8 = Game.entities[1];
+               Game.unlinkEntity(curAttacker);
+               if (attackerWeaponProj == 7) {
+                  Player.addStatusEffect(13, 5, 3);
+                  Player.translateStatusEffects();
+               }
+
+               Player.addArmor(-totalArmorDamage);
+               if (totalDamage > 0) {
+                  if (!var2) {
+                     if (Game.difficulty != 1) {
+                        int var4 = Canvas.loadMapID;
+                        if (Game.difficulty == 4) {
+                           var4 *= 2;
+                        }
+
+                        var4 /= weapons[attackerWeapon + 7];
+                        totalDamage += (totalDamage >> 1) + var4;
+                     }
+
+                     EntityDef var9 = curAttacker.def;
+                     if (var9.eType == 2 && var9.eSubType == 15) {
+                        if (var9.parm == 4) {
+                           totalDamage += Game.numMallocsForVIOS * 8;
+                        } else if (Game.angryVIOS) {
+                           totalDamage += 8;
+                        }
+                     }
+
+                     accumRoundDamage += totalDamage;
+                     Player.pain(totalDamage, curAttacker, false);
+                     if (Player.ce.getStat(0) == 0) {
+                        return;
+                     }
+
+                     if (Canvas.knockbackDist == 0) {
+                        int[] var5 = curAttacker.calcPosition();
+                        int var6 = Canvas.viewX - var5[0];
+                        int var7 = Canvas.viewY - var5[1];
+                        if (var6 != 0) {
+                           var6 /= Math.abs(var6);
+                        }
+
+                        if (var7 != 0) {
+                           var7 /= Math.abs(var7);
+                        }
+
+                        Render.rockView(200, Canvas.viewX + var6 * 6, Canvas.viewY + var7 * 6, Canvas.viewZ);
+                     }
+
+                     if (Player.ce.getStat(0) > 0 && curAttacker.def.eSubType == 5 && attackerWeaponId == 18) {
+                        var8.knockback(Render.mapSprites[Render.S_X + var0], Render.mapSprites[Render.S_Y + var0], 1);
+                     }
+                  } else if (curAttacker.monster != null) {
+                     accumRoundDamage = reflectionDmg = totalDamage;
+                     animLoopCount = 0;
+                     nextStage = 1;
+                  }
+               } else {
+                  Hud.damageCount = 0;
+                  totalDamage = 0;
+               }
+
+               if (totalDamage <= 0) {
+                  Hud.addMessage((short)72);
+               }
+
+               Game.linkEntity(curAttacker, curAttacker.linkIndex % 32, curAttacker.linkIndex / 32);
+               if (Player.isFamiliar) {
+                  short var10 = Player.ammo[7];
+                  if (var10 <= 0) {
+                     Player.familiarDying(false);
+                  }
+               }
+            }
+         } else {
+            Hud.damageCount = 0;
+            if ((crFlags & 256) != 0) {
+               Text.resetTextArgs();
+               Hud.addMessage((short)73);
+            } else if ((crFlags & 128) == 0) {
+               Text.resetTextArgs();
+               Text var3 = Text.getSmallBuffer();
+               Text.composeTextField(curAttacker.name, var3);
+               Text.addTextArg(var3);
+               Hud.addMessage((short)69);
+               var3.dispose();
+            }
+
+            Hud.damageCount = -1;
+         }
+
+      }
+   }
+
+   public static final int getMonsterField(EntityDef var0, int var1) {
+      return monsterAttacks[var1 + var0.eSubType * 9 + var0.parm * 3];
+   }
+
+   public static final void checkForBFGDeaths(int var0, int var1) {
+      int var2 = (var0 << 6) + 32;
+      int var3 = (var1 << 6) + 32;
+      int var4 = Render.getHeight(var0 << 6, var1 << 6) + 32;
+
+      for(int var5 = var1 - 1; var5 <= var1 + 1; ++var5) {
+         for(int var6 = var0 - 1; var6 <= var0 + 1; ++var6) {
+            if (var6 != var0 || var5 != var1) {
+               Game.trace(var2, var3, var4, (var6 << 6) + 32, (var5 << 6) + 32, Render.getHeight(var6 << 6, var5 << 6) + 32, (Entity)null, 4129, 1, false);
+               Entity var8;
+               if (Game.traceEntity == null) {
+                  for(Entity var7 = Game.findMapEntity(var6 << 6, var5 << 6, 30381); var7 != null; var7 = var8) {
+                     var8 = var7.nextOnTile;
+                     if (var7.monster != null && var7.monster.ce.getStat(0) <= 0 && var7.def.eType != 9) {
+                        var7.died(true, Player.getPlayerEnt());
+                     }
+                  }
+               }
+            }
+         }
+      }
+
+   }
+
+   public static final void radiusHurtEntities(int var0, int var1, int var2, int var3, Entity var4, Entity var5) {
+      int var6 = (var0 << 6) + 32;
+      int var7 = (var1 << 6) + 32;
+      int var8 = Render.getHeight(var0 << 6, var1 << 6) + 32;
+
+      int var9;
+      int var10;
+      for(var9 = var1 - 1; var9 <= var1 + 1; ++var9) {
+         for(var10 = var0 - 1; var10 <= var0 + 1; ++var10) {
+            Game.trace(var6, var7, var8, (var10 << 6) + 32, (var9 << 6) + 32, Render.getHeight(var10 << 6, var9 << 6) + 32, (Entity)null, 4129, 1, true);
+            if (Game.traceEntity == null) {
+               hurtEntityAt(var10, var9, var0, var1, var10 == var0 && var9 == var1 ? 0 : var2, var3, var4, var5);
+            }
+         }
+      }
+
+      for(var9 = var1 - 1; var9 <= var1 + 1; ++var9) {
+         for(var10 = var0 - 1; var10 <= var0 + 1; ++var10) {
+            int var11 = 16388 | Game.eventFlagForDirection(var0 - var10, var1 - var9);
+            if (Game.doesScriptExist(var10, var9, var11)) {
+               ScriptThread var12 = Game.allocScriptThread();
+               var12.queueTile(var10, var9, var11);
+               var12.run();
+            }
+         }
+      }
+
+   }
+
+   public static final void hurtEntityAt(int var0, int var1, int var2, int var3, int var4, int var5, Entity var6, Entity var7) {
+      hurtEntityAt(var0, var1, var2, var3, var4, var5, var6, false, var7);
+   }
+
+   public static final void hurtEntityAt(int var0, int var1, int var2, int var3, int var4, int var5, Entity var6, boolean var7, Entity var8) {
+      crFlags = 16;
+      Render.shotsFired = true;
+      Entity var10 = Player.getPlayerEnt();
+
+      Entity var11;
+      for(Entity var9 = Game.findMapEntity(var0 << 6, var1 << 6, 30383); var9 != null; var9 = var11) {
+         var11 = var9.nextOnTile;
+         if (var9 != var8 && (var9.info & 131072) != 0) {
+            int var12;
+            if (var9 == var10) {
+               if (attackerWeaponProj != 5) {
+                  var5 >>= 1;
+                  var12 = var5 * 10 / 100;
+                  var12 = Math.min(var12, Player.ce.getStat(2));
+                  var5 -= var12;
+                  var5 -= var5 * Player.ce.getStat(3) / 100;
+                  Player.painEvent((Entity)null, false);
+                  var10.knockback((var2 << 6) + 32, (var3 << 6) + 32, var4);
+                  if (var5 > 0) {
+                     crArmorDamage = var12;
+                     Player.pain(var5, (Entity)null, true);
+                     Player.addArmor(-crArmorDamage);
+                     Player.addStatusEffect(13, 5, 3);
+                     Player.translateStatusEffects();
+                  }
+               }
+            } else if (var9.def.eType == 9) {
+               if (!var7) {
+                  return;
+               }
+
+               var9.died(false, var6);
+               var9.info |= 65536;
+               ParticleSystem.spawnMonsterBlood(var9, true);
+            } else if (var9.monster != null) {
+               var9.info |= 2097152;
+               if ((var9.info & 262144) == 0) {
+                  Game.activate(var9, true, false, true, true);
+               }
+
+               short var18 = getWeaponWeakness(attackerWeaponId, var9.def.eSubType, var9.def.parm);
+               var12 = var18 * var5 >> 8;
+               var12 -= var9.monster.ce.getStatPercent(3) * var12 >> 8;
+               if (var12 > 0) {
+                  if (attackerWeaponProj == 5) {
+                     int var13 = var9.getSprite();
+                     short var14 = Render.mapSprites[Render.S_X + var13];
+                     short var15 = Render.mapSprites[Render.S_Y + var13];
+                     short var16 = Render.mapSprites[Render.S_Z + var13];
+                     int var20 = var16 + (var16 >> 1);
+                     GameSprite var17 = Game.gsprite_allocAnim(244, var14, var15, var20);
+                     var17.flags |= 2048;
+                     nextStageTime = App.gameTime + var17.duration;
+                     Render.mapSprites[Render.S_RENDERMODE + var17.sprite] = 4;
+                     Render.mapSprites[Render.S_SCALEFACTOR + var17.sprite] = 32;
+                  }
+
+                  boolean var19 = var9.pain(var12, (Entity)null);
+                  if ((var9.monster.flags & 4096) == 0 && !var19) {
+                     var9.knockback((var2 << 6) + 32, (var3 << 6) + 32, var4);
+                  }
+
+                  Text.resetTextArgs();
+                  Text.addTextIDArg(var9.name);
+                  Text.addTextArg(var12);
+                  if (var9.monster.ce.getStat(0) <= 0) {
+                     Hud.addMessage((short)74);
+                     if (attackerWeaponProj != 5) {
+                        if (var7 && var6 != null && var6.def.eType == 14 && var6.def.eSubType == 6) {
+                           var9.info |= 65536;
+                           ParticleSystem.spawnMonsterBlood(var9, true);
+                        }
+
+                        var9.died(true, var6);
+                     }
+                  } else {
+                     Hud.addMessage((short)75);
+                  }
+               }
+            } else if (var9.def.eType != 8) {
+               if (var9.def.eType == 10) {
+               }
+
+               var9.pain(var5, var6);
+               var9.died(true, var6);
+            }
+         }
+      }
+
+   }
+
+   public static final Text getWeaponStatStr(int var0) {
+      int var1 = var0 * 9;
+      Text var2 = Text.getLargeBuffer();
+      Text.resetTextArgs();
+      Text.addTextArg((int)weapons[var1 + 0]);
+      Text.composeText((short)0, (short)77, var2);
+      Text.resetTextArgs();
+      if (weapons[var1 + 3] != 1) {
+         Text.addTextArg((int)weapons[var1 + 2]);
+         Text.addTextArg((int)weapons[var1 + 3]);
+         Text.composeText((short)0, (short)78, var2);
+      } else {
+         Text.addTextArg((int)weapons[var1 + 3]);
+         Text.composeText((short)0, (short)79, var2);
+      }
+
+      byte var3 = weapons[var1 + 4];
+      EntityDef var4 = EntityDef.find(6, 2, var3);
+      if (var4 != null) {
+         Text.composeText((short)0, (short)76, var2);
+         Text.composeText((short)1, var4.name, var2);
+      }
+
+      return var2;
+   }
+
+   public static final Text getArmorStatStr(int var0) {
+      Text var1 = Text.getLargeBuffer();
+      if (var0 != -1) {
+         Text.resetTextArgs();
+         Text.addTextArg(Player.ce.getStat(2));
+         Text.composeText((short)0, (short)80, var1);
+      }
+
+      Text.composeText((short)0, (short)81, var1);
+      return var1;
+   }
+
+   public static final int WorldDistToTileDist(int var0) {
+      for(int var1 = 0; var1 < tileDistances.length - 1; ++var1) {
+         if (var0 < tileDistances[var1]) {
+            return var1;
+         }
+      }
+
+      return tileDistances.length - 1;
+   }
+
+   public static final void cleanUpAttack() {
+      stage = 1;
+      animLoopCount = 0;
+   }
+
+   private static void updateProjectile() {
+      int var10001;
+      int[] var21;
+      if (numActiveMissiles <= 0) {
+         if (gotHit && (totalDamage > 0 || totalArmorDamage > 0) && exploded && (attackerWeaponId == 16 || attackerWeaponId == 15 || attackerWeaponId == 18 || attackerWeaponId == 17)) {
+            if (attackerWeaponId == 16) {
+               missileAnim = 245;
+            } else if (attackerWeaponId == 15) {
+               missileAnim = 246;
+            } else {
+               missileAnim = 247;
+            }
+
+            int[] var16 = curAttacker.calcPosition();
+            if (Game.isInFront(var16[0] >> 6, var16[1] >> 6)) {
+               GameSprite var14 = Game.gsprite_allocAnim(missileAnim, Canvas.destZ, Canvas.destY, Canvas.destZ);
+               var14.flags |= 2048;
+               Render.mapSprites[Render.S_RENDERMODE + var14.sprite] = 5;
+               int var15 = (curAttacker.info & '\uffff') - 1;
+               if ((Render.mapSpriteInfo[var15] & 131072) != 0 && missileAnim == 245) {
+                  var21 = Render.mapSpriteInfo;
+                  var10001 = var14.sprite;
+                  var21[var10001] |= 131072;
+               }
+            }
+         }
+      } else {
+         byte var0 = 0;
+
+         for(int var1 = 0; var1 < numActiveMissiles; ++var1) {
+            GameSprite var2 = activeMissiles[var1];
+            int var6;
+            int var7;
+            int var8;
+            if ((var2.flags & 2) != 0) {
+               if (missileAnim == 248) {
+                  var21 = Render.mapSpriteInfo;
+                  var10001 = var2.sprite;
+                  var21[var10001] ^= 131072;
+               } else if (missileAnim == 171) {
+                  int var17 = curAttacker.getSprite();
+                  short var18 = Render.mapSprites[Render.S_X + var17];
+                  short var19 = Render.mapSprites[Render.S_Y + var17];
+                  var6 = Game.viewX;
+                  var7 = Game.viewY;
+                  var8 = 0;
+                  int var9 = 0;
+                  if (Math.abs(var7 - var19) > Math.abs(var6 - var18)) {
+                     var9 = (var7 - var19 >> 31 << 1) + 1;
+                  } else {
+                     var8 = (var6 - var18 >> 31 << 1) + 1;
+                  }
+
+                  int var10 = var18 + numThornParticleSystems * var8 * 64 + var8 * 32;
+                  int var11 = var19 + numThornParticleSystems * var9 * 64 + var9 * 32;
+                  if (Math.abs(Render.mapSprites[Render.S_X + var2.sprite] - var10) <= 4 && Math.abs(Render.mapSprites[Render.S_Y + var2.sprite] - var11) <= 4) {
+                     int var12 = Render.getHeight(var10, var11);
+                     ParticleSystem.spawnParticles(1, -8298435, var10, var11, var12);
+                     GameSprite var13 = Game.gsprite_allocAnim(170, var10, var11, var12 + 32);
+                     Render.mapSprites[Render.S_SCALEFACTOR + var13.sprite] = 48;
+                     var13.duration += var2.duration - (App.gameTime - var2.time);
+                     ++numThornParticleSystems;
+                  }
+
+                  Canvas.repaintFlags |= 32;
+               }
+            } else {
+               boolean var3 = true;
+               byte var4 = 64;
+               int var5 = var2.pos[3];
+               var6 = var2.pos[4];
+               var7 = var2.pos[5];
+               switch(attackerWeaponProj) {
+               case 2:
+                  missileAnim = 235;
+                  var0 = 4;
+                  if (curTarget != null && (crFlags & 4103) != 0) {
+                     EntityMonster var20 = curTarget.monster;
+                     if (var20 != null && (1 << curTarget.def.eSubType & 129025) == 0) {
+                        var20.resetGoal();
+                        var20.goalType = 4;
+                        var20.goalParam = 3;
+                     }
+                  }
+                  break;
+               case 3:
+                  missileAnim = 243;
+                  var0 = 4;
+                  break;
+               case 4:
+                  missileAnim = 242;
+                  var0 = 4;
+                  Canvas.startShake(500, 4, 500);
+                  Sound.playSound(1);
+                  break;
+               case 5:
+                  missileAnim = 244;
+                  var0 = 4;
+                  break;
+               case 6:
+               case 8:
+               case 11:
+               default:
+                  missileAnim = 0;
+                  break;
+               case 7:
+                  Sound.playSound(1);
+                  if (curTarget == null && hitType != 0 && Player.buffs[9] > 0) {
+                     missileAnim = 208;
+                     var5 += Canvas.viewStepX >> 1;
+                     var6 += Canvas.viewStepY >> 1;
+                     var0 = 3;
+                  } else {
+                     missileAnim = 242;
+                     var0 = 4;
+                  }
+                  break;
+               case 9:
+                  var0 = 0;
+                  missileAnim = 170;
+                  ParticleSystem.spawnParticles(1, -8298435, var5, var6, var7 + 16);
+                  var7 += 48;
+                  break;
+               case 10:
+                  missileAnim = 252;
+                  var0 = 4;
+                  break;
+               case 12:
+                  Game.gsprite_destroy(var2);
+
+                  for(var8 = var1 + 1; var8 < numActiveMissiles; ++var8) {
+                     activeMissiles[var8 - 1] = activeMissiles[var8];
+                  }
+
+                  --numActiveMissiles;
+                  if (soulCubeIsAttacking) {
+                     soulCubeIsAttacking = false;
+                     exploded = true;
+                     explodeOnMonster();
+                     launchSoulCube();
+                  }
+
+                  return;
+               case 13:
+                  missileAnim = 0;
+                  ParticleSystem.spawnParticles(1, -1, var2.sprite);
+                  Sound.playSound(1);
+               }
+
+               if (curAttacker != null && (1 << Hud.damageDir & 28) == 0 && !var3) {
+                  missileAnim = 0;
+               }
+
+               Game.gsprite_destroy(var2);
+               if (missileAnim != 0 && (curAttacker == null || curTarget == null && hitType != 0)) {
+                  var2 = Game.gsprite_allocAnim(missileAnim, var5, var6, var7);
+                  var2.flags |= 2048;
+                  nextStageTime = App.gameTime + var2.duration;
+                  Render.mapSprites[Render.S_RENDERMODE + var2.sprite] = (short)var0;
+                  Render.mapSprites[Render.S_SCALEFACTOR + var2.sprite] = (short)var4;
+                  if (missileAnim == 243) {
+                     short[] var10000 = Render.mapSprites;
+                     var10001 = Render.S_SCALEFACTOR + var2.sprite;
+                     var10000[var10001] = (short)(var10000[var10001] - 16);
+                  }
+
+                  if (curAttacker != null) {
+                     var8 = (curAttacker.info & '\uffff') - 1;
+                     if ((Render.mapSpriteInfo[var8] & 131072) != 0) {
+                        var21 = Render.mapSpriteInfo;
+                        var10001 = var2.sprite;
+                        var21[var10001] |= 131072;
+                     }
+                  }
+               }
+
+               for(var8 = var1 + 1; var8 < numActiveMissiles; ++var8) {
+                  activeMissiles[var8 - 1] = activeMissiles[var8];
+               }
+
+               --numActiveMissiles;
+               exploded = true;
+            }
+         }
+      }
+
+      if (exploded) {
+         if (curTarget == null) {
+            explodeOnPlayer();
+            exploded = false;
+         } else {
+            explodeOnMonster();
+            exploded = false;
+         }
+      }
+
+   }
+
+   private static void launchProjectile() {
+      int var0 = 256;
+      boolean var1 = true;
+      byte var2 = 16;
+      byte var3 = 16;
+      byte var4 = 0;
+      if (attackerWeaponProj == 12) {
+         soulCubeIsAttacking = true;
+         launchSoulCube();
+      } else {
+         dodgeDir = App.nextInt() > 1073741823 ? 1 : 0;
+         int var11 = ((dodgeDir << 1) - 1) * 16;
+         int var5;
+         int var6;
+         int var7;
+         int var12;
+         if (curAttacker == null) {
+            var5 = Game.viewX;
+            var6 = Game.viewY;
+            var7 = Render.getHeight(var5, var6) + 32;
+            var2 = 0;
+         } else {
+            var12 = (curAttacker.info & '\uffff') - 1;
+            var5 = Render.mapSprites[Render.S_X + var12];
+            var6 = Render.mapSprites[Render.S_Y + var12];
+            var7 = Render.mapSprites[Render.S_Z + var12];
+         }
+
+         int var8;
+         int var9;
+         int var10;
+         if (curTarget == null) {
+            var8 = Game.viewX;
+            var9 = Game.viewY;
+            var10 = Render.getHeight(var8, var9) + 32;
+         } else if (targetType == 0) {
+            var8 = Game.traceCollisionX;
+            var9 = Game.traceCollisionY;
+            var10 = Game.traceCollisionZ;
+         } else {
+            var12 = (curTarget.info & '\uffff') - 1;
+            var8 = Render.mapSprites[Render.S_X + var12];
+            var9 = Render.mapSprites[Render.S_Y + var12];
+            var10 = Render.mapSprites[Render.S_Z + var12];
+         }
+
+         switch(attackerWeaponProj) {
+         case 2:
+            var4 = 3;
+            missileAnim = 240;
+            var1 = false;
+            var0 = 512;
+            break;
+         case 3:
+            var4 = 3;
+            missileAnim = 243;
+            var0 += var0 >> 1;
+            if (Render.mapSprites[Render.S_SCALEFACTOR + curTarget.getSprite()] >= 64) {
+               var10 += 16;
+            }
+
+            var1 = false;
+            break;
+         case 4:
+            var4 = 0;
+            if (curAttacker == null) {
+               missileAnim = 225;
+            } else {
+               missileAnim = 226;
+            }
+
+            var0 += 64;
+            var1 = false;
+            break;
+         case 5:
+            var4 = 4;
+            missileAnim = 244;
+            if (curAttacker != null) {
+               var0 += var0 >> 1;
+            }
+
+            var1 = false;
+            break;
+         case 6:
+            var4 = 0;
+            missileAnim = 227;
+            var1 = false;
+            break;
+         case 7:
+            var4 = 3;
+            missileAnim = 242;
+            var1 = false;
+            break;
+         case 8:
+            var4 = 3;
+            missileAnim = 241;
+            var1 = false;
+            break;
+         case 9:
+            missileAnim = 171;
+            var1 = false;
+            var7 -= 32;
+            var10 -= 32;
+            numThornParticleSystems = 0;
+            break;
+         case 10:
+            var4 = 3;
+            missileAnim = 252;
+            var7 += 48;
+            var1 = false;
+            break;
+         case 11:
+            var4 = 3;
+            missileAnim = 248;
+            var1 = false;
+            break;
+         case 12:
+         default:
+            missileAnim = 0;
+            exploded = true;
+            return;
+         case 13:
+            var1 = false;
+            missileAnim = Player.activeWeaponDef.tileIndex;
+            var4 = 0;
+         }
+
+         var12 = Math.abs(var8 - var5);
+         int var13 = Math.abs(var9 - var6);
+         int var14;
+         if ((crFlags & 1024) != 0) {
+            var14 = weapons[attackerWeapon + 3] * 64;
+            var3 = 0;
+            if (var12 != 0 && var12 > var13) {
+               var8 = var5 + (var8 - var5) * var14 / var12;
+            } else if (var13 != 0) {
+               var9 = var6 + (var9 - var6) * var14 / var13;
+            }
+
+            var12 = Math.abs(var8 - var5);
+            var13 = Math.abs(var9 - var6);
+            var11 = 0;
+         } else if (hitType == 0) {
+            if (targetType != 2 && curTarget != null) {
+               var11 = 0;
+            } else {
+               var3 = 0;
+            }
+         } else {
+            var11 = 0;
+         }
+
+         if (var13 > var12) {
+            var14 = (var9 - var6 >> 31 << 1) + 1;
+            var6 += var2 * var14;
+            var9 += var3 * -var14;
+            var8 += var11;
+         } else {
+            var14 = (var8 - var5 >> 31 << 1) + 1;
+            var5 += var2 * var14;
+            var8 += var3 * -var14;
+            var9 += var11;
+         }
+
+         if (attackerWeaponProj == 4) {
+            if (curAttacker == null) {
+               var5 += 4 * Canvas.viewRightStepX >> 6;
+               var6 += 4 * Canvas.viewRightStepY >> 6;
+               var7 -= 5;
+            } else {
+               byte var16 = 16;
+               int var15 = curAttacker.getSprite();
+               if ((Render.mapSpriteInfo[var15] & 131072) != 0) {
+                  var16 = -16;
+               }
+
+               var5 += var16 * Canvas.viewRightStepX >> 6;
+               var6 += var16 * Canvas.viewRightStepY >> 6;
+            }
+         }
+
+         var14 = 1000 * Math.max(var12, var13) / var0;
+         GameSprite var17 = allocMissile(var5, var6, var7, var8, var9, var10, var14, var4);
+         short[] var10000;
+         int var10001;
+         if ((missileAnim != 4 || curTarget == null) && missileAnim != 243) {
+            if (missileAnim >= 241 && missileAnim < 244) {
+               Render.mapSpriteInfo[var17.sprite] = Render.mapSpriteInfo[var17.sprite] & -65281 | 8192;
+            } else if (missileAnim == 244) {
+               Render.mapSpriteInfo[var17.sprite] = Render.mapSpriteInfo[var17.sprite] & -65281 | 12288;
+               if (curAttacker != null) {
+                  var10000 = Render.mapSprites;
+                  var10001 = Render.S_SCALEFACTOR + var17.sprite;
+                  var10000[var10001] = (short)(var10000[var10001] - 16);
+               }
+            }
+         } else {
+            Render.mapSpriteInfo[var17.sprite] = Render.mapSpriteInfo[var17.sprite] & -65281 | 4096;
+            if (missileAnim == 243) {
+               var10000 = Render.mapSprites;
+               var10001 = Render.S_SCALEFACTOR + var17.sprite;
+               var10000[var10001] = (short)(var10000[var10001] - 16);
+            }
+         }
+
+         if (attackerWeaponProj == 2) {
+            if (curAttacker == null) {
+               Render.mapSprites[Render.S_ENT + var17.sprite] = Player.getPlayerEnt().getIndex();
+               Render.relinkSprite(var17.sprite, var17.pos[0] << 4, var17.pos[1] << 4, var17.pos[2] << 4);
+            } else {
+               Render.mapSprites[Render.S_ENT + var17.sprite] = curAttacker.getIndex();
+               Render.relinkSprite(var17.sprite, var17.pos[3] << 4, var17.pos[4] << 4, var17.pos[5] << 4);
+            }
+
+            var17.flags |= 4;
+            var17.pos[0] = var17.pos[3];
+            var17.pos[1] = var17.pos[4];
+            var17.pos[2] = var17.pos[5];
+            var17.vel[0] = var17.vel[1] = var17.vel[2] = 0;
+         }
+
+         if (!var1) {
+            int[] var18 = Render.mapSpriteInfo;
+            var10001 = var17.sprite;
+            var18[var10001] &= -589569;
+         }
+
+         exploded = false;
+      }
+   }
+
+   private static GameSprite allocMissile(int var0, int var1, int var2, int var3, int var4, int var5, int var6, int var7) {
+      if (numActiveMissiles == 8) {
+         App.Error(new Exception("MAX_ACTIVE_MISSILES"), 108);
+         return null;
+      } else {
+         int var8 = Render.mediaMappings[missileAnim + 1] - Render.mediaMappings[missileAnim];
+         GameSprite var9 = activeMissiles[numActiveMissiles] = Game.gsprite_alloc(missileAnim, var8, 2562);
+         ++numActiveMissiles;
+         short[] var10 = Render.mapSprites;
+         var10[Render.S_ENT + var9.sprite] = -1;
+         var10[Render.S_RENDERMODE + var9.sprite] = (short)var7;
+         var10[Render.S_X + var9.sprite] = var9.pos[0] = (short)var0;
+         var10[Render.S_Y + var9.sprite] = var9.pos[1] = (short)var1;
+         var10[Render.S_Z + var9.sprite] = var9.pos[2] = (short)var2;
+         int[] var10000 = Render.mapSpriteInfo;
+         int var10001 = var9.sprite;
+         var10000[var10001] |= 524288;
+         var9.pos[3] = (short)var3;
+         var9.pos[4] = (short)var4;
+         var9.pos[5] = (short)var5;
+         var9.duration = var6;
+         if (attackerWeaponProj == 13) {
+            var9.flags |= 16384;
+            int var11 = 8;
+            if (var9.pos[5] > var9.pos[2]) {
+               var11 /= 4;
+            }
+
+            var9.pos[5] = (short)(var9.pos[5] + Math.min(tileDist, 5) * var11);
+            if (var9.pos[5] < var9.pos[2]) {
+               var9.pos[5] = var9.pos[2];
+            }
+         }
+
+         if (var6 != 0) {
+            var9.vel[0] = 1000 * (var9.pos[3] - var9.pos[0]) / var6;
+            var9.vel[1] = 1000 * (var9.pos[4] - var9.pos[1]) / var6;
+            var9.vel[2] = 1000 * (var9.pos[5] - var9.pos[2]) / var6;
+         } else {
+            var9.vel[0] = var9.vel[1] = var9.vel[2] = 0;
+         }
+
+         if (missileAnim == 0) {
+            var10000 = Render.mapSpriteInfo;
+            var10001 = var9.sprite;
+            var10000[var10001] |= 65536;
+            return var9;
+         } else {
+            Render.relinkSprite(var9.sprite);
+            return var9;
+         }
+      }
+   }
+
+   private static void launchSoulCube() {
+      byte var6 = 64;
+      int var7 = curTarget.getSprite();
+      int var0;
+      int var1;
+      int var2;
+      int var3;
+      int var4;
+      int var5;
+      if (soulCubeIsAttacking) {
+         var0 = Game.viewX;
+         var1 = Game.viewY;
+         var2 = Render.getHeight(var0, var1) + 32;
+         var3 = Render.mapSprites[Render.S_X + var7];
+         var4 = Render.mapSprites[Render.S_Y + var7];
+         var5 = Render.mapSprites[Render.S_Z + var7];
+      } else {
+         var0 = Render.mapSprites[Render.S_X + var7];
+         var1 = Render.mapSprites[Render.S_Y + var7];
+         var2 = Render.mapSprites[Render.S_Z + var7];
+         var3 = Game.viewX;
+         var4 = Game.viewY;
+         var5 = Render.getHeight(var0, var1) + 32;
+      }
+
+      int var8 = Math.abs(var3 - var0);
+      int var9 = Math.abs(var4 - var1);
+      int var10;
+      if (var9 > var8) {
+         var10 = (var4 - var1 >> 31 << 1) + 1;
+         if (soulCubeIsAttacking) {
+            var1 += var6 * var10;
+         } else {
+            var4 += var6 * -var10;
+         }
+      } else {
+         var10 = (var3 - var0 >> 31 << 1) + 1;
+         if (soulCubeIsAttacking) {
+            var0 += var6 * var10;
+         } else {
+            var3 += var6 * -var10;
+         }
+      }
+
+      short var12 = 256;
+      int var11 = 1000 * Math.max(var8, var9) / var12;
+      missileAnim = 239;
+      allocMissile(var0, var1, var2, var3, var4, var5, var11, 0);
+   }
+
+   public static int getWeaponTileNum(int var0) {
+      if (var0 < 5) {
+         return 1 + var0;
+      } else {
+         switch(var0) {
+         case 5:
+            return 13;
+         case 6:
+            return 14;
+         case 14:
+            return 15;
+         default:
+            return 1 + var0 - 2;
+         }
+      }
+   }
+}

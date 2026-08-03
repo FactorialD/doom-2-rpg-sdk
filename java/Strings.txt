@@ -1,0 +1,18 @@
+final class Strings {
+   static final short FILE_CODESTRINGS = 0;
+   static final short FILE_ENTITYSTRINGS = 1;
+   static final short FILE_FILESTRINGS = 2;
+   static final short FILE_MENUSTRINGS = 3;
+   static final short FILE_M_01 = 4;
+   static final short FILE_M_02 = 5;
+   static final short FILE_M_03 = 6;
+   static final short FILE_M_04 = 7;
+   static final short FILE_M_05 = 8;
+   static final short FILE_M_06 = 9;
+   static final short FILE_M_07 = 10;
+   static final short FILE_M_08 = 11;
+   static final short FILE_M_09 = 12;
+   static final short FILE_M_TEST = 13;
+   static final short FILE_TRANSLATIONS = 14;
+   static final short FILE_MAX = 15;
+}

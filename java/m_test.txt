@@ -1,0 +1,17 @@
+final class m_test {
+   static final short ATTACK = 6;
+   static final short DEF_INIT_MAPNAME = 1;
+   static final short EMPTY_STRING = 0;
+   static final short IDLE_BACK = 3;
+   static final short IDLE_FRONT = 2;
+   static final short LOOTING_JOKE_ITEM_1 = 9;
+   static final short LOOTING_JOKE_ITEM_2 = 10;
+   static final short LOOTING_JOKE_ITEM_3 = 11;
+   static final short LOOTING_JOKE_ITEM_4 = 12;
+   static final short LOOTING_JOKE_ITEM_5 = 13;
+   static final short PAIN = 7;
+   static final short TEST = 8;
+   static final short WALK_BACK = 5;
+   static final short WALK_FRONT = 4;
+   static final short MAX = 14;
+}

@@ -1,0 +1,728 @@
+import javax.microedition.lcdui.Image;
+
+public final class SentryBotGame {
+   public static int touchMe = 1;
+   private static ScriptThread callingThread = null;
+   public static Image imgHelpScreenAssets = null;
+   public static Image imgGameAssets = null;
+   public static Image imgButton = null;
+   private static final int MAIN_BG_COLOR = -13354445;
+   private static final int DESCRIPTION_BOX_COLOR = -12170173;
+   private static final int CODE_COMPLETE_WAIT_MS = 1000;
+   private static final int GAME_FAILURE_WAIT_MS = 4000;
+   private static final int ANSWER_CONTAINER_SRC_X = 0;
+   private static final int ANSWER_CONTAINER_SRC_Y = 91;
+   private static final int ANSWER_CONTAINER_WIDTH = 95;
+   private static final int ANSWER_CONTAINER_HEIGHT = 33;
+   private static final int CENTER_QUARTER_SRC_X = 53;
+   private static final int CENTER_QUARTER_SRC_Y = 0;
+   private static final int CENTER_QUARTER_WIDTH = 91;
+   private static final int CENTER_QUARTER_HEIGHT = 91;
+   private static final int START_ARROW_SRC_X = 144;
+   private static final int START_ARROW_SRC_Y = 0;
+   private static final int START_ARROW_WIDTH = 41;
+   private static final int START_ARROW_HEIGHT = 37;
+   private static final int SIDE_PIECE_SRC_X = 0;
+   private static final int SIDE_PIECE_SRC_Y = 0;
+   private static final int SIDE_PIECE_WIDTH = 53;
+   private static final int SIDE_PIECE_HEIGHT = 84;
+   private static final int GAME_BOARD_WIDTH = 4;
+   private static final int GAME_BOARD_HEIGHT = 4;
+   private static final int CODE_LENGTH = 4;
+   private static final int SELECTION_UNCHOSEN = 0;
+   private static final int TITLE_TEXT_OFFSET_Y = 30;
+   private static final int COMPLETION_TITLE_TEXT_OFFSET_Y = 55;
+   private static final int ABOVE_ANSWER_TEXT_OFFSET_Y = 29;
+   private static final int BELOW_ANSWER_TEXT_OFFSET_Y = 12;
+   private static final int COMPLETION_BELOW_ANSWER_TEXT_OFFSET_Y = 12;
+   private static final int TOP_IMAGE_OFFSET_Y = 19;
+   private static final int START_ARROW_OFFSET_X = -29;
+   private static final int START_ARROW_OFFSET_Y = 8;
+   private static final int COMPLETION_TOP_IMAGE_OFFSET_Y = 66;
+   private static final int WINGED_THINGIES_OFFSET_Y = 103;
+   private static final int WARNING_SUBTEXT_CHAR_WIDTH = 22;
+   private static final int GRID_BOX_WIDTH = 42;
+   private static final int GRID_BOX_HEIGHT = 43;
+   private static final int BOXES_OFFSET_Y = 6;
+   private static int skipCode;
+   private static int[] gameBoard = new int[16];
+   private static int[] solution = new int[4];
+   private static int[] usersGuess = new int[4];
+   private static int player_cursor;
+   private static int answer_cursor;
+   private static int bot_selection_cursor;
+   private static int bot_selection_scroll;
+   private static int currentPress_x;
+   private static int currentPress_y;
+   private static int currentPress_index;
+   private static final int BOTTOM_BUTTONS_PADDING_BELOW = 20;
+   private static final int MIDDLE_BUTTONS_PADDING_ABOVE = 150;
+   private static final int BOTTOM_BUTTONS_PADDING_MIDDLE = 10;
+   private static final int BUTTON_WIDTH = 104;
+   private static final int BUTTON_HEIGHT = 44;
+   private static final int BUTTON_PRESS_LEFT = 0;
+   private static final int BUTTON_PRESS_RIGHT = 1;
+   private static short botType;
+   private static int timeSinceLastCursorMove;
+   private static boolean failedEarly;
+   private static boolean gamePlayedFromMainMenu;
+   public static final int MG_HELP_SCREEN_X_OFFSET = 200;
+
+   public static final void playFromMainMenu() {
+      initGame((ScriptThread)null, (short)0);
+   }
+
+   public static final void setupGlobalData() {
+      Canvas.setState(12);
+      Canvas.stateVars[0] = 0;
+      Canvas.stateVars[1] = 0;
+      Canvas.stateVars[2] = 0;
+      Canvas.initMiniGameHelpScreen();
+      Canvas.clearSoftKeys();
+   }
+
+   public static final void initGame(ScriptThread var0, short var1) {
+      callingThread = var0;
+      gamePlayedFromMainMenu = callingThread == null;
+      setupGlobalData();
+      botType = var1;
+      if (botType != 0 && botType != 1) {
+         botType = 0;
+      }
+
+      byte var3 = 2;
+      byte var4 = 6;
+      int var5 = gamePlayedFromMainMenu ? 0 : Player.ce.getIQPercent();
+      int var6 = (10000 * var3 + (var4 - var3) * (100 - var5) * (100 - var5)) / 10000;
+
+      do {
+         skipCode = App.nextInt() % var6 + 1;
+      } while(skipCode == Player.lastSkipCode);
+
+      Player.lastSkipCode = (byte)skipCode;
+      boolean var7 = gamePlayedFromMainMenu ? true : Player.ce.getIQPercent() < 50;
+
+      int var8;
+      for(var8 = 0; var8 < 16; ++var8) {
+         gameBoard[var8] = App.nextInt() % 6 + 1;
+         if (gameBoard[var8] == skipCode && !var7) {
+            --var8;
+         }
+      }
+
+      gameBoard[0] = skipCode % 6 + 1;
+      player_cursor = -1;
+      var8 = player_cursor;
+
+      int var9;
+      for(var9 = 0; var9 < 4; ++var9) {
+         var8 += skipCode;
+
+         for(var8 %= 16; gameBoard[var8] == skipCode; var8 %= 16) {
+            var8 += skipCode;
+         }
+
+         solution[var9] = gameBoard[var8];
+      }
+
+      for(var9 = 0; var9 < 4; ++var9) {
+         usersGuess[var9] = 0;
+      }
+
+      answer_cursor = 0;
+      bot_selection_cursor = 0;
+      timeSinceLastCursorMove = App.time;
+      failedEarly = false;
+      currentPress_index = -1;
+      currentPress_y = -1;
+      currentPress_x = -1;
+   }
+
+   public static final void handleInput(int var0, int var1) {
+      if (Canvas.stateVars[2] != 2 && (Canvas.stateVars[2] != 1 || !gamePlayedFromMainMenu) || var0 != 5 && var0 != 15 && var0 != 6) {
+         int var2;
+         if (Canvas.stateVars[1] == 0) {
+            if (var0 != 5 && var0 != 15) {
+               if (var0 == 6) {
+                  Canvas.stateVars[1] = 1;
+                  Canvas.clearSoftKeys();
+               } else if (var0 == 1) {
+                  Canvas.handleMiniGameHelpScreenScroll(-1);
+               } else if (var0 == 2) {
+                  Canvas.handleMiniGameHelpScreenScroll(1);
+               } else if (var0 == 4) {
+                  Canvas.handleMiniGameHelpScreenScroll(11);
+               } else if (var0 == 3) {
+                  Canvas.handleMiniGameHelpScreenScroll(-11);
+               }
+            } else {
+               switch(Canvas.stateVars[2]) {
+               case 0:
+                  endGame(2);
+                  break;
+               case 1:
+                  if (bot_selection_cursor == 0) {
+                     var2 = botType == 0 ? 3 : 5;
+                     awardSentryBot(var2);
+                     endGame(1);
+                  } else {
+                     var2 = botType == 0 ? 4 : 6;
+                     awardSentryBot(var2);
+                     endGame(1);
+                  }
+                  break;
+               case 2:
+                  endGame(0);
+               }
+            }
+         } else if (Canvas.stateVars[1] == 1) {
+            if (Canvas.stateVars[2] == 0) {
+               switch(var0) {
+               case 3:
+                  if (player_cursor > -1) {
+                     player_cursor = (player_cursor + 15) % 16;
+                     timeSinceLastCursorMove = App.time;
+                  }
+                  break;
+               case 4:
+                  player_cursor = (player_cursor + 1) % 16;
+                  timeSinceLastCursorMove = App.time;
+                  break;
+               case 5:
+               case 15:
+                  endGame(2);
+                  break;
+               case 6:
+                  if (player_cursor > -1) {
+                     usersGuess[answer_cursor] = gameBoard[player_cursor];
+                     if (answer_cursor < 3) {
+                        ++answer_cursor;
+                        if (!playerCouldStillWin()) {
+                           Canvas.clearSoftKeys();
+                           Canvas.stateVars[2] = 2;
+                           Canvas.stateVars[3] = App.getUpTimeMs();
+                           failedEarly = true;
+                        }
+                     } else if (playerHasWon()) {
+                        Canvas.clearSoftKeys();
+                        Canvas.stateVars[2] = 1;
+                        Canvas.stateVars[3] = App.getUpTimeMs();
+                     } else {
+                        Canvas.clearSoftKeys();
+                        Canvas.stateVars[2] = 2;
+                        Canvas.stateVars[3] = App.getUpTimeMs();
+                     }
+                  }
+                  break;
+               case 7:
+                  Canvas.stateVars[1] = 0;
+                  Canvas.initMiniGameHelpScreen();
+                  Canvas.clearSoftKeys();
+               case 8:
+               case 9:
+               case 10:
+               case 11:
+               case 12:
+               case 13:
+               case 14:
+               }
+            } else if (Canvas.stateVars[2] == 1) {
+               if (!gamePlayedFromMainMenu) {
+                  switch(var0) {
+                  case 1:
+                     --bot_selection_scroll;
+                     break;
+                  case 2:
+                     ++bot_selection_scroll;
+                     break;
+                  case 3:
+                  case 4:
+                     bot_selection_cursor = (bot_selection_cursor + 1) % 2;
+                     bot_selection_scroll = 0;
+                     break;
+                  case 5:
+                  case 6:
+                  case 15:
+                     if (bot_selection_cursor == 0) {
+                        var2 = botType == 0 ? 3 : 5;
+                        awardSentryBot(var2);
+                        endGame(1);
+                     } else {
+                        var2 = botType == 0 ? 4 : 6;
+                        awardSentryBot(var2);
+                        endGame(1);
+                     }
+                  case 7:
+                  case 8:
+                  case 9:
+                  case 10:
+                  case 11:
+                  case 12:
+                  case 13:
+                  case 14:
+                  }
+               }
+            } else if (Canvas.stateVars[2] == 2) {
+            }
+         }
+
+      } else {
+         endGame(0);
+      }
+   }
+
+   public static final void updateGame(Graphics var0) {
+      var0.clipRect(0, 0, Canvas.menuRect[2], Canvas.menuRect[3]);
+      if (Canvas.stateVars[1] == 0) {
+         drawHelpScreen(var0);
+      } else {
+         switch(Canvas.stateVars[2]) {
+         case 0:
+            drawGameScreen(var0);
+            break;
+         case 1:
+            drawSuccessScreen(var0);
+            break;
+         case 2:
+            drawFailureScreen(var0);
+         }
+      }
+
+      Canvas.staleView = true;
+      var0.resetScreenSpace();
+   }
+
+   private static final void drawFailureScreen(Graphics var0) {
+      Canvas.setLeftSoftKey((short)0, (short)29);
+      Text var12 = Text.getSmallBuffer();
+      var0.fillRect(Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3], -13354445);
+      int var13 = (Canvas.screenRect[2] - Canvas.screenRect[0]) / 2;
+      int var14 = Canvas.screenRect[1];
+      drawPlayersGuess(var13, var14 + 66, false, var12, var0);
+      var12.setLength(0);
+      Text.composeText((short)0, (short)(failedEarly ? 179 : 178), var12);
+      var12.dehyphenate();
+      var0.drawString(var12, var13, var14 + 55, 3);
+      var14 += 99;
+      var12.setLength(0);
+      Text.composeText((short)0, (short)240, var12);
+      var12.dehyphenate();
+      var0.drawString(var12, var13, var14 + 12, 3);
+      drawWingedBorderThingies(Canvas.screenRect[1] + 103, var0);
+      if (botType == 1) {
+         var0.fillRect(var13 - 53, var14 + 50 - 26, 107, 52, -10747893);
+         var0.fillRect(var13 - 50, var14 + 50 - 23, 101, 46, -13354445);
+         var0.fillRect(var13 - 40, var14 + 50 - 13, 80, 26, -10747893);
+         var0.fillRect(var13 - 33, var14 + 50 - 6, 66, 12, -13354445);
+         var12.setLength(0);
+         Text.composeText((short)0, (short)186, var12);
+         var12.dehyphenate();
+         var0.drawString(var12, var13, var14 + 50 + 2, 3);
+      }
+
+      short var15;
+      if (botType == 1) {
+         var15 = 187;
+      } else {
+         var15 = 188;
+      }
+
+      var12.setLength(0);
+      Text.composeText((short)0, var15, var12);
+      var12.wrapText(22, '\n');
+      var0.drawString(var12, var13, var14 + 50 + 50, 3);
+      var12.dispose();
+   }
+
+   private static final void drawSuccessScreen(Graphics var0) {
+      Canvas.setLeftSoftKey((short)0, (short)29);
+      Text var15 = Text.getSmallBuffer();
+      var0.fillRect(Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3], -13354445);
+      int var16 = (Canvas.screenRect[2] - Canvas.screenRect[0]) / 2;
+      int var17 = Canvas.screenRect[1];
+      drawPlayersGuess(var16, var17 + 66, false, var15, var0);
+      var15.setLength(0);
+      Text.composeText((short)0, (short)177, var15);
+      var15.dehyphenate();
+      var0.drawString(var15, var16, var17 + 55, 3);
+      if (gamePlayedFromMainMenu) {
+         var17 += 99;
+         var15.setLength(0);
+         Text.composeText((short)0, (short)239, var15);
+         var15.dehyphenate();
+         var0.drawString(var15, var16, var17 + 12, 3);
+         drawWingedBorderThingies(Canvas.screenRect[1] + 103, var0);
+         var15.setLength(0);
+         Text.composeText((short)0, (short)188, var15);
+         var15.wrapText(22, '\n');
+         var0.drawString(var15, var16, var17 + 80, 3);
+      } else {
+         var17 += 125;
+         var15.setLength(0);
+         Text.composeText((short)0, (short)180, var15);
+         var15.dehyphenate();
+         var0.drawString(var15, var16, var17, 3);
+         drawButtons(var0, var15);
+         var17 = Canvas.screenRect[3] - 10 - 115;
+         int var18 = Canvas.screenRect[0] + 15;
+         var0.fillRect(var18, var17, Canvas.screenRect[2] - Canvas.screenRect[0] - 30, 115, -12170173);
+         var15.setLength(0);
+         Text.composeText((short)0, (short)185, var15);
+         var15.dehyphenate();
+         var0.drawString(var15, var18 + 10, var17 + 8, 20);
+         var15.setLength(0);
+         Text.composeText((short)0, (short)(bot_selection_cursor == 0 ? 183 : 184), var15);
+         var15.wrapText(22, '\n');
+         int var19 = var15.getNumLines();
+         if (var19 > 5) {
+            var15.setLength(0);
+            Text.composeText((short)0, (short)(bot_selection_cursor == 0 ? 183 : 184), var15);
+            var15.wrapText(21, '\n');
+            var19 = var15.getNumLines();
+            bot_selection_scroll = Math.min(Math.max(bot_selection_scroll, 0), var19 - 5);
+            int var20 = bot_selection_scroll;
+
+            int var21;
+            for(var21 = 0; var21 < var20; ++var21) {
+               var15.removeLeadingLine();
+            }
+
+            for(var21 = var20 + 5; var21 < var19; ++var21) {
+               var15.removeTrailingLine();
+            }
+
+            var21 = Math.min(var20 + 5, var19);
+            Canvas.drawScrollBar(var0, var18 + 10 + 198 + 3, var17 + 27, 80, var20, var21, var19, 5);
+         }
+
+         var0.drawString(var15, var18 + 10, var17 + 27, 20);
+      }
+
+      var15.dispose();
+   }
+
+   private static final void drawHelpScreen(Graphics var0) {
+      Canvas.drawMiniGameHelpScreen(var0, Text.STRINGID((short)0, (short)171), Text.STRINGID((short)0, (short)172), imgHelpScreenAssets);
+      Canvas.setLeftSoftKey((short)0, (short)29);
+   }
+
+   private static final void drawGameScreen(Graphics var0) {
+      currentPress_index = getPressedIndex(currentPress_x, currentPress_y);
+      int var3 = (Canvas.screenRect[2] - Canvas.screenRect[0]) / 2;
+      int var4 = Canvas.screenRect[1];
+      var4 += 20;
+      Canvas.setLeftSoftKey((short)0, (short)29);
+      Canvas.setRightSoftKey((short)0, (short)54);
+      Text var5 = Text.getSmallBuffer();
+      var0.fillRect(Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3], -13354445);
+      var4 += 19;
+      var4 += 5;
+      drawWingedBorderThingies(var4 + 7, var0);
+      var0.drawRegion(imgGameAssets, 53, 0, 91, 91, var3 - 91, var4, 20, 0);
+      var0.drawRegion(imgGameAssets, 53, 0, 91, 91, var3, var4, 20, 2);
+      var0.drawRegion(imgGameAssets, 53, 0, 91, 91, var3 - 91, var4 + 91, 20, 1);
+      var0.drawRegion(imgGameAssets, 53, 0, 91, 91, var3, var4 + 91, 20, 3);
+      var4 -= 5;
+
+      for(int var8 = 0; var8 < 16; ++var8) {
+         int var6 = var3 - 63 + var8 % 4 * 42;
+         int var7 = var4 + 6 + var8 / 4 * 44 + 21;
+         var5.setLength(0);
+         var5.append(gameBoard[var8]);
+         var0.drawString(var5, var6, var7, 3);
+         if (currentPress_index != -1 && currentPress_index == var8) {
+            drawCursor(var6, var7, false, var0);
+         }
+      }
+
+      var4 += 198;
+      drawPlayersGuess(var3, var4, true, var5, var0);
+      var4 = Canvas.screenRect[1];
+      var5.setLength(0);
+      Text.composeText((short)0, (short)173, var5);
+      Text.composeText((short)0, (short)174, var5);
+      var5.append(skipCode);
+      var5.dehyphenate();
+      var4 += 201;
+      var0.drawString(var5, var3, var4 + 29, 3);
+      var4 += 49;
+      drawButtons(var0, var5);
+      var5.dispose();
+   }
+
+   private static final void drawWingedBorderThingies(int var0, Graphics var1) {
+      int var3 = (Canvas.screenRect[2] - Canvas.screenRect[0]) / 2;
+      var1.drawRegion(imgGameAssets, 0, 0, 53, 84, var3 - 91 - 53 + 24, var0, 20, 2);
+      var1.drawRegion(imgGameAssets, 0, 0, 53, 84, var3 - 91 - 53 + 24, var0 + 84, 20, 3);
+      var1.drawRegion(imgGameAssets, 0, 0, 53, 84, var3 + 91 - 24, var0, 20, 0);
+      var1.drawRegion(imgGameAssets, 0, 0, 53, 84, var3 + 91 - 24, var0 + 84, 20, 1);
+   }
+
+   private static final void drawPlayersGuess(int var0, int var1, boolean var2, Text var3, Graphics var4) {
+      var4.drawRegion(imgGameAssets, 0, 91, 95, 33, var0 - 95, var1, 20, 0);
+      var4.drawRegion(imgGameAssets, 0, 91, 95, 33, var0, var1, 20, 2);
+      int var13 = var1 + 12 + 4;
+
+      for(int var14 = 0; var14 < 4; ++var14) {
+         int var12 = var0 - 67 + var14 % 4 * 45;
+         int var11 = usersGuess[var14];
+         if (var11 != 0) {
+            var3.setLength(0);
+            var3.append(var11);
+            var4.drawString(var3, var12, var13, 3);
+         }
+
+         var4.drawLine(var12 - 6, var13 + 8, var12 + 6, var13 + 8, -9665718);
+         if (var2 && answer_cursor == var14) {
+            drawCursor(var12, var1 + 12 + 4, false, var4);
+         }
+      }
+
+   }
+
+   private static final void drawCursor(int var0, int var1, boolean var2, Graphics var3) {
+      if (!var2 || (App.time - timeSinceLastCursorMove & 512) == 0) {
+         var3.drawRegion(imgGameAssets, 95, 91, 22, 22, var0 + 1, var1, 3, 0);
+      }
+
+   }
+
+   private static final boolean playerHasWon() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         if (usersGuess[var0] != solution[var0]) {
+            return false;
+         }
+      }
+
+      return true;
+   }
+
+   private static final boolean playerCouldStillWin() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         if (usersGuess[var0] != 0 && usersGuess[var0] != solution[var0]) {
+            return false;
+         }
+      }
+
+      return true;
+   }
+
+   public static final void forceWin() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         usersGuess[var0] = solution[var0];
+      }
+
+      Canvas.stateVars[1] = 1;
+      Canvas.stateVars[2] = 1;
+      Canvas.clearSoftKeys();
+   }
+
+   private static final void awardSentryBot(int var0) {
+      if ((Player.weapons & 8) != 0) {
+         Player.attemptToDiscardFamiliar(3);
+         Player.showHelp((short)16, true);
+      } else if ((Player.weapons & 16) != 0) {
+         Player.attemptToDiscardFamiliar(4);
+         Player.showHelp((short)16, true);
+      } else if ((Player.weapons & 32) != 0) {
+         Player.attemptToDiscardFamiliar(5);
+         Player.showHelp((short)16, true);
+      } else if ((Player.weapons & 64) != 0) {
+         Player.attemptToDiscardFamiliar(6);
+         Player.showHelp((short)16, true);
+      }
+
+      Player.give(1, var0, 1);
+   }
+
+   private static final void endGame(int var0) {
+      if (!gamePlayedFromMainMenu) {
+         Canvas.evaluateMiniGameResults(var0);
+         Game.scriptStateVars[7] = (short)var0;
+      }
+
+      if (!gamePlayedFromMainMenu) {
+         Canvas.setState(3);
+         callingThread.run();
+         callingThread = null;
+      } else {
+         Sound.playSound(10, 1);
+         MenuSystem.setMenu(18);
+      }
+
+   }
+
+   public static void pointerPressed(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3]) && Canvas.stateVars[1] == 1) {
+         currentPress_x = var0;
+         currentPress_y = var1;
+      }
+
+   }
+
+   public static void pointerDragged(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3]) && Canvas.stateVars[1] == 1) {
+         currentPress_x = var0;
+         currentPress_y = var1;
+      }
+
+   }
+
+   public static void pointerReleased(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3])) {
+         if (Canvas.stateVars[1] == 0) {
+            if (var0 < 200) {
+               App.canvas.touchKeyPressed(-5);
+            }
+         } else if (Canvas.stateVars[1] == 1) {
+            if (Canvas.stateVars[2] == 0) {
+               if (currentPress_index != -1) {
+                  if (currentPress_index == getPressedIndex(var0, var1) && answer_cursor < 4) {
+                     usersGuess[answer_cursor++] = gameBoard[currentPress_index];
+                  }
+               } else if (canClearCode() && getButtonPress(var0, var1) == 0) {
+                  clearCode();
+               } else if (canSubmitCode() && getButtonPress(var0, var1) == 1) {
+                  submitCode();
+               }
+            } else if (Canvas.stateVars[2] != 1 || gamePlayedFromMainMenu) {
+               App.canvas.touchKeyPressed(-5);
+            }
+         }
+      }
+
+      currentPress_index = -1;
+      currentPress_y = -1;
+      currentPress_x = -1;
+   }
+
+   public static int getPressedIndex(int var0, int var1) {
+      int var2 = Canvas.SCR_CX - 84;
+      int var3 = Canvas.displayRect[1] + 19 + 6 + 20;
+      if (Canvas.pointInRectangle(var0, var1, var2, var3, 168, 172)) {
+         int var4 = (var0 - var2) / 42;
+         int var5 = (var1 - var3) / 43;
+         if (var4 >= 0 && var4 < 4 && var5 >= 0 && var5 < 4) {
+            return var4 + var5 * 4;
+         }
+      }
+
+      return -1;
+   }
+
+   public static void clearCode() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         usersGuess[var0] = 0;
+      }
+
+      answer_cursor = 0;
+   }
+
+   public static void submitCode() {
+      if (playerHasWon()) {
+         Canvas.clearSoftKeys();
+         Canvas.stateVars[2] = 1;
+         Canvas.stateVars[3] = App.getUpTimeMs();
+      } else {
+         Canvas.clearSoftKeys();
+         Canvas.stateVars[2] = 2;
+         Canvas.stateVars[3] = App.getUpTimeMs();
+      }
+
+   }
+
+   public static int getButtonPress(int var0, int var1) {
+      if (currentPress_x != -1 && currentPress_y != -1 && Canvas.stateVars[1] == 1) {
+         int var3 = Canvas.SCR_CX - 10 - 104;
+         int var4 = Canvas.SCR_CX + 10;
+         byte var2;
+         if (Canvas.stateVars[2] == 0) {
+            var2 = 0;
+         } else {
+            if (Canvas.stateVars[2] != 1) {
+               return -1;
+            }
+
+            var2 = 0;
+         }
+
+         if (Canvas.pointInRectangle(var0, var1, var3, var2, 104, 44)) {
+            return 0;
+         }
+
+         if (Canvas.pointInRectangle(var0, var1, var4, var2, 104, 44)) {
+            return 1;
+         }
+      }
+
+      return -1;
+   }
+
+   public static void drawButton(Graphics var0, int var1, int var2, boolean var3, boolean var4, Text var5) {
+      int var7 = 0;
+      if (!var3) {
+         var7 += 88;
+      } else if (var4) {
+         var7 += 44;
+      }
+
+      var0.drawRegion(imgButton, 0, var7, 104, 44, var1, var2);
+      var0.drawString(var5, var1 + 52, var2 + 22, 3);
+   }
+
+   public static void drawButtons(Graphics var0, Text var1) {
+      if (Canvas.stateVars[1] == 1) {
+         int var2;
+         int var3;
+         byte var4;
+         boolean var5;
+         boolean var6;
+         if (Canvas.stateVars[2] == 0) {
+            var2 = Canvas.SCR_CX - 10 - 104;
+            var3 = Canvas.SCR_CX + 10;
+            var4 = 0;
+            var5 = canClearCode();
+            var6 = 0 == getButtonPress(currentPress_x, currentPress_y);
+            boolean var7 = canSubmitCode();
+            boolean var8 = 1 == getButtonPress(currentPress_x, currentPress_y);
+            var1.setLength(0);
+            Text.composeText((short)0, (short)252, var1);
+            var1.dehyphenate();
+            drawButton(var0, var2, var4, var5, var6, var1);
+            var1.setLength(0);
+            Text.composeText((short)0, (short)253, var1);
+            var1.dehyphenate();
+            drawButton(var0, var3, var4, var7, var8, var1);
+         } else if (Canvas.stateVars[2] == 1) {
+            var4 = 0;
+            var2 = Canvas.SCR_CX - 10 - 104;
+            var3 = Canvas.SCR_CX + 10;
+            if (0 == getButtonPress(currentPress_x, currentPress_y)) {
+               bot_selection_cursor = 0;
+            } else if (1 == getButtonPress(currentPress_x, currentPress_y)) {
+               bot_selection_cursor = 1;
+            }
+
+            var5 = bot_selection_cursor == 0;
+            var6 = bot_selection_cursor == 1;
+            var1.setLength(0);
+            Text.composeText((short)0, (short)181, var1);
+            var1.dehyphenate();
+            drawButton(var0, var2, var4, true, var5, var1);
+            var1.setLength(0);
+            Text.composeText((short)0, (short)182, var1);
+            var1.dehyphenate();
+            drawButton(var0, var3, var4, true, var6, var1);
+         }
+      }
+
+   }
+
+   public static boolean canClearCode() {
+      return answer_cursor > 0;
+   }
+
+   public static boolean canSubmitCode() {
+      return answer_cursor >= 4;
+   }
+}

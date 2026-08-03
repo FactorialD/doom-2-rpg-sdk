@@ -1,0 +1,51 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Doom 2 RPG Editor</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Three.js for 3D Preview -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    /* Doom-like palette overrides */
+    body { background-color: #1a1a1a; color: #d4d4d4; }
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "rxjs": "https://esm.sh/rxjs@^7.8.2?conditions=es2015",
+    "rxjs/operators": "https://esm.sh/rxjs@^7.8.2/operators?conditions=es2015",
+    "rxjs/ajax": "https://esm.sh/rxjs@^7.8.2/ajax?conditions=es2015",
+    "rxjs/webSocket": "https://esm.sh/rxjs@^7.8.2/webSocket?conditions=es2015",
+    "rxjs/testing": "https://esm.sh/rxjs@^7.8.2/testing?conditions=es2015",
+    "rxjs/fetch": "https://esm.sh/rxjs@^7.8.2/fetch?conditions=es2015",
+    "@angular/core": "https://esm.sh/@angular/core@^21.1.2?external=rxjs",
+    "@angular/common": "https://esm.sh/@angular/common@^21.1.2?external=rxjs",
+    "@angular/platform-browser": "https://esm.sh/@angular/platform-browser@^21.1.2?external=rxjs",
+    "@angular/compiler": "https://esm.sh/@angular/compiler@^21.1.2?external=rxjs",
+    "@angular/forms": "https://esm.sh/@angular/forms@^21.1.2?external=rxjs",
+    "three/examples/jsm/controls/OrbitControls": "https://esm.sh/three@^0.182.0/examples/jsm/controls/OrbitControls?external=rxjs",
+    "three": "https://esm.sh/three@^0.182.0?external=rxjs",
+    "three/": "https://esm.sh/three@^0.183.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>

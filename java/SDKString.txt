@@ -1,0 +1,377 @@
+package com.ea.sdk;
+
+public class SDKString {
+   public static final int CHAR_ENCODING_UTF16BE = 0;
+   public static final int CHAR_ENCODING_ASCII = 1;
+   byte[] a;
+   int a;
+   short a;
+   byte a;
+   private byte[] b;
+
+   private static int a(byte[] var0, int var1, byte[] var2, int var3, short var4, int var5, int var6) {
+      int var7 = var6 == 0 ? var4 << 1 : var4;
+      if (var5 != var6 && (var5 != 1 || var6 == 0)) {
+         for(var5 = var1; var5 < var1 + var4; ++var5) {
+            short var8;
+            if ((var8 = (short)(var0[var5] & 255)) > 127) {
+               var8 = SDKTextUtils.b(var8);
+            }
+
+            var2[var3++] = (byte)(var8 >> 8);
+            var2[var3++] = (byte)var8;
+         }
+      } else {
+         System.arraycopy(var0, var1, var2, var3, var7);
+      }
+
+      return var7;
+   }
+
+   public SDKString() {
+   }
+
+   public SDKString(String var1) {
+      this.a = 1;
+      this.a = 0;
+      this.a = (short)var1.length();
+      this.a = new byte[this.a];
+
+      for(int var2 = 0; var2 < this.a; ++var2) {
+         this.a[var2] = (byte)var1.charAt(var2);
+      }
+
+   }
+
+   public SDKString(char[] var1, int var2, int var3) {
+      this.a = 0;
+      this.a = 0;
+      this.a = (short)var3;
+      this.a = new byte[var3 << 1];
+
+      for(var2 = var2; var2 < var3; ++var2) {
+         int var4 = var2 << 1;
+         this.a[var4] = (byte)(var1[var2] >> 8);
+         this.a[var4 + 1] = (byte)var1[var2];
+      }
+
+   }
+
+   public SDKString(int var1, int var2) {
+      this.a = (byte)(var2 | -128);
+      this.a = new byte[var2 == 0 ? var1 << 1 : var1];
+      this.a = 0;
+      this.a = 0;
+   }
+
+   public boolean isMutable() {
+      return (this.a & -128) != 0;
+   }
+
+   public SDKString append(SDKString var1) {
+      if (!this.isMutable()) {
+         return this;
+      } else {
+         byte var2 = (byte)this.getEncoding();
+         byte var3;
+         if ((var3 = (byte)var1.getEncoding()) != var2 && var3 != 1 && var2 != 0) {
+            return this;
+         } else {
+            int var4 = this.a + (var2 == 0 ? this.a << 1 : this.a);
+            a(var1.a, var1.a, this.a, var4, var1.a, var3, var2);
+            this.a += var1.a;
+            return this;
+         }
+      }
+   }
+
+   public SDKString append(String var1) {
+      if (!this.isMutable()) {
+         return this;
+      } else {
+         short var2 = this.a;
+         this.a = (short)(this.a + var1.length());
+
+         for(int var3 = 0; var3 < var1.length(); ++var3) {
+            this.setCharAt(var2 + var3, var1.charAt(var3));
+         }
+
+         return this;
+      }
+   }
+
+   public SDKString append(int var1) {
+      if (!this.isMutable()) {
+         return this;
+      } else {
+         if (this.b == null) {
+            this.b = new byte[11];
+         }
+
+         int var2 = 10;
+         long var3 = (long)var1;
+         if (var1 < 0) {
+            var3 = -var3;
+         }
+
+         for(int var5 = 10; var5 >= 0; --var5) {
+            this.b[var5] = (byte)((int)(var3 % 10L | 48L));
+            var3 /= 10L;
+            if (this.b[var5] != 48) {
+               var2 = var5;
+            }
+         }
+
+         if (var1 < 0) {
+            --var2;
+            this.b[var2] = 45;
+         }
+
+         short var8 = (short)(11 - var2);
+         byte var6 = (byte)this.getEncoding();
+         int var7 = this.a + (var6 == 0 ? this.a << 1 : this.a);
+         a(this.b, var2, this.a, var7, var8, 1, var6);
+         this.a += var8;
+         return this;
+      }
+   }
+
+   public void setCharAt(int var1, char var2) {
+      if (this.isMutable()) {
+         byte var3 = (byte)this.getEncoding();
+         short var4;
+         if ((var4 = (short)var2) > 127 && var3 != 0) {
+            var4 = SDKTextUtils.a(var4);
+         }
+
+         var1 = this.a + (var3 == 0 ? var1 << 1 : var1);
+         if (var3 == 0) {
+            this.a[var1++] = (byte)(var4 >> 8);
+         }
+
+         this.a[var1] = (byte)var4;
+      }
+   }
+
+   public char charAt(int var1) {
+      short var2;
+      return (var2 = this.a(var1)) > 127 && this.getEncoding() != 0 ? (char)SDKTextUtils.b(var2) : (char)var2;
+   }
+
+   final short a(int var1) {
+      if (this.getEncoding() == 0) {
+         var1 = this.a + (var1 << 1);
+         return (short)((this.a[var1] & 255) << 8 | this.a[var1 + 1] & 255);
+      } else {
+         return (short)(this.a[this.a + var1] & 255);
+      }
+   }
+
+   public SDKString replace(SDKString[] var1) {
+      byte var2 = (byte)(this.a & 127);
+      SDKString var3;
+      (var3 = new SDKString()).a = var2;
+      var3.a = 0;
+      int var4 = 0;
+
+      int var5;
+      for(var5 = 0; var5 < var1.length; ++var5) {
+         if (var1[var5] != null) {
+            var4 += var1[var5].length() - 2;
+            byte var6;
+            if ((var6 = (byte)(var1[var5].a & 127)) != var3.a && var6 != 1) {
+               var3.a = 0;
+            }
+         }
+      }
+
+      var5 = var3.a == 0 ? 1 : 0;
+      if (var4 < 0) {
+         var4 = 0;
+      }
+
+      var3.a = new byte[var4 + this.a << var5];
+      int var12 = 0;
+      var4 = 0;
+      int var7 = var2 == 0 ? 1 : 0;
+
+      short var8;
+      for(int var9 = 0; var9 < this.a; ++var9) {
+         int var10 = this.a + var9 << var7;
+         if (var2 == 0) {
+            var8 = (short)((this.a[var10] & 255) << 8 | this.a[var10 + 1] & 255);
+         } else {
+            var8 = (short)(this.a[var10] & 255);
+         }
+
+         if (var8 == 92) {
+            var8 = (short)(var9 - var4);
+            if (var12 + (var8 << var5) > var3.a.length) {
+               byte[] var11 = new byte[var12 + (var8 << var5)];
+               System.arraycopy(var3.a, 0, var11, 0, var12);
+               var3.a = var11;
+            }
+
+            var12 += a(this.a, this.a + (var4 << var7), var3.a, var12, var8, var2, var3.a);
+            var4 = var9++;
+            if (var9 < this.a) {
+               var10 += 1 << var7;
+               if (var2 == 0) {
+                  var8 = (short)((this.a[var10] & 255) << 8 | this.a[var10 + 1] & 255);
+               } else {
+                  var8 = (short)(this.a[var10] & 255);
+               }
+
+               if (var8 == 92) {
+                  var4 = var9;
+               } else if (var8 >= 48 && var8 <= 90) {
+                  int var15 = var8 - 48;
+                  if (var12 + (var1[var15].a << var5) > var3.a.length) {
+                     byte[] var13 = new byte[var12 + (var1[var15].a << var5)];
+                     System.arraycopy(var3.a, 0, var13, 0, var12);
+                     var3.a = var13;
+                  }
+
+                  var12 += a(var1[var15].a, var1[var15].a, var3.a, var12, var1[var15].a, (byte)(var1[var15].a & 127), var3.a);
+                  var4 = var9 + 1;
+               }
+            }
+         }
+      }
+
+      var8 = (short)(this.a - var4);
+      byte[] var14;
+      if (var12 + (var8 << var5) > var3.a.length) {
+         var14 = new byte[var12 + (var8 << var5)];
+         System.arraycopy(var3.a, 0, var14, 0, var12);
+         var3.a = var14;
+      }
+
+      if ((var12 += a(this.a, this.a + (var4 << var7), var3.a, var12, var8, var2, var3.a)) < var3.a.length) {
+         var14 = new byte[var12];
+         System.arraycopy(var3.a, 0, var14, 0, var12);
+         var3.a = var14;
+      }
+
+      var3.a = (short)(var12 >> var5);
+      return var3;
+   }
+
+   public SDKString concat(SDKString var1) {
+      byte var2 = (byte)this.getEncoding();
+      byte var3 = (byte)var1.getEncoding();
+      SDKString var4;
+      (var4 = new SDKString()).a = (short)(this.a + var1.a);
+      var4.a = 0;
+      if (var2 != var3 && var3 != 1) {
+         var4.a = 0;
+      } else {
+         var4.a = var2;
+      }
+
+      var4.a = new byte[var4.a == 0 ? var4.a << 1 : var4.a];
+      int var5 = a(this.a, this.a, var4.a, 0, this.a, var2, var4.a);
+      a(var1.a, var1.a, var4.a, var5, var1.a, var3, var4.a);
+      return var4;
+   }
+
+   public String toString() {
+      StringBuffer var1 = new StringBuffer();
+
+      for(int var2 = 0; var2 < this.a; ++var2) {
+         var1.append((char)this.a(var2));
+      }
+
+      return var1.toString();
+   }
+
+   public SDKString toSDKString() {
+      return this.concat(new SDKString(""));
+   }
+
+   public int capacity() {
+      return this.getEncoding() == 0 ? this.a.length >> 1 : this.a.length;
+   }
+
+   public int length() {
+      return this.a;
+   }
+
+   public int getEncoding() {
+      return this.a & 127;
+   }
+
+   public SDKString substring(int var1, int var2) {
+      SDKString var3;
+      (var3 = new SDKString()).a = (byte)this.getEncoding();
+      int var4 = var3.a == 0 ? 2 : 1;
+      var3.a = (short)(var2 - var1);
+      var3.a = this.a + var1 * var4;
+      var3.a = this.a;
+      return var3;
+   }
+
+   public SDKString concat(int var1) {
+      return this.concat(new SDKString("" + var1));
+   }
+
+   public SDKString concat(String var1) {
+      return this.concat(new SDKString(var1));
+   }
+
+   public SDKString replaceFirst(int var1) {
+      return this.replace(new SDKString[]{new SDKString("" + var1)});
+   }
+
+   public SDKString replaceFirst(String var1) {
+      return this.replace(new SDKString[]{new SDKString(var1)});
+   }
+
+   public SDKString replaceFirst(SDKString var1) {
+      return this.replace(new SDKString[]{var1});
+   }
+
+   public void setLength(int var1) {
+      if (this.isMutable()) {
+         this.a = (short)var1;
+      }
+   }
+
+   public SDKString trim() {
+      for(int var1 = this.getEncoding() == 0 ? 2 : 1; this.a > 0 && this.a(0) == 32; --this.a) {
+         this.a += var1;
+      }
+
+      while(this.a > 0 && this.a(this.a - 1) == 32) {
+         --this.a;
+      }
+
+      return this;
+   }
+
+   public int indexOf(SDKString var1, int var2) {
+      for(var2 = var2; var2 < this.a; ++var2) {
+         for(int var3 = 0; var3 < var1.length() && this.a(var2 + var3) == var1.a(var3); ++var3) {
+            if (var3 == var1.length() - 1) {
+               return var2;
+            }
+         }
+      }
+
+      return -1;
+   }
+
+   public int compareTo(SDKString var1) {
+      for(int var2 = 0; var2 < (this.a < var1.a ? this.a : var1.a); ++var2) {
+         if (this.a(var2) != var1.a(var2)) {
+            return this.a(var2) - var1.a(var2);
+         }
+      }
+
+      if (this.a != var1.a) {
+         return this.a - var1.a;
+      } else {
+         return 0;
+      }
+   }
+}

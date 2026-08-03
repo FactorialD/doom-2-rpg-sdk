@@ -1,0 +1,28 @@
+final class Sounds {
+   static final short FILE_DOOR = 0;
+   static final short FILE_EXPLOSION = 1;
+   static final short FILE_ITEM_PICKUP = 2;
+   static final short FILE_MENU_OPEN = 3;
+   static final short FILE_MENU_SCROLL = 4;
+   static final short FILE_MONSTER_ATTACK = 5;
+   static final short FILE_MONSTER_DIE = 6;
+   static final short FILE_MUSIC_GENERAL = 7;
+   static final short FILE_MUSIC_LEVELUP = 8;
+   static final short FILE_MUSIC_LEVEL_END = 9;
+   static final short FILE_MUSIC_TITLE = 10;
+   static final short FILE_NEGATIVE = 11;
+   static final short FILE_NO_USE = 12;
+   static final short FILE_POSITIVE = 13;
+   static final short FILE_SECRET = 14;
+   static final short FILE_WEAPON_01_ASSAULT_RIFLE = 15;
+   static final short FILE_WEAPON_01_CHAINSAW = 16;
+   static final short FILE_WEAPON_03_HOLY_WATER_PISTOL = 17;
+   static final short FILE_WEAPON_06_SHOTGUN = 18;
+   static final short FILE_WEAPON_07_CHAINGUN = 19;
+   static final short FILE_WEAPON_08_PLASMA = 20;
+   static final short FILE_WEAPON_09_ROCKET_LAUNCHER = 21;
+   static final short FILE_WEAPON_10_BFG = 22;
+   static final short FILE_WEAPON_11_SOUL_CUBE = 23;
+   static final short FILE_WEAPON_SNIPER_SCOPE = 24;
+   static final short FILE_MAX = 25;
+}

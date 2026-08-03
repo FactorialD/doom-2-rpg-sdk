@@ -1,0 +1,24 @@
+
+export const SYSTEM_VARIABLES: {[key: number]: string} = {
+    0: 'CODEVAR_DRUNK',
+    1: 'CODEVAR_HEALTH',
+    2: 'CODEVAR_PLAYER_X',
+    3: 'CODEVAR_PLAYER_Y',
+    4: 'CODEVAR_DIALOG_CHOICE',
+    5: 'CODEVAR_DRAW_SKYMAP',
+    6: 'CODEVAR_OSCILLATE_FOV',
+    7: 'CODEVAR_COMMMAND_RETURN',
+    8: 'CODEVAR_PLAYER_GOLD',
+    9: 'CODEVAR_PINKINATOR_X',
+    10: 'CODEVAR_PINKINATOR_Y',
+    11: 'CODEVAR_PICKUP_ITEM_TILE',
+    12: 'CODEVAR_DIFFICULTY',
+    13: 'CODEVAR_KICKING_TURN',
+    14: 'CODEVAR_CHARACTER_CHOICE',
+    15: 'CODEVAR_LAST_LEVEL_LOAD',
+    16: 'CODEVAR_IS_SENTRY_BOT'
+};
+
+export const getVariableName = (id: number): string => {
+    return SYSTEM_VARIABLES[id] || `VAR[${id}]`;
+};

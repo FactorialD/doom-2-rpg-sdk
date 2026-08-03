@@ -1,0 +1,8 @@
+final class Languages {
+   static final short ENGLISH = 0;
+   static final short FRENCH = 1;
+   static final short GERMAN = 2;
+   static final short ITALIAN = 3;
+   static final short SPANISH = 4;
+   static final short MAX = 5;
+}

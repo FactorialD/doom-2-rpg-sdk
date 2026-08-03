@@ -1,0 +1,855 @@
+import javax.microedition.lcdui.Image;
+
+public final class VendingMachine {
+   public static int touchMe = 1;
+   private static ScriptThread callingThread = null;
+   private static short[] energyDrinkData = null;
+   private static final int DRINK_STRIDE = 3;
+   private static final int DRINK_ORIGINAL_PRICE_OFFSET = 0;
+   private static final int DRINK_HACKED_PRICE_OFFSET = 1;
+   private static final int LEVELS_AVAILABLE_ON_OFFSET = 2;
+   public static Image imgBuyAssets = null;
+   public static Image imgGameAssets = null;
+   public static Image imgHelpScreenAssets = null;
+   public static Image imgArrowDown;
+   public static Image imgArrowUp;
+   public static Image imgSubmitButton;
+   private static final int LIGHT_BG_COLOR = -1640710;
+   private static final int DARK_BG_COLOR = -5911084;
+   private static final int TOP_BAR_BOX_SRC_X = 38;
+   private static final int TOP_BAR_BOX_SRC_Y = 37;
+   private static final int TOP_BAR_BOX_WIDTH = 33;
+   private static final int TOP_BAR_BOX_HEIGHT = 29;
+   private static final int TOP_BAR_BOOKEND_SRC_X = 22;
+   private static final int TOP_BAR_BOOKEND_SRC_Y = 22;
+   private static final int TOP_BAR_BOOKEND_WIDTH = 13;
+   private static final int TOP_BAR_BOOKEND_HEIGHT = 63;
+   private static int mainTerminalCursor;
+   private static int gameCursor;
+   private static final int NUMBER_OF_NUMBERS = 4;
+   private static final int NUMBER_MIN = 0;
+   private static final int NUMBER_MAX = 9;
+   private static final int CURSOR_REGULAR_COLOR = -1;
+   private static final int CURSOR_HIGHLIGHT_COLOR_BASE = 187;
+   private static final int CURSOR_HIGHLIGHT_COLOR_MAX = 255;
+   private static final int SLIDER_BACKGROUND_HEIGHT = 110;
+   private static final int MIDDLE_BAR_OFFSET_Y = 125;
+   private static final int MIDDLE_BAR_HEIGHT = 145;
+   private static final int MIDDLE_BAR_TOP_MARGIN = 18;
+   private static int[] solution = new int[4];
+   private static int[] sliderPositions = new int[4];
+   private static int[] playersGuess = new int[4];
+   private static int[] minimums = new int[4];
+   private static int[] maximums = new int[4];
+   private static int[] chevronAnimationOffset = new int[4];
+   private static final int UNDEFINED = -1;
+   private static int correctSum;
+   public static final int NUMBER_OF_INITIAL_TRIES = 4;
+   private static int triesLeft;
+   private static int currentMapNumber;
+   private static int currentMachineNumber;
+   private static boolean machineHasBeenHacked;
+   private static boolean machineJustHacked;
+   public static int currentItemQuantity;
+   public static int currentItemPrice;
+   private static int currentPress_x;
+   private static int currentPress_y;
+   private static int pressedArrow;
+   private static int submitButton_center_x;
+   private static int submitButton_center_y;
+   private static int mainScreenButtonOffset_y;
+   private static final int ARROW_WIDTH = 32;
+   private static final int ARROW_HEIGHT = 32;
+   private static final int SUBMIT_BUTTON_WIDTH = 39;
+   private static final int SUBMIT_BUTTON_HEIGHT = 39;
+   private static final int ARROW_UP_PADDING_BELOW = 10;
+   private static final int MAIN_SCREEN_BUTTON_SRC_X = 121;
+   private static final int MAIN_SCREEN_BUTTON_SRC_Y = 59;
+   private static final int MAIN_SCREEN_BUTTON_WIDTH = 116;
+   private static final int MAIN_SCREEN_BUTTON_HEIGHT = 36;
+   private static final int MAIN_SCREEN_SOFTKEY_SRC_X = 121;
+   private static final int MAIN_SCREEN_SOFTKEY_SRC_Y = 22;
+   private static final int MAIN_SCREEN_SOFTKEY_WIDTH = 106;
+   private static final int MAIN_SCREEN_SOFTKEY_HEIGHT = 36;
+   private static final int SNACK_ORIGINAL_PRICE = 10;
+   private static final int SNACK_HACKED_PRICE = 8;
+   private static int widthOfContainingBox;
+   private static int iqBonusAwarded;
+   private static boolean gamePlayedFromMainMenu;
+   public static final int DARK_BG_HEIGHT_Y_OFFSET = 30;
+   public static final int MG_HELP_SCREEN_X_OFFSET = 200;
+   public static final int TOP_ARROWS_Y_OFFSET = 20;
+   public static final int BOTTOM_ARROWS_Y_OFFSET = 40;
+
+   public static final void playFromMainMenu() {
+      initGame((ScriptThread)null, 1, 1);
+      Canvas.stateVars[1] = 0;
+      Canvas.stateVars[2] = 0;
+   }
+
+   public static final void initGame(ScriptThread var0, int var1, int var2) {
+      callingThread = var0;
+      gamePlayedFromMainMenu = callingThread == null;
+      energyDrinkData = App.TBL_ENERGY_DRINK_DATA;
+      Canvas.setState(12);
+      Canvas.stateVars[0] = 4;
+      Canvas.stateVars[1] = 2;
+      Canvas.stateVars[2] = 0;
+      Canvas.stateVars[4] = 0;
+      Canvas.stateVars[3] = App.time;
+      Canvas.clearSoftKeys();
+      Canvas.initMiniGameHelpScreen();
+      machineJustHacked = false;
+      currentMapNumber = Math.max(Math.min(var1, 9), 1);
+      currentMachineNumber = Math.max(Math.min(var2, 18), 1);
+      triesLeft = gamePlayedFromMainMenu ? 4 : Player.getVendingMachineTriesLeft(currentMachineNumber);
+      machineHasBeenHacked = gamePlayedFromMainMenu ? false : Player.vendingMachineIsHacked(currentMachineNumber);
+      correctSum = 0;
+      if (machineCanBeHacked()) {
+         randomizeGame();
+      }
+
+      mainTerminalCursor = 0;
+      gameCursor = 0;
+      iqBonusAwarded = 0;
+      widthOfContainingBox = (Canvas.screenRect[2] - Canvas.screenRect[0] - 26 - 33) / 4;
+      submitButton_center_x = Canvas.screenRect[0] + 13 + 4 * widthOfContainingBox + 16;
+      submitButton_center_y = Canvas.screenRect[1] + 125 + 18 + 55 - 8;
+   }
+
+   public static void returnFromBuying() {
+      Canvas.setState(12);
+      Canvas.stateVars[0] = 4;
+      Canvas.stateVars[1] = 2;
+      Canvas.stateVars[2] = 0;
+      Canvas.stateVars[4] = 0;
+      machineJustHacked = false;
+      if (!machineCanBeHacked()) {
+         endGame(2);
+      }
+
+   }
+
+   public static final boolean machineCanBeHacked() {
+      return !machineHasBeenHacked && triesLeft > 0;
+   }
+
+   private static final void randomizeGame() {
+      correctSum = 0;
+
+      int var1;
+      for(var1 = 0; var1 < 4; ++var1) {
+         solution[var1] = App.nextInt() % 9 + 0;
+         sliderPositions[var1] = 5;
+         correctSum += solution[var1];
+      }
+
+      for(var1 = 0; var1 < playersGuess.length; ++var1) {
+         playersGuess[var1] = sliderPositions[var1];
+         minimums[var1] = 0;
+         maximums[var1] = 9;
+         chevronAnimationOffset[var1] = 0;
+      }
+
+      var1 = gamePlayedFromMainMenu ? 0 : Player.ce.getIQPercent();
+      byte var2;
+      if (var1 >= 80) {
+         var2 = 3;
+      } else if (var1 >= 50) {
+         var2 = 2;
+      } else if (var1 >= 20) {
+         var2 = 1;
+      } else {
+         var2 = 0;
+      }
+
+      while(var2 > numbersCorrect()) {
+         int var3 = App.nextInt() % 4;
+         correctSum -= solution[var3] - 5;
+         solution[var3] = 5;
+      }
+
+      machineHasBeenHacked = false;
+   }
+
+   public static final void handleInput(int var0, int var1) {
+      switch(Canvas.stateVars[1]) {
+      case 0:
+         handleInputForHelpScreen(var0, var1);
+         break;
+      case 1:
+         handleInputForGame(var0, var1);
+         break;
+      case 2:
+         handleInputForBasicVendingMachine(var0, var1);
+      }
+
+   }
+
+   private static final void handleInputForBasicVendingMachine(int var0, int var1) {
+      if (machineCanBeHacked()) {
+         if (var0 != 7 && var0 != 15) {
+            if (var0 != 3 && var0 != 4) {
+               if (var0 == 6) {
+                  if (mainTerminalCursor == 0) {
+                     MenuSystem.setMenu(83);
+                  } else {
+                     Canvas.stateVars[1] = 0;
+                     Canvas.initMiniGameHelpScreen();
+                     Canvas.clearSoftKeys();
+                  }
+               }
+            } else {
+               ++mainTerminalCursor;
+               mainTerminalCursor %= 2;
+            }
+         } else {
+            endGame(2);
+         }
+      } else if (var0 != 7 && var0 != 15) {
+         if (var0 != 3 && var0 != 4) {
+            if (var0 == 6) {
+               if (mainTerminalCursor == 0) {
+                  MenuSystem.setMenu(83);
+               } else {
+                  endGame(2);
+               }
+            }
+         } else {
+            ++mainTerminalCursor;
+            mainTerminalCursor %= 2;
+         }
+      } else {
+         endGame(2);
+      }
+
+   }
+
+   private static final void handleInputForHelpScreen(int var0, int var1) {
+      if (var0 != 5 && var0 != 15) {
+         if (var0 == 6) {
+            Canvas.stateVars[1] = 1;
+            Canvas.clearSoftKeys();
+         } else if (var0 == 1) {
+            Canvas.handleMiniGameHelpScreenScroll(-1);
+         } else if (var0 == 2) {
+            Canvas.handleMiniGameHelpScreenScroll(1);
+         } else if (var0 == 4) {
+            Canvas.handleMiniGameHelpScreenScroll(11);
+         } else if (var0 == 3) {
+            Canvas.handleMiniGameHelpScreenScroll(-11);
+         }
+      } else {
+         endGame(2);
+      }
+
+   }
+
+   private static final void handleInputForGame(int var0, int var1) {
+      if (Canvas.stateVars[2] == 2) {
+         if (var0 == 6) {
+            if (triesLeft == 0) {
+               if (gamePlayedFromMainMenu) {
+                  endGame(2);
+               } else {
+                  Canvas.stateVars[1] = 2;
+                  Canvas.clearSoftKeys();
+               }
+            } else {
+               gameCursor = 0;
+
+               for(int var2 = 0; var2 < playersGuess.length && playersGuess[gameCursor] != -1; ++gameCursor) {
+                  ++var2;
+               }
+
+               Canvas.stateVars[2] = 0;
+            }
+         }
+
+         if (var0 == 7) {
+            if (triesLeft != 0) {
+               Canvas.stateVars[1] = 0;
+               Canvas.initMiniGameHelpScreen();
+            }
+
+            Canvas.clearSoftKeys();
+         } else if ((var0 == 5 || var0 == 15) && (triesLeft != 0 || gamePlayedFromMainMenu)) {
+            endGame(2);
+         }
+      } else if (Canvas.stateVars[2] == 1) {
+         if (var0 == 6) {
+            if (gamePlayedFromMainMenu) {
+               endGame(2);
+            } else {
+               Canvas.stateVars[1] = 2;
+               Canvas.clearSoftKeys();
+               machineJustHacked = true;
+               machineHasBeenHacked = true;
+               Player.setVendingMachineHack(currentMachineNumber);
+            }
+         }
+
+         if ((var0 == 5 || var0 == 15) && (triesLeft != 0 || gamePlayedFromMainMenu)) {
+            endGame(2);
+         }
+      } else if (var0 != 5 && var0 != 15) {
+         if (var0 == 7) {
+            Canvas.stateVars[1] = 0;
+            Canvas.initMiniGameHelpScreen();
+            Canvas.clearSoftKeys();
+         } else if (var0 == 6) {
+            playersGuess[gameCursor] = sliderPositions[gameCursor];
+            ++gameCursor;
+
+            while(gameCursor < 4 && playersGuess[gameCursor] != -1) {
+               ++gameCursor;
+            }
+
+            if (gameCursor == 4) {
+               Canvas.clearSoftKeys();
+               updateHighLowState();
+               --triesLeft;
+               if (playerHasWon()) {
+                  Canvas.stateVars[2] = 1;
+                  machineHasBeenHacked = true;
+                  if (!gamePlayedFromMainMenu) {
+                     iqBonusAwarded = Player.modifyStat(7, 2);
+                  }
+               } else {
+                  if (!gamePlayedFromMainMenu) {
+                     Player.removeOneVendingMachineTry(currentMachineNumber);
+                  }
+
+                  Canvas.stateVars[2] = 2;
+               }
+            }
+         } else {
+            int var10002;
+            if (var0 == 1) {
+               if (sliderPositions[gameCursor] < 9) {
+                  var10002 = sliderPositions[gameCursor]++;
+                  playersGuess[gameCursor] = sliderPositions[gameCursor];
+               }
+            } else if (var0 == 2 && sliderPositions[gameCursor] > 0) {
+               var10002 = sliderPositions[gameCursor]--;
+               playersGuess[gameCursor] = sliderPositions[gameCursor];
+            }
+         }
+      } else {
+         endGame(2);
+      }
+
+   }
+
+   private static final void updateHighLowState() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         int var1 = sliderPositions[var0] - solution[var0];
+         if (var1 > 0) {
+            maximums[var0] = Math.min(sliderPositions[var0] - 1, maximums[var0]);
+         } else if (var1 < 0) {
+            minimums[var0] = Math.max(sliderPositions[var0] + 1, minimums[var0]);
+         } else {
+            maximums[var0] = sliderPositions[var0];
+            minimums[var0] = sliderPositions[var0];
+         }
+      }
+
+   }
+
+   public static final void updateGame(Graphics var0) {
+      var0.clipRect(0, 0, Canvas.screenRect[2], Canvas.screenRect[3]);
+      if (App.time - Canvas.stateVars[3] > 100) {
+         Canvas.stateVars[3] = App.time;
+
+         for(int var2 = 0; var2 < 4; ++var2) {
+            int var10002 = chevronAnimationOffset[var2]++;
+            int[] var10000 = chevronAnimationOffset;
+            var10000[var2] %= 11;
+         }
+      }
+
+      switch(Canvas.stateVars[1]) {
+      case 0:
+         drawHelpScreen(var0);
+         break;
+      case 1:
+         drawGameScreen(var0);
+         break;
+      case 2:
+         drawMainScreen(var0);
+      }
+
+      Canvas.staleView = true;
+      var0.resetScreenSpace();
+   }
+
+   private static final void drawGameResults(Graphics var0) {
+      Text var5 = Text.getSmallBuffer();
+      var5.setLength(0);
+      if (machineHasBeenHacked) {
+         if (gamePlayedFromMainMenu) {
+            Text.composeText((short)0, (short)239, var5);
+         } else {
+            Text.resetTextArgs();
+            if (iqBonusAwarded > 0) {
+               Text.addTextArg(iqBonusAwarded);
+               Text.composeText((short)0, (short)236, var5);
+            } else {
+               Text.composeText((short)0, (short)237, var5);
+            }
+         }
+      } else if (triesLeft > 0) {
+         Text.composeText((short)0, (short)209, var5);
+         var5.append(triesLeft);
+      } else if (gamePlayedFromMainMenu) {
+         Text.composeText((short)0, (short)240, var5);
+      } else {
+         Text.composeText((short)0, (short)201, var5);
+      }
+
+      Text var6 = Text.getSmallBuffer();
+      var6.setLength(0);
+      Text.composeText((short)0, (short)96, var6);
+      var5.append('|');
+      var5.append('|');
+      var5.append(var6);
+      var6.dispose();
+      var5.wrapText(20, '\n');
+      int var7 = var5.getStringWidth();
+      int var8 = var5.getNumLines() * 16;
+      var0.fillRect(Canvas.SCR_CX - var7 / 2 - 6, Canvas.SCR_CY - var8 / 2 - 4 + 15, var7 + 12, var8 + 8, -16777216);
+      var0.drawRect(Canvas.SCR_CX - var7 / 2 - 6, Canvas.SCR_CY - var8 / 2 - 4 + 15, var7 + 12, var8 + 8, -1);
+      var0.drawString(var5, Canvas.SCR_CX, Canvas.SCR_CY + 15, 3);
+      var5.dispose();
+   }
+
+   private static final void drawMainScreen(Graphics var0) {
+      int var4 = getVendingMachineTitleWidth();
+      var0.setScreenSpace(Canvas.displayRect);
+      drawVendingMachineBackground(var0, true);
+      boolean var12 = true;
+      byte var13 = 15;
+      byte var14 = 0;
+      Text var15 = Text.getSmallBuffer();
+      var15.setLength(0);
+      Text.composeText((short)3, (short)338, var15);
+      var15.dehyphenate();
+      MenuSystem.buildDivider(var15, Canvas.menuRect[2] / 9 - 4);
+      var0.drawString(var15, Canvas.SCR_CX + var14, var13, 1);
+      int var25 = var13 + 16;
+      Text.resetTextArgs();
+      var15.setLength(0);
+      var15.append((int)Player.inventory[24]);
+      Text.addTextArg(var15);
+      var15.setLength(0);
+      Text.composeText((short)0, (short)197, var15);
+      var15.dehyphenate();
+      var0.drawString(var15, Canvas.SCR_CX + var14, var25, 17);
+      var12 = true;
+      var13 = 63;
+      var15.setLength(0);
+      if (machineCanBeHacked()) {
+         Text.composeText((short)0, (short)198, var15);
+      } else if (machineJustHacked) {
+         Text.composeText((short)0, (short)200, var15);
+         Text.composeText((short)0, (short)199, var15);
+      } else {
+         Text.composeText((short)0, (short)199, var15);
+      }
+
+      var15.wrapText(21, '\n');
+      var0.drawString(var15, Canvas.SCR_CX, var13, 17);
+      short var16;
+      short var17;
+      if (machineCanBeHacked()) {
+         var16 = 202;
+         var17 = 203;
+      } else {
+         var16 = 141;
+         var17 = 140;
+      }
+
+      var25 = var13 + 16 * var15.getNumLines() + 21;
+      mainScreenButtonOffset_y = var25;
+      int var18 = Canvas.SCR_CX;
+      boolean var19 = mainScreenTopButtonPressed(currentPress_x, currentPress_y);
+      int var20 = var19 ? 121 : 241;
+      int var21 = var19 ? 59 : 36;
+      var0.drawRegion(imgBuyAssets, var20, var21, 116, 36, var18, var25, 17, 0);
+      var15.setLength(0);
+      Text.composeText((short)0, var16, var15);
+      var15.dehyphenate();
+      var0.drawString(var15, var18, var25 + 18, 3);
+      var25 += 52;
+      boolean var22 = mainScreenBottomButtonPressed(currentPress_x, currentPress_y);
+      var20 = var22 ? 121 : 241;
+      var21 = var22 ? 59 : 36;
+      var0.drawRegion(imgBuyAssets, var20, var21, 116, 36, var18, var25, 17, 0);
+      var15.setLength(0);
+      Text.composeText((short)0, var17, var15);
+      var15.dehyphenate();
+      var0.drawString(var15, var18, var25 + 18, 3);
+      if (mainScreenHasSoftKey()) {
+         int var24 = Canvas.screenRect[0] + 14;
+         var25 = Canvas.screenRect[1] + 223 + 0;
+         boolean var23 = mainScreenSoftKeyPressed(currentPress_x, currentPress_y);
+         var20 = var23 ? 121 : 241;
+         var21 = var23 ? 22 : 0;
+         var0.drawRegion(imgBuyAssets, var20, var21, 106, 36, var24, var25, 0, 0);
+         var15.setLength(0);
+         Text.composeText((short)0, (short)29, var15);
+         var15.dehyphenate();
+         var0.drawString(var15, var24 + 53, var25 + 18, 3);
+      }
+
+      var15.dispose();
+   }
+
+   public static final void drawVendingMachineBackground(Graphics var0, boolean var1) {
+      var0.setScreenSpace(Canvas.displayRect);
+      int var26 = Canvas.screenRect[0];
+      int var27 = Canvas.screenRect[1];
+      int var28 = Canvas.screenRect[2];
+      var0.drawRegion(imgBuyAssets, 7, 0, 113, 161, var26 + 7, var27 + 3);
+      var0.drawRegion(imgBuyAssets, 7, 0, 113, 161, var26 + 7 + 113, var27 + 3, 0, 2);
+      var0.drawRegion(imgBuyAssets, 7, 128, 113, 33, var26 + 7, var27 + 3 + 161);
+      var0.drawRegion(imgBuyAssets, 7, 128, 113, 33, var26 + 7 + 113, var27 + 3 + 161, 0, 2);
+      var0.drawRegion(imgBuyAssets, 7, 128, 113, 33, var26 + 7, var27 + 3 + 161 + 33);
+      var0.drawRegion(imgBuyAssets, 7, 128, 113, 33, var26 + 7 + 113, var27 + 3 + 161 + 33, 0, 2);
+      var0.drawRegion(imgBuyAssets, 7, 0, 113, 161, var26 + 7, var27 + 3 + 161 + 66, 0, 1);
+      var0.drawRegion(imgBuyAssets, 7, 0, 113, 161, var26 + 7 + 113, var27 + 3 + 161 + 66, 0, 3);
+      drawMachineTopBar(var0);
+      var0.drawRegion(imgBuyAssets, 286, 75, 50, 53, var26 + var28 + -8, var27 + 7, 24, 0);
+      var27 += 21;
+      var0.drawRegion(imgBuyAssets, 0, 0, 7, 296, var26, var27);
+      var0.drawRegion(imgBuyAssets, 0, 0, 7, 296, var26, var27 + 296);
+      var0.drawRegion(imgBuyAssets, 0, 0, 7, 296, var26 + var28, var27, 24, 2);
+      var0.drawRegion(imgBuyAssets, 0, 0, 7, 296, var26 + var28, var27 + 296, 24, 2);
+      var27 = Canvas.displayRect[3] - 61;
+      var0.drawRegion(imgBuyAssets, 7, 235, 240, 61, var26, var27);
+   }
+
+   private static final void drawHelpScreen(Graphics var0) {
+      Canvas.drawMiniGameHelpScreen(var0, Text.STRINGID((short)0, (short)195), Text.STRINGID((short)0, (short)196), imgHelpScreenAssets);
+      Canvas.setLeftSoftKey((short)0, (short)29);
+   }
+
+   private static final void drawGameScreen(Graphics var0) {
+      var0.fillRect(Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3], -1640710);
+      Text var2 = Text.getSmallBuffer();
+      drawGameTopBar(var0, var2);
+      drawGameMiddleBar(var0, var2);
+      var2.setLength(0);
+      if (Canvas.stateVars[2] != 0) {
+         drawGameResults(var0);
+         Text.composeText((short)0, (short)208, var2);
+         if (triesLeft > 0) {
+            Canvas.setLeftSoftKey((short)0, (short)29);
+         }
+      } else {
+         Text.composeText((short)0, (short)207, var2);
+         Canvas.setLeftSoftKey((short)0, (short)29);
+         Canvas.setRightSoftKey((short)0, (short)54);
+      }
+
+      drawArrows(var0);
+      var2.dispose();
+   }
+
+   private static final void drawGameTopBar(Graphics var0, Text var1) {
+      int var8 = Canvas.screenRect[2] - Canvas.screenRect[0] - 26;
+      int var9 = Canvas.screenRect[1];
+      int var10 = Canvas.screenRect[0];
+      var0.fillRect(var10, var9, Canvas.screenRect[2] - Canvas.screenRect[0], 54, -5911084);
+      var9 += 0;
+      var0.drawRegion(imgGameAssets, 22, 22, 13, 63, var10, var9);
+      var0.drawRegion(imgGameAssets, 22, 22, 13, 63, Canvas.screenRect[2], var9, 24, 2);
+      var10 += 13;
+      var0.fillRegion(imgGameAssets, 71, 22, 5, 63, var10, 0, var8, 63);
+      var9 += 17;
+      int var11 = widthOfContainingBox - 33;
+
+      for(int var12 = 0; var12 < 5; ++var12) {
+         var0.drawRegion(imgGameAssets, 38, 37, 33, 29, var10, var9);
+         var1.setLength(0);
+         if (var12 < 4) {
+            if (playersGuess[var12] != -1) {
+               var1.append(playersGuess[var12]);
+            }
+         } else {
+            var1.append(correctSum);
+         }
+
+         var0.drawString(var1, var10 + 16 - 1, var9 + 14 + 2, 3);
+         if (var12 > 0) {
+            var1.setLength(0);
+            if (var12 == 4) {
+               var1.append("=");
+            } else {
+               var1.append("+");
+            }
+
+            var0.drawString(var1, var10 - var11 / 2 - 1, var9 + 14, 3);
+         }
+
+         var10 += 33 + var11;
+      }
+
+   }
+
+   private static final void drawGameMiddleBar(Graphics var0, Text var1) {
+      int var3 = 187 + Math.abs(1000 - App.time % 2000) * 68 / 1000;
+      int var4 = -16777216 + (var3 << 16) + (var3 << 8);
+      int var14 = Canvas.screenRect[1] + 125 - 30;
+      int var15 = Canvas.screenRect[0];
+      if (currentPress_x != -1 && currentPress_y != -1 && Canvas.stateVars[2] == 0) {
+         pressedArrow = getArrowPress(currentPress_x, currentPress_y);
+      }
+
+      var0.fillRect(var15, var14, Canvas.screenRect[2] - Canvas.screenRect[0], 145, -5911084);
+      var14 += 18;
+      var15 += 13;
+
+      int var19;
+      for(int var18 = 0; var18 < 4; ++var18) {
+         int var16 = var15 + 16;
+         var0.drawRegion(imgGameAssets, 0, 0, 22, 110, var16 - 11, var14);
+         var1.setLength(0);
+         var1.append((int)9);
+         var0.drawString(var1, var16 - 1, var14 + -9, 3);
+         var1.setLength(0);
+         var1.append((int)0);
+         var0.drawString(var1, var16 - 1, var14 + 110 + 10, 3);
+         int var20 = var16 - 11;
+
+         int var21;
+         for(var19 = 0; var19 < minimums[var18]; ++var19) {
+            var21 = var14 + (9 - var19) * 11;
+            var0.drawRegion(imgGameAssets, 22, 97 - chevronAnimationOffset[var18], 22, 11, var20, var21, 20, 1);
+         }
+
+         for(var19 = 9; var19 > maximums[var18]; --var19) {
+            var21 = var14 + (9 - var19) * 11;
+            var0.drawRegion(imgGameAssets, 22, 97 - chevronAnimationOffset[var18], 22, 11, var20, var21, 20, 0);
+         }
+
+         int var17 = var14 + 5;
+         var17 += (9 - sliderPositions[var18] - 0) * 99 / 9;
+         var0.drawRect(var16 - 11, var17 - 5, 21, 10, -1);
+         var1.setLength(0);
+         var1.append(sliderPositions[var18]);
+         var0.drawString(var1, var16 - 1, var17 + 1, 3);
+         var15 += widthOfContainingBox;
+      }
+
+      byte var22 = 0;
+      var19 = 0;
+      boolean var23 = false;
+      if (currentPress_x != -1 && currentPress_y != -1 && Canvas.stateVars[2] == 0) {
+         var23 = Canvas.pointInRectangle(currentPress_x, currentPress_y, submitButton_center_x - 19, submitButton_center_y - 19, 39, 39);
+      }
+
+      if (var23) {
+         var19 += 39;
+      }
+
+      var0.drawRegion(imgSubmitButton, var22, var19, 39, 39, submitButton_center_x, submitButton_center_y - 30, 3, 0);
+      var1.setLength(0);
+      Text.composeText((short)0, (short)253, var1);
+      var1.dehyphenate();
+      var0.drawString(var1, submitButton_center_x, submitButton_center_y + 19 + -26, 17);
+   }
+
+   public static final boolean drinkInThisVendingMachine(int var0) {
+      return (energyDrinkData[(var0 - 0) * 3 + 2] & 1 << currentMapNumber) == 1 << currentMapNumber;
+   }
+
+   public static final short getDrinkPrice(int var0) {
+      return energyDrinkData[(var0 - 0) * 3 + (machineHasBeenHacked ? 1 : 0)];
+   }
+
+   public static final boolean buyDrink(int var0) {
+      if (Player.inventory[24] < currentItemPrice * currentItemQuantity) {
+         return false;
+      } else {
+         for(int var1 = 0; var1 < currentItemQuantity; ++var1) {
+            short[] var10000 = Player.inventory;
+            var10000[24] = (short)(var10000[24] - currentItemPrice);
+            Player.give(0, var0, 1, false);
+         }
+
+         return true;
+      }
+   }
+
+   public static final int getSnackPrice() {
+      return machineHasBeenHacked ? 8 : 10;
+   }
+
+   private static final int numbersCorrect() {
+      int var0 = 0;
+
+      for(int var1 = 0; var1 < 4; ++var1) {
+         if (sliderPositions[var1] == solution[var1]) {
+            ++var0;
+         }
+      }
+
+      return var0;
+   }
+
+   private static final boolean playerHasWon() {
+      return numbersCorrect() == 4;
+   }
+
+   public static final void forceWin() {
+      for(int var0 = 0; var0 < 4; ++var0) {
+         sliderPositions[var0] = solution[var0];
+      }
+
+      updateHighLowState();
+   }
+
+   private static final void endGame(int var0) {
+      if (!gamePlayedFromMainMenu) {
+         Game.scriptStateVars[7] = (short)var0;
+      }
+
+      if (!gamePlayedFromMainMenu) {
+         Canvas.setState(3);
+         callingThread.run();
+         callingThread = null;
+      } else {
+         Sound.playSound(10, 1);
+         MenuSystem.setMenu(18);
+      }
+
+   }
+
+   public static void pointerPressed(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3]) && (Canvas.stateVars[1] == 1 || Canvas.stateVars[1] == 2)) {
+         currentPress_x = var0;
+         currentPress_y = var1;
+      }
+
+   }
+
+   public static void pointerDragged(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3]) && (Canvas.stateVars[1] == 1 || Canvas.stateVars[1] == 2)) {
+         currentPress_x = var0;
+         currentPress_y = var1;
+      }
+
+   }
+
+   public static void pointerReleased(int var0, int var1) {
+      if (Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0], Canvas.screenRect[1], Canvas.screenRect[2], Canvas.screenRect[3])) {
+         if (Canvas.stateVars[1] == 0) {
+            if (var0 < 200) {
+               App.canvas.touchKeyPressed(-5);
+            }
+         } else if (Canvas.stateVars[1] == 1) {
+            if (Canvas.stateVars[2] == 0) {
+               if (pressedArrow != -1) {
+                  if (pressedArrow == getArrowPress(var0, var1)) {
+                     gameCursor = pressedArrow % 4;
+                     if (pressedArrow < 4) {
+                        App.canvas.touchKeyPressed(-1);
+                     } else {
+                        App.canvas.touchKeyPressed(-2);
+                     }
+                  }
+               } else if (Canvas.pointInRectangle(var0, var1, submitButton_center_x - 19, submitButton_center_y - 19 - 30, 39, 39)) {
+                  gameCursor = 3;
+                  App.canvas.touchKeyPressed(-5);
+               }
+            } else {
+               App.canvas.touchKeyPressed(-5);
+            }
+         } else if (Canvas.stateVars[1] == 2) {
+            if (mainScreenTopButtonPressed(var0, var1)) {
+               mainTerminalCursor = 0;
+               App.canvas.touchKeyPressed(-5);
+            } else if (mainScreenBottomButtonPressed(var0, var1)) {
+               mainTerminalCursor = 1;
+               App.canvas.touchKeyPressed(-5);
+            } else if (mainScreenSoftKeyPressed(var0, var1)) {
+               App.canvas.touchKeyPressed(-7);
+            }
+         }
+      }
+
+      pressedArrow = -1;
+      currentPress_y = -1;
+      currentPress_x = -1;
+   }
+
+   public static void drawArrow(Graphics var0, int var1, int var2, boolean var3, boolean var4) {
+      byte var6 = 0;
+      if (var4) {
+         var6 = 32;
+      }
+
+      var0.drawRegion(var3 ? imgArrowUp : imgArrowDown, 0, var6, 32, 32, var1, var2);
+   }
+
+   public static void drawArrows(Graphics var0) {
+      int var1 = Canvas.displayRect[1] + 125 - 10 - 32 - 20;
+      int var2 = Canvas.displayRect[1] + 125 + 145 + 10 - 40;
+      int var3 = Canvas.displayRect[0] + 13 + 0;
+
+      for(int var4 = 0; var4 < 4; ++var4) {
+         drawArrow(var0, var3, var1, true, var4 == pressedArrow);
+         drawArrow(var0, var3, var2, false, var4 == pressedArrow - 4);
+         var3 += widthOfContainingBox;
+      }
+
+   }
+
+   public static int getArrowPress(int var0, int var1) {
+      int var2 = Canvas.displayRect[1] + 125 - 10 - 32 - 20;
+      int var3 = Canvas.displayRect[1] + 125 + 145 + 10 - 40;
+      int var4 = Canvas.displayRect[0] + 13 + 0;
+
+      for(int var5 = 0; var5 < 4; ++var5) {
+         if (Canvas.pointInRectangle(var0, var1, var4, var2, 32, 32)) {
+            return var5;
+         }
+
+         if (Canvas.pointInRectangle(var0, var1, var4, var3, 32, 32)) {
+            return var5 + 4;
+         }
+
+         var4 += widthOfContainingBox;
+      }
+
+      return -1;
+   }
+
+   public static void drawMachineTopBar(Graphics var0) {
+      int var5 = Canvas.screenRect[0];
+      int var6 = Canvas.screenRect[1];
+      var0.drawRegion(imgBuyAssets, 121, 0, 120, 21, var5, var6);
+      var0.drawRegion(imgBuyAssets, 121, 0, 120, 21, var5 + 120, var6, 0, 2);
+   }
+
+   public static boolean mainScreenTopButtonPressed(int var0, int var1) {
+      return Canvas.pointInRectangle(var0, var1, Canvas.SCR_CX - 58, mainScreenButtonOffset_y, 116, 36);
+   }
+
+   public static boolean mainScreenBottomButtonPressed(int var0, int var1) {
+      return Canvas.pointInRectangle(var0, var1, Canvas.SCR_CX - 58, mainScreenButtonOffset_y + 36 + 16, 116, 36);
+   }
+
+   public static boolean mainScreenSoftKeyPressed(int var0, int var1) {
+      return mainScreenHasSoftKey() && Canvas.pointInRectangle(var0, var1, Canvas.screenRect[0] + 14, Canvas.screenRect[1] + 223 + 0, 106, 36);
+   }
+
+   public static boolean mainScreenHasSoftKey() {
+      return machineCanBeHacked();
+   }
+
+   public static int getVendingMachineTitleWidth() {
+      return Canvas.menuRect[2] / 9 - 4;
+   }
+}
