@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
-import { ByteStream } from '../../utils/byte-stream';
+import { ByteStream, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../../utils/byte-stream';
 import { DoomGeometryService, MapGeometry } from './doom-geometry.service';
 import { SpecialTextureIds } from '../core/constants/texture-groups';
 import { SpriteFlag } from '../core/constants/map-flags';
@@ -9,7 +9,7 @@ import { MapSerializer } from './map/map-serializer';
 import { MapCoordinateService } from './map/map-coordinate.service';
 import { ScriptData, DoomScriptService } from './doom-script.service';
 
-export type { MapGeometry }; 
+export type { MapGeometry };
 
 export interface MapData {
     header: MapHeader;
@@ -35,7 +35,7 @@ export interface MapSprite {
     y: number; // Game Units (Height / Java Z)
     z: number; // Game Units (Depth / Java Y)
     textureId: number;
-    flatIndex: number; 
+    flatIndex: number;
     flags: number;
     type: 'normal' | 'z'; // 'normal' = usually grounded, 'z' = specific height (flying/ceiling)
     extraInfo: number; // Preserves the "Extra Info" byte for Z-sprites (usually animation state)
@@ -68,9 +68,9 @@ export class DoomMapService {
     private serializer = inject(MapSerializer);
     private coordinateService = inject(MapCoordinateService);
     private scriptService = inject(DoomScriptService);
-    
+
     // Use extracted constant
-    private readonly SPRITE_SCALE = GeometryScale.SPRITE; 
+    private readonly SPRITE_SCALE = GeometryScale.SPRITE;
 
     /**
      * Scans all available map files for sprites matching a specific Texture ID (EntityDef tileIndex).
@@ -83,102 +83,107 @@ export class DoomMapService {
         for (let mapId = 1; mapId <= totalMaps; mapId++) {
             const mapFileName = `map0${mapId - 1}.bin`;
             const buffer = this.fileService.getFile(mapFileName);
-            
+
             if (!buffer) continue;
 
             try {
-                const stream = new ByteStream(buffer);
-                
-                stream.skip(11); 
-                
+                const stream = new ByteStream(buffer, true, mapFileName);
+
+                stream.skip(11);
+
                 // Read Counts needed for skipping
-                const numNodes = stream.readUShort(); 
-                const numLeafNodes = stream.readUShort(); 
-                const numLines = stream.readUShort(); 
-                const numNormals = stream.readUShort(); 
-                const numPolys = stream.readUShort(); 
-                const numVerts = stream.readUShort(); 
-                const numNormalSprites = stream.readUShort(); 
-                const numZSprites = stream.readShort(); 
-                
-                stream.skip(19); 
+                const numNodes = stream.readUShort();
+                const numLeafNodes = stream.readUShort();
+                const numLines = stream.readUShort();
+                const numNormals = stream.readUShort();
+                const numPolys = stream.readUShort();
+                const numVerts = stream.readUShort();
+                const numNormalSprites = stream.readUShort();
+                const numZSprites = stream.readShort();
+                checkedLength(numZSprites, 1, mapFileName, 'header sprite count', 25);
+
+                stream.skip(19);
 
                 // --- Skip Media ---
-                this.readMarker(stream);
+                readMarker(stream, MAP_FIRST_MARKER, 'media registration');
                 const mediaCount = stream.readUShort();
                 stream.skip(mediaCount * 2);
 
                 // --- Skip Geometry ---
-                this.readMarker(stream);
+                readMarker(stream, MAP_FIRST_MARKER, 'normals');
                 stream.skip(numNormals * 3 * 2);
 
-                this.readMarker(stream); // nodeOffsets
+                readMarker(stream, MAP_MARKER, 'node offsets');
                 stream.skip(numNodes * 2);
 
-                this.readMarker(stream); // nodeNormalIdxs
+                readMarker(stream, MAP_MARKER, 'node normal indices');
                 stream.skip(numNodes);
 
-                this.readMarker(stream); // child1
+                readMarker(stream, MAP_MARKER, 'node children');
                 stream.skip(numNodes * 2);
                 stream.skip(numNodes * 2); // child2
 
-                this.readMarker(stream); // bounds
+                readMarker(stream, MAP_MARKER, 'node bounds');
                 stream.skip(numNodes * 2);
                 stream.skip(numNodes * 2);
 
-                this.readMarker(stream); // leaf offsets
+                readMarker(stream, MAP_MARKER, 'leaf offsets');
                 stream.skip(numLeafNodes * 2);
                 stream.skip(numLeafNodes * 2);
 
-                this.readMarker(stream); // polys
+                readMarker(stream, MAP_MARKER, 'polygons');
                 stream.skip(numPolys); // tex
                 stream.skip(numPolys); // flags
                 stream.skip(numVerts * 5); // x,y,z,u,v
 
-                this.readMarker(stream); // lines
+                readMarker(stream, MAP_MARKER, 'lines');
                 const lineFlagsLen = Math.floor((numLines + 1) / 2);
                 stream.skip(lineFlagsLen);
                 stream.skip(numLines * 2);
                 stream.skip(numLines * 2);
 
-                this.readMarker(stream); // heightmap
+                readMarker(stream, MAP_MARKER, 'heightmap');
                 stream.skip(1024);
 
                 // --- Read Sprites ---
-                this.readMarker(stream);
+                readMarker(stream, MAP_MARKER, 'sprites');
                 const numMapSprites = numNormalSprites + numZSprites;
-                
+                stream.ensureAvailable(
+                    checkedLength(numMapSprites, 5, mapFileName, 'sprites', stream.position),
+                    'sprites'
+                );
+
                 const spriteXs = new Int16Array(numMapSprites);
                 const spriteYs = new Int16Array(numMapSprites);
-                
+
                 for(let i=0; i<numMapSprites; i++) spriteXs[i] = (stream.readUByte() << 3);
                 for(let i=0; i<numMapSprites; i++) spriteYs[i] = (stream.readUByte() << 3);
-                
+
                 // Info (Texture ID low byte)
                 const spriteInfoLow = stream.readByteArray(numMapSprites);
-                
-                this.readMarker(stream);
+
+                readMarker(stream, MAP_MARKER, 'sprite flags');
                 // Flags (Texture ID high bits)
                 const spriteFlags = new Int32Array(numMapSprites);
                 for(let i=0; i<numMapSprites; i++) spriteFlags[i] = stream.readUShort();
-                
+
                 for (let i = 0; i < numMapSprites; i++) {
                     const localTexId = spriteInfoLow[i];
                     const flags = spriteFlags[i];
-                    
+
                     let texId = localTexId;
                     // Bit 6 of flag indicates wall-texture range offset (257)
                     if ((flags & SpriteFlag.Wall) !== 0) {
                         texId += SpecialTextureIds.WALL_OFFSET;
                     }
-                    
+
                     if (texId === targetTileIndex) {
                         locations.push({
                             mapId: mapId,
                             spriteIndex: i,
                             x: spriteXs[i] * this.SPRITE_SCALE,
                             z: spriteYs[i] * this.SPRITE_SCALE,
-                            y: 0 
+                            y: 0
                         });
                     }
                 }
@@ -190,15 +195,15 @@ export class DoomMapService {
     }
 
     async loadMap(mapId: number): Promise<MapData | null> {
-        const mapFileName = `map0${mapId - 1}.bin`; 
+        const mapFileName = `map0${mapId - 1}.bin`;
         const buffer = this.fileService.getFile(mapFileName);
-        
+
         if (!buffer) {
             console.error(`Map file ${mapFileName} not found`);
             return null;
         }
 
-        const stream = new ByteStream(buffer);
+        const stream = new ByteStream(buffer, true, mapFileName);
 
         // --- 1. Read Header ---
         stream.skip(1); // Ver
@@ -206,7 +211,7 @@ export class DoomMapService {
         const spawnIndex = stream.readUShort(); // Offset 5
         const spawnDir = stream.readUByte();    // Offset 7
         stream.skip(3); // Flags, Secrets, Loot (Offsets 8, 9, 10)
-        
+
         // Counts (Starting at Offset 11)
         const numNodes = stream.readUShort();
         const numLeafNodes = stream.readUShort();
@@ -216,39 +221,40 @@ export class DoomMapService {
         const numVerts = stream.readUShort();
         const numNormalSprites = stream.readUShort();
         const numZSprites = stream.readShort();
-        
+        checkedLength(numZSprites, 1, mapFileName, 'header sprite count', 25);
+
         // Rest of header (TileEvents(2) + ByteCode(2) + Cam(1) + CamKeys(2) + Tweens(12))
-        stream.skip(19); 
+        stream.skip(19);
 
         // --- 2. Read Media Registration ---
-        this.readMarker(stream); 
+        readMarker(stream, MAP_FIRST_MARKER, 'media registration');
         const mediaCount = stream.readUShort();
         stream.skip(mediaCount * 2);
 
         // --- 3. Read Geometry Data Structures ---
-        this.readMarker(stream); 
-        stream.skip(numNormals * 3 * 2); 
-        
-        this.readMarker(stream); 
+        readMarker(stream, MAP_FIRST_MARKER, 'normals');
+        stream.skip(numNormals * 3 * 2);
+
+        readMarker(stream, MAP_MARKER, 'node offsets');
         const nodeOffsets = stream.readUint16Array(numNodes);
-        
-        this.readMarker(stream);
-        stream.skip(numNodes); 
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'node normal indices');
+        stream.skip(numNodes);
+
+        readMarker(stream, MAP_MARKER, 'node children');
         const nodeChildOffset1 = stream.readUint16Array(numNodes);
         const nodeChildOffset2 = stream.readUint16Array(numNodes);
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'node bounds');
         const nodeBoundXs = stream.readByteArray(numNodes * 2);
         const nodeBoundYs = stream.readByteArray(numNodes * 2);
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'leaf offsets');
         const nodeVertOffset = stream.readUint16Array(numLeafNodes);
         const nodePolyOffset = stream.readUint16Array(numLeafNodes);
-        
+
         // --- 4. Read Polygons and Vertices ---
-        this.readMarker(stream);
+        readMarker(stream, MAP_MARKER, 'polygons');
         const polyTex = stream.readByteArray(numPolys);
         const polyFlags = stream.readByteArray(numPolys);
         const polyXs = stream.readByteArray(numVerts);
@@ -260,44 +266,48 @@ export class DoomMapService {
         const polyVs = new Int8Array(polyVsU8.buffer);
 
         // --- 5. Read Sprites ---
-        this.readMarker(stream);
-        stream.skip(Math.floor((numLines + 1) / 2)); 
-        stream.skip(numLines * 2); 
-        stream.skip(numLines * 2); 
-        
-        this.readMarker(stream);
+        readMarker(stream, MAP_MARKER, 'lines');
+        stream.skip(Math.floor((numLines + 1) / 2));
+        stream.skip(numLines * 2);
+        stream.skip(numLines * 2);
+
+        readMarker(stream, MAP_MARKER, 'heightmap');
         const heightMapU8 = stream.readByteArray(1024);
         const heightMap = new Int8Array(heightMapU8.buffer);
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'sprites');
         const numMapSprites = numNormalSprites + numZSprites;
-        
+        stream.ensureAvailable(
+            checkedLength(numMapSprites, 5, mapFileName, 'sprites', stream.position),
+            'sprites'
+        );
+
         // Read Sprites X/Y (Stored as byte << 3 in file, so actual val is byte * 8)
         const spriteXs = new Int16Array(numMapSprites);
         const spriteYs = new Int16Array(numMapSprites);
         // This array will hold the raw Z value from file (if exists) or base value
         const spriteZs = new Int16Array(numMapSprites);
         const spriteExtras = new Uint8Array(numMapSprites);
-        
+
         for(let i=0; i<numMapSprites; i++) spriteXs[i] = (stream.readUByte() << 3);
         for(let i=0; i<numMapSprites; i++) spriteYs[i] = (stream.readUByte() << 3);
-        
+
         // Init Normal Sprites Z to 32 (default center offset)
         for(let i=0; i<numNormalSprites; i++) spriteZs[i] = 32;
 
         const spriteInfoLow = stream.readByteArray(numMapSprites);
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'sprite flags');
         const spriteFlags = new Int32Array(numMapSprites);
         for(let i=0; i<numMapSprites; i++) spriteFlags[i] = stream.readUShort();
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'sprite z coordinates');
         // Read Z-coords for Z-Sprites ONLY (stored sequentially for the last numZSprites)
         for(let i=0; i<numZSprites; i++) {
-             spriteZs[numNormalSprites + i] = stream.readUByte(); 
+             spriteZs[numNormalSprites + i] = stream.readUByte();
         }
-        
-        this.readMarker(stream);
+
+        readMarker(stream, MAP_MARKER, 'sprite extra data');
         // Read Extra Info for Z-Sprites ONLY
         for(let i=0; i<numZSprites; i++) {
              spriteExtras[numNormalSprites + i] = stream.readUByte();
@@ -319,16 +329,16 @@ export class DoomMapService {
 
         // --- Process Sprites Post-Processing (Logic from Render.java) ---
         const sprites: MapSprite[] = [];
-        
+
         for(let i=0; i<numMapSprites; i++) {
             let x = spriteXs[i]; // Raw game units (0-2040)
             let y = spriteYs[i]; // Raw game units (0-2040)
             let z = spriteZs[i]; // Base Z
-            
+
             // Get Floor Height from HeightMap
             const gridX = x >> 6; // x / 64
             const gridY = y >> 6; // y / 64
-            
+
             let floorHeight = 0;
             if (gridX >= 0 && gridX < 32 && gridY >= 0 && gridY < 32) {
                  const idx = (gridY * 32) + gridX;
@@ -347,17 +357,17 @@ export class DoomMapService {
             // Determine Texture ID
             const localTexId = spriteInfoLow[i];
             const flags = spriteFlags[i];
-            
+
             let texId = localTexId;
             // Map bit 6 of 16-bit flag to offset (Render.java logic)
             if ((flags & SpriteFlag.Wall) !== 0) {
                 texId += SpecialTextureIds.WALL_OFFSET;
             }
-            
+
             sprites.push({
                 uuid: crypto.randomUUID(),
                 x: x,
-                y: z, 
+                y: z,
                 z: y,
                 textureId: texId,
                 flatIndex: i,
@@ -384,14 +394,14 @@ export class DoomMapService {
             remainderOffset
         };
     }
-    
+
     /**
      * Saves the modified MapData back to the file system.
      */
     saveMap(mapId: number, data: MapData): boolean {
         const mapFileName = `map0${mapId - 1}.bin`;
         const originalBuffer = this.fileService.getFile(mapFileName);
-        
+
         if (!originalBuffer) {
             console.error("Original map file not found, cannot save.");
             return false;
@@ -399,7 +409,7 @@ export class DoomMapService {
 
         try {
             this.sortSprites(data);
-            const newBuffer = this.serializer.serialize(data, originalBuffer);
+            const newBuffer = this.serializer.serialize(data, originalBuffer, mapFileName);
             this.fileService.saveBuffer(mapFileName, newBuffer.buffer);
             return true;
         } catch (e) {
@@ -423,15 +433,15 @@ export class DoomMapService {
         }
 
         mapData.sprites = [...normalSprites, ...zSprites];
-        
+
         // Update flatIndex for all sprites to match their new position
         mapData.sprites.forEach((s, i) => s.flatIndex = i);
     }
 
     private buildBspTree(nodeIdx: number, offsets: Uint16Array, c1: Uint16Array, c2: Uint16Array, bX: Uint8Array, bY: Uint8Array): BspNode {
         const isLeaf = offsets[nodeIdx] === 65535;
-        const SCALE = 128.0; 
-        
+        const SCALE = 128.0;
+
         const safeGet = (arr: Uint8Array, idx: number) => (idx >= 0 && idx < arr.length) ? arr[idx] : 0;
         const minX = safeGet(bX, nodeIdx * 2) * SCALE;
         const maxX = safeGet(bX, nodeIdx * 2 + 1) * SCALE;
@@ -458,6 +468,5 @@ export class DoomMapService {
         }
         return node;
     }
-    
-    private readMarker(stream: ByteStream) { stream.skip(4); }
+
 }

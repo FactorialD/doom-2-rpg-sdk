@@ -167,22 +167,42 @@ export class TextureMappingService {
         this.textureLocations.push(info);
     }
 
-    // Resolve References
-    for (let i = 0; i < 1024; i++) {
-        const info = this.textureLocations[i];
-        if (info.isReference && info.parentId !== undefined) {
-            const parent = this.textureLocations[info.parentId];
-            if (parent && !parent.isReference) {
-                info.fileIndex = parent.fileIndex;
-                info.fileOffset = parent.fileOffset;
-                info.dataLength = parent.dataLength;
-                
-                info.width = parent.width;
-                info.height = parent.height;
-                info.bounds = parent.bounds;
-                info.valid = parent.valid;
-            }
+    // Resolve reference chains to their physical texel buffer. Dimensions and
+    // bounds deliberately remain those of the referencing frame, matching
+    // Render.setupTexture().
+    const resolutionState = new Uint8Array(1024); // 0 = new, 1 = visiting, 2 = resolved, 3 = invalid
+    const resolveReference = (id: number): TextureInfo | undefined => {
+        const info = this.textureLocations[id];
+        if (!info) return undefined;
+        if (!info.isReference) return info;
+        if (resolutionState[id] === 2) return info;
+        if (resolutionState[id] === 1 || resolutionState[id] === 3) {
+            resolutionState[id] = 3;
+            info.valid = false;
+            return undefined;
         }
+
+        resolutionState[id] = 1;
+        const parentId = info.parentId;
+        const parent = parentId !== undefined && parentId >= 0 && parentId < 1024
+            ? resolveReference(parentId)
+            : undefined;
+
+        if (!parent || resolutionState[parentId!] === 3 || parent.fileIndex === -1) {
+            resolutionState[id] = 3;
+            info.valid = false;
+            return undefined;
+        }
+
+        info.fileIndex = parent.fileIndex;
+        info.fileOffset = parent.fileOffset;
+        info.dataLength = parent.dataLength;
+        resolutionState[id] = 2;
+        return info;
+    };
+
+    for (let i = 0; i < 1024; i++) {
+        resolveReference(i);
     }
 
     // Populate Group Map
