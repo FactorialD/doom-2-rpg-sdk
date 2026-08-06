@@ -2,235 +2,53 @@ import { Injectable, inject } from '@angular/core';
 import { DoomEntitiesService } from '../doom-entities.service';
 import { DoomTextService } from '../doom-text.service';
 import { ByteStream } from '../../../utils/byte-stream';
-import { SCRIPT_OPCODES } from './script-opcodes';
+import { SCRIPT_OPCODE_SCHEMA } from './script-opcode-schema';
+import { decodeInstruction } from './script-instruction-codec';
 import { ScriptInstruction } from './script-types';
 import { ScriptUtils } from './script-utils';
 import { getVariableName } from '../doom-variables';
 import { MONSTER_FLAGS, ScriptOperation, DialogStyle } from '../../core/constants/scripting';
 
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class ScriptDisassemblerService {
   private entityService = inject(DoomEntitiesService);
   private textService = inject(DoomTextService);
-
-  private readonly MONSTER_FLAG_NAMES = MONSTER_FLAGS.reduce((acc, f) => {
-      acc[f.id] = f.name;
-      return acc;
-  }, {} as {[key: number]: string});
-
-  private readonly DIALOG_STYLE_NAMES: {[key: number]: string} = {
-      [DialogStyle.Normal]: 'Normal',
-      [DialogStyle.NPC]: 'NPC',
-      [DialogStyle.Help]: 'Help',
-      [DialogStyle.Scroll]: 'Scroll',
-      [DialogStyle.Chest]: 'Chest',
-      [DialogStyle.Monster]: 'Monster',
-      [DialogStyle.Ghost]: 'Ghost',
-      [DialogStyle.Yell]: 'Yell',
-      [DialogStyle.Player]: 'Player',
-      [DialogStyle.Terminal]: 'Terminal',
-      [DialogStyle.Elevator]: 'Elevator',
-      [DialogStyle.Vios]: 'Vios',
-      [DialogStyle.SelfDestruct]: 'Self Destruct',
-      [DialogStyle.ArmorRepair]: 'Armor Repair',
-      [DialogStyle.CommLink]: 'Comm Link',
-      [DialogStyle.Sal]: 'Sal',
-      [DialogStyle.Special]: 'Special'
+  private readonly MONSTER_FLAG_NAMES = MONSTER_FLAGS.reduce((acc, f) => { acc[f.id]=f.name; return acc; }, {} as {[key:number]:string});
+  private readonly DIALOG_STYLE_NAMES: {[key:number]:string} = {
+    [DialogStyle.Normal]:'Normal',[DialogStyle.NPC]:'NPC',[DialogStyle.Help]:'Help',[DialogStyle.Scroll]:'Scroll',[DialogStyle.Chest]:'Chest',
+    [DialogStyle.Monster]:'Monster',[DialogStyle.Ghost]:'Ghost',[DialogStyle.Yell]:'Yell',[DialogStyle.Player]:'Player',[DialogStyle.Terminal]:'Terminal',
+    [DialogStyle.Elevator]:'Elevator',[DialogStyle.Vios]:'Vios',[DialogStyle.SelfDestruct]:'Self Destruct',[DialogStyle.ArmorRepair]:'Armor Repair',
+    [DialogStyle.CommLink]:'Comm Link',[DialogStyle.Sal]:'Sal',[DialogStyle.Special]:'Special'
   };
 
   disassemble(code: Uint8Array, mapId: number): ScriptInstruction[] {
-    const instructions: ScriptInstruction[] = [];
-    const stream = new ByteStream(code.buffer, false); // Big Endian logic mainly
-    
-    // Map ID -> String Chunk ID for map-specific strings
-    const mapStringChunkId = 4 + (mapId - 1);
-
-    // --- PASS 1: Read all instructions and map Offsets -> UIDs ---
-    const offsetToUid = new Map<number, string>();
-
-    while (stream.position < code.length) {
-        const offset = stream.position;
-        const opcode = stream.readByte() & 0xFF;
-        const opDef = SCRIPT_OPCODES[opcode];
-        
-        const params: any[] = [];
-        let formattedArgs = '';
-        let evalDisplay = '';
-        
-        // --- PARSING LOGIC ---
-        
-        if (opcode === 0) { // EV_EVAL
-            const count = stream.readUByte();
-            params.push(count);
-            
-            const evalBytes: number[] = [];
-            const evalLogicParts: string[] = [];
-            
-            for(let i=0; i<count; i++) {
-                const opByte = stream.readUByte();
-                params.push(opByte);
-                evalBytes.push(opByte);
-                
-                if ((opByte & 64) !== 0 && (opByte & 128) === 0) {
-                     const valLow = stream.readUByte();
-                     params.push(valLow);
-                     evalBytes.push(valLow);
-                     const val = ((opByte & 63) << 8) | valLow;
-                     evalLogicParts.push(`${val}`);
-                } else if ((opByte & 128) !== 0) {
-                     const varId = opByte & 127;
-                     evalLogicParts.push(getVariableName(varId));
-                } else {
-                     switch(opByte) {
-                         case 0: evalLogicParts.push('&&'); break;
-                         case 1: evalLogicParts.push('||'); break;
-                         case 2: evalLogicParts.push('<='); break;
-                         case 3: evalLogicParts.push('<'); break;
-                         case 4: evalLogicParts.push('=='); break;
-                         case 5: evalLogicParts.push('!='); break;
-                         case 6: evalLogicParts.push('!'); break; 
-                         default: evalLogicParts.push(`OP(${opByte})`);
-                     }
-                }
-            }
-            evalDisplay = ScriptUtils.formatRPN(evalLogicParts);
-            const jumpByte = stream.readUByte();
-            params.push(jumpByte);
-            
-            // Jmp calc happens in Pass 2 for EV_EVAL
-            formattedArgs = `Len:${count} [${evalBytes.map(b=>b.toString(16)).join(' ')}] Jmp:+${jumpByte}`;
-
-        } else if (opcode === 4) { // EV_LERPSPRITE (Variable Length)
-             const b1 = stream.readUByte();
-             const b2 = stream.readUByte();
-             const b3 = stream.readUByte();
-             params.push(b1, b2, b3);
-             const combined = b1 | (b2 << 8) | (b3 << 16);
-             const flags = combined & 15;
-             if ((flags & 8) === 0) params.push(stream.readUByte());
-             if ((flags & 4) === 0) params.push(stream.readUByte());
-             formattedArgs = params.map(p => p.toString(16).toUpperCase()).join(' ');
-
-        } else if (!opDef) {
-             console.warn(`Unknown opcode ${opcode} at ${offset}`);
-             formattedArgs = '???';
-        } else {
-            const parts = opDef.format ? opDef.format.split(' ') : [];
-            for (const part of parts) {
-                if (part === '') continue;
-                if (part === 'u8') params.push(stream.readUByte());
-                else if (part === 's8') params.push(stream.readByte());
-                else if (part === 'u16') params.push(stream.readUShort());
-                else if (part === 's16') params.push(stream.readShort());
-                else if (part === 'u32') params.push(stream.readInt()); 
-                else if (part === 's32') params.push(stream.readInt());
-                else if (part === 'var_loot_list') {
-                    const count = stream.readUByte();
-                    params.push(count);
-                    const items = [];
-                    for(let k=0; k<count; k++) items.push(stream.readUShort());
-                    params.push(...items);
-                }
-                else if (part === 'drop_monster_item') {
-                    const locRaw = stream.readUShort();
-                    let loc = locRaw;
-                    let type = 0;
-                    if ((locRaw & 0x8000) !== 0) {
-                        loc = locRaw & 0x7FFF;
-                        const typeLow = stream.readUByte();
-                        const typeHigh = stream.readUByte();
-                        type = (typeHigh << 8) | typeLow;
-                    } else {
-                        type = stream.readUByte();
-                    }
-                    const amt = stream.readUByte();
-                    params.push(loc, type, amt);
-                }
-                else if (part === 'debug_str') {
-                    const type = stream.readUByte();
-                    params.push(type);
-                    if (type === 0) {
-                        let charCode = 0;
-                        while ((charCode = stream.readUByte()) !== 0) {
-                            params.push(charCode);
-                        }
-                        params.push(0);
-                    } else {
-                        params.push(stream.readUByte());
-                    }
-                }
-            }
-            formattedArgs = params.join(' ');
-        }
-        
-        const size = stream.position - offset;
-        const originalBytes = Array.from(code.subarray(offset, stream.position));
-        const uid = ScriptUtils.generateUUID();
-        
-        offsetToUid.set(offset, uid);
-
-        const inst: ScriptInstruction = {
-            uid,
-            offset,
-            opcode,
-            name: opDef?.name || `OP_${opcode}`,
-            params,
-            formattedArgs,
-            isJump: false, // Calculated in Pass 2
-            size,
-            originalBytes,
-            readableName: opDef?.name || `Unknown (${opcode})`,
-            readableDetails: opcode === 0 ? evalDisplay : formattedArgs,
-            description: opDef?.desc || '',
-            isLogic: false
-        };
-
-        this.enrichInstruction(inst, mapStringChunkId);
-        instructions.push(inst);
+    const instructions: ScriptInstruction[]=[];
+    const stream=new ByteStream(new Uint8Array(code).buffer,false);
+    const offsetToUid=new Map<number,string>();
+    const mapStringChunkId=4+(mapId-1);
+    while(stream.position<code.length) {
+      const offset=stream.position;
+      const decoded=decodeInstruction(stream,{offset});
+      const definition=SCRIPT_OPCODE_SCHEMA[decoded.opcode];
+      const uid=ScriptUtils.generateUUID(); offsetToUid.set(offset,uid);
+      const formattedArgs=decoded.params.join(' ');
+      const inst: ScriptInstruction={uid,offset,opcode:decoded.opcode,name:definition.name,params:decoded.params,formattedArgs,isJump:false,size:decoded.size,
+        originalBytes:Array.from(code.subarray(offset,stream.position)),readableName:definition.name,readableDetails:formattedArgs,
+        description:definition.description,isLogic:definition.ui?.logic??false};
+      this.enrichInstruction(inst,mapStringChunkId); instructions.push(inst);
     }
-    
-    // --- PASS 2: Resolve Jumps and Links ---
-    // Now that we have all UIDs, we can link EV_CALL_FUNC, EV_JUMP, etc. to specific instructions
-    
-    for (const inst of instructions) {
-        if (inst.opcode === 1) { // EV_JUMP (Relative)
-             const relJump = inst.params[0];
-             const targetOffset = inst.offset + inst.size + relJump;
-             inst.jumpTarget = targetOffset;
-             inst.isJump = true;
-             inst.jumpTargetUid = offsetToUid.get(targetOffset);
-             inst.isLogic = true;
-        } 
-        else if (inst.opcode === 0) { // EV_EVAL (Relative byte at end)
-             const relJump = inst.params[inst.params.length - 1];
-             const targetOffset = inst.offset + inst.size + relJump;
-             inst.jumpTarget = targetOffset;
-             inst.isJump = true;
-             inst.jumpTargetUid = offsetToUid.get(targetOffset);
-             inst.isLogic = true;
-        }
-        else if (inst.opcode === 7) { // EV_CALL_FUNC (Absolute u16)
-             const targetOffset = inst.params[0];
-             inst.jumpTarget = targetOffset;
-             inst.isJump = true;
-             inst.jumpTargetUid = offsetToUid.get(targetOffset);
-             inst.readableDetails = `Call Func at 0x${targetOffset.toString(16).toUpperCase()}`;
-        }
-        else if (inst.opcode === 36) { // EV_SETDEATHFUNC (u8 ent, s16 funcOffset)
-             const targetOffset = inst.params[1];
-             if (targetOffset !== -1) {
-                 inst.jumpTarget = targetOffset;
-                 inst.jumpTargetUid = offsetToUid.get(targetOffset);
-                 inst.readableDetails += ` -> Func 0x${targetOffset.toString(16).toUpperCase()}`;
-             }
-        }
+    for(const inst of instructions) {
+      for(const relocation of SCRIPT_OPCODE_SCHEMA[inst.opcode].relocations??[]) {
+        if(relocation.reference!=='instruction-relative'&&relocation.reference!=='instruction-absolute') continue;
+        const index=relocation.argumentIndex==='last'?inst.params.length-1:relocation.argumentIndex;
+        const value=inst.params[index]; if(value===relocation.allowMissingValue) continue;
+        const target=relocation.reference==='instruction-relative'?inst.offset+inst.size+value:value;
+        inst.jumpTarget=target; inst.jumpTargetUid=offsetToUid.get(target); inst.isJump=true;
+      }
     }
-    
     return instructions;
   }
-  
+
   private enrichInstruction(inst: ScriptInstruction, mapStringChunkId: number) {
       const p = inst.params;
       if (!p) return;
