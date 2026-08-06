@@ -2,7 +2,7 @@ import { Component, input, output, signal, inject, ViewChild, ElementRef, effect
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScriptInstruction } from '../../../services/doom-script.service';
-import { SCRIPT_OPCODES } from '../../../services/scripts/script-opcodes';
+import { SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
 import { ScriptAssemblerService, AssemblyResult } from '../../../services/scripts/script-assembler.service';
 import { MonsterFlagEditorComponent } from '../monster-flag-editor/monster-flag-editor.component';
 import { DialogStyleEditorComponent } from '../dialog-style-editor/dialog-style-editor.component';
@@ -105,8 +105,8 @@ export class ScriptInstructionEditorComponent {
     editError = '';
     
     showAutocomplete = signal(false);
-    opcodeList: OpcodeItem[] = Object.entries(SCRIPT_OPCODES).map(([k, v]) => ({ 
-        id: +k, name: v.name, desc: v.desc, format: v.format 
+    opcodeList: OpcodeItem[] = Object.entries(SCRIPT_OPCODE_SCHEMA).map(([k, v]) => ({
+        id: +k, name: v.name, desc: v.description, format: v.arguments.map(argument => argument.kind).join(' ')
     }));
     
     @ViewChild('opcodeInput') opcodeInput!: ElementRef;
