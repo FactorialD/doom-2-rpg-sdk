@@ -1,6 +1,6 @@
 
 import { Injectable, signal, WritableSignal } from '@angular/core';
-import { ByteStream } from '../../utils/byte-stream';
+import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
 
 // JSZip is loaded via CDN in index.html
 declare var JSZip: any;
@@ -132,7 +132,7 @@ export class DoomFileService {
       const idxBuffer = this.getFile('images.idx');
       if (!idxBuffer) return;
 
-      const indexData = this.parseGenericIndex(idxBuffer);
+      const indexData = flattenResourceFileIndex(parseResourceFileIndex(idxBuffer));
       const FONT_ID = 11;
       const STRIDE = 3;
       const pos = FONT_ID * STRIDE;
@@ -156,36 +156,4 @@ export class DoomFileService {
       }
   }
 
-  private parseGenericIndex(buffer: ArrayBuffer): Int32Array {
-    const stream = new ByteStream(buffer);
-    const count = stream.readShort();
-    const result = new Int32Array(count * 3);
-    
-    let writeIdx = 0;
-    while (writeIdx < count && stream.position < stream.length - 5) {
-        const id = stream.readUByte();
-        const offset = stream.readInt();
-        
-        if (offset !== 0 && writeIdx > 0) {
-            const prevOffset = result[(writeIdx - 1) * 3 + 1];
-            result[(writeIdx - 1) * 3 + 2] = offset - prevOffset;
-        }
-
-        if (id !== 255) {
-            result[writeIdx * 3 + 0] = id;
-            result[writeIdx * 3 + 1] = offset;
-            writeIdx++;
-        }
-    }
-    
-    if (stream.position + 5 <= stream.length) {
-        stream.readUByte();
-        const totalSize = stream.readInt();
-        if (writeIdx > 0) {
-            const lastOffset = result[(writeIdx - 1) * 3 + 1];
-            result[(writeIdx - 1) * 3 + 2] = totalSize - lastOffset;
-        }
-    }
-    return result;
-  }
 }

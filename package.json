@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "ng serve",
     "build": "ng build",
+    "test:index": "node --test tests/resource-file-index.test.ts",
     "preview": "ng serve --configuration=production"
   },
   "dependencies": {
