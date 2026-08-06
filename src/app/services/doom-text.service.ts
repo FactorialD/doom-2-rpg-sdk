@@ -2,6 +2,14 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
 import { ByteStream } from '../../utils/byte-stream';
+import {
+  encodeSingleByte
+} from './single-byte-codec';
+import type { SingleByteEncoding, TextEncodingError } from './single-byte-codec';
+
+export type SaveStringsResult =
+  | { success: true }
+  | { success: false; error?: TextEncodingError };
 
 export interface TextEntry {
   id: number;
@@ -29,37 +37,6 @@ export class DoomTextService {
   private FONT_WIDTH = 12;
   private FONT_HEIGHT = 16;
   
-  // Mapping from Unicode Codepoint to Windows-1252 Byte
-  private readonly WINDOWS_1252_MAP: {[key: number]: number} = {
-      8364: 0x80, // €
-      8218: 0x82, // ‚
-      402:  0x83, // ƒ
-      8222: 0x84, // „
-      8230: 0x85, // …
-      8224: 0x86, // †
-      8225: 0x87, // ‡
-      710:  0x88, // ˆ
-      8240: 0x89, // ‰
-      352:  0x8A, // Š
-      8249: 0x8B, // ‹
-      338:  0x8C, // Œ
-      381:  0x8E, // Ž
-      8216: 0x91, // ‘
-      8217: 0x92, // ’
-      8220: 0x93, // “
-      8221: 0x94, // ”
-      8226: 0x95, // •
-      8211: 0x96, // –
-      8212: 0x97, // —
-      732:  0x98, // ˜
-      8482: 0x99, // ™
-      353:  0x9A, // š
-      8250: 0x9B, // ›
-      339:  0x9C, // œ
-      382:  0x9E, // ž
-      376:  0x9F  // Ÿ
-  };
-
   private CHAR_COLORS = [
     0xFFFFFF, // WHITE
     0xFF0000, // RED
@@ -243,17 +220,26 @@ export class DoomTextService {
   }
   
   // --- SAVING LOGIC (Preserved) ---
-  async saveStringsChunk(targetLang: number, targetChunk: number, newStrings: TextEntry[], encoding: string): Promise<boolean> {
+  async saveStringsChunk(targetLang: number, targetChunk: number, newStrings: TextEntry[], encoding: string): Promise<SaveStringsResult> {
       // ... (Implementation preserved from previous)
       const idxBuffer = this.fileService.getFile('strings.idx');
-      if (!idxBuffer) return false;
+      if (!idxBuffer) return { success: false };
       const fullIndex = this.parseStringsIndexFull(idxBuffer);
       const targetEntry = fullIndex.find(e => e.langId === targetLang && e.chunkId === targetChunk);
-      if (!targetEntry) return false;
+      if (!targetEntry) return { success: false };
       const targetFileId = targetEntry.fileId;
       const siblings = fullIndex.filter(e => e.fileId === targetFileId).sort((a,b) => a.offset - b.offset);
       const originalFileBuffer = this.fileService.getFile(`strings${targetFileId}.bin`);
-      if (!originalFileBuffer) return false;
+      if (!originalFileBuffer) return { success: false };
+
+      // Encode the complete edited chunk before changing offsets or saving either
+      // file. This makes an encoding failure atomic from the VFS perspective.
+      const encodedStrings: Uint8Array[] = [];
+      for (let line = 0; line < newStrings.length; line++) {
+          const encoded = this.customEncode(newStrings[line].raw, encoding, line + 1);
+          if (!encoded.ok) return { success: false, error: encoded.error };
+          encodedStrings.push(encoded.bytes);
+      }
 
       const newParts: Uint8Array[] = [];
       let currentOffset = 0;
@@ -263,8 +249,7 @@ export class DoomTextService {
 
           if (entry.langId === targetLang && entry.chunkId === targetChunk) {
               const stringBuffers: Uint8Array[] = [];
-              for (const str of newStrings) {
-                  const sBuf = this.customEncode(str.raw, encoding);
+              for (const sBuf of encodedStrings) {
                   stringBuffers.push(sBuf);
                   stringBuffers.push(new Uint8Array([0])); 
               }
@@ -295,23 +280,12 @@ export class DoomTextService {
       this.fileService.saveBuffer(`strings${targetFileId}.bin`, newFileBuffer.buffer);
       const newIdxBuffer = this.rebuildIndexBuffer(fullIndex);
       this.fileService.saveBuffer('strings.idx', newIdxBuffer);
-      return true;
+      return { success: true };
   }
   
-  private customEncode(str: string, encoding: string): Uint8Array {
-      if (encoding === 'utf-8') return new TextEncoder().encode(str);
-      const arr = new Uint8Array(str.length);
-      for (let i = 0; i < str.length; i++) {
-          let code = str.charCodeAt(i);
-          if (encoding === 'windows-1252' && code > 255) {
-             if (this.WINDOWS_1252_MAP[code] !== undefined) code = this.WINDOWS_1252_MAP[code];
-          }
-          if (encoding === 'windows-1251' && code > 255) {
-              if (code >= 1040 && code <= 1103) code = code - 848; 
-          }
-          arr[i] = code;
-      }
-      return arr;
+  private customEncode(str: string, encoding: string, line: number) {
+      if (encoding === 'utf-8') return { ok: true as const, bytes: new TextEncoder().encode(str) };
+      return encodeSingleByte(str, encoding as SingleByteEncoding, line);
   }
   
   private rebuildIndexBuffer(indices: IndexEntry[]): ArrayBuffer {

@@ -192,15 +192,18 @@ export class TextViewerComponent {
         if (!strings.length) return;
         
         console.log("Saving chunk...");
-        const success = await this.textService.saveStringsChunk(
+        const result = await this.textService.saveStringsChunk(
             this.selectedLang(), 
             this.selectedChunk(), 
             strings, 
             this.selectedEncoding()
         );
         
-        if (success) {
+        if (result.success) {
             alert('Strings saved to memory! You can now download the modded JAR.');
+        } else if (result.error) {
+            const error = result.error;
+            alert(`Cannot encode line ${error.line}, position ${error.position}: "${error.character}" is not representable in ${error.encoding}.`);
         } else {
             alert('Failed to save strings. Check console.');
         }
