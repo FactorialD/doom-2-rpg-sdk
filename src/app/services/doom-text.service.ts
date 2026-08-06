@@ -2,6 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
 import { ByteStream } from '../../utils/byte-stream';
+import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
 
 export interface TextEntry {
   id: number;
@@ -143,47 +144,7 @@ export class DoomTextService {
   }
 
   parseStringsIndex(buffer: ArrayBuffer): Int32Array {
-    const stream = new ByteStream(buffer);
-    const count = stream.readShort();
-    
-    // We don't know the exact number of physical entries (could include fillers),
-    // so we use a dynamic array and convert later.
-    const tempResult: number[] = [];
-    
-    let validCount = 0;
-    
-    // Read until we satisfy the valid count expected by the header
-    // Resource.java loops until `var7` (valid items) == `var2` (header count)
-    while (validCount < count && stream.position < stream.length - 5) {
-        const fileId = stream.readUByte(); 
-        const offset = stream.readInt();   
-
-        // Fix logic: calculate length of PREVIOUS valid entry
-        if (offset !== 0 && validCount > 0) {
-            // We need to find the last valid entry pushed to result to set its length
-            // But since this array is flat [id, offset, len, id, offset, len], we look at the last triplet
-            const prevOffset = tempResult[tempResult.length - 2];
-            tempResult[tempResult.length - 1] = offset - prevOffset;
-        }
-
-        if (fileId !== 255) { 
-            tempResult.push(fileId, offset, 0); // 0 is placeholder length
-            validCount++;
-        }
-    }
-    
-    // Handle Footer to calculate last item length
-    if (stream.position + 5 <= stream.length) {
-        stream.readUByte(); // Footer ID (usually 255)
-        const totalSize = stream.readInt();
-
-        if (validCount > 0) {
-            const lastOffset = tempResult[tempResult.length - 2];
-            tempResult[tempResult.length - 1] = totalSize - lastOffset;
-        }
-    }
-
-    return new Int32Array(tempResult);
+    return flattenResourceFileIndex(parseResourceFileIndex(buffer));
   }
 
   loadStrings(langId: number, chunkId: number, idxData: Int32Array, encoding: string = 'windows-1252'): TextEntry[] {
@@ -349,52 +310,12 @@ export class DoomTextService {
   }
   
   private parseStringsIndexFull(buffer: ArrayBuffer): IndexEntry[] {
-    const stream = new ByteStream(buffer);
-    const expectedValidCount = stream.readShort(); 
-    const result: IndexEntry[] = [];
-    let validCount = 0;
-    while (validCount < expectedValidCount && stream.position < stream.length - 5) {
-        const fileId = stream.readUByte();
-        const offset = stream.readInt();
-        const entry: IndexEntry = {
-            fileId, offset, length: 0, 
-            originalIndex: result.length, langId: -1, chunkId: -1
-        };
-        if (fileId !== 255) {
-             entry.langId = Math.floor(validCount / 15);
-             entry.chunkId = validCount % 15;
-             validCount++;
-        }
-        result.push(entry);
-    }
-    let footerTotalSize = 0;
-    if (stream.position + 5 <= stream.length) {
-        stream.readUByte(); footerTotalSize = stream.readInt();
-    }
-    for (let i = 0; i < result.length; i++) {
-        const current = result[i];
-        let nextEntryInFile = null;
-        for (let j = i + 1; j < result.length; j++) {
-            if (result[j].fileId === current.fileId) {
-                nextEntryInFile = result[j];
-                break;
-            }
-        }
-        if (nextEntryInFile) {
-            current.length = nextEntryInFile.offset - current.offset;
-        } else {
-            const isAbsoluteLast = (i === result.length - 1) || result.slice(i+1).every(e => e.fileId === 255);
-            if (isAbsoluteLast) {
-                 current.length = footerTotalSize - current.offset;
-            } else {
-                const binName = `strings${current.fileId}.bin`;
-                const fileBuf = this.fileService.getFile(binName);
-                if (fileBuf) current.length = fileBuf.byteLength - current.offset;
-                else current.length = 0; 
-            }
-        }
-    }
-    return result;
+    return parseResourceFileIndex(buffer).map((entry, originalIndex) => ({
+        ...entry,
+        originalIndex,
+        langId: Math.floor(originalIndex / 15),
+        chunkId: originalIndex % 15
+    }));
   }
   
   // Rendering methods preserved...
