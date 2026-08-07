@@ -227,7 +227,8 @@ export class MapSerializer {
         this.copyBytes(this.head_numLines * 2);
 
         this.copyMarker();
-        this.copyBytes(1024);
+        this.reader.skip(1024);
+        for (const value of this.mapData.heightMap) this.writer.writeByte(value);
     }
 
     private skipOldSprites() {

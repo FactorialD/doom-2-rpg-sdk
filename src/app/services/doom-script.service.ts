@@ -352,21 +352,70 @@ export class DoomScriptService {
       return true;
   }
 
-  async addTileEvent(mapId: number, tileIndex: number, targetUid: string, flags: number) {
+  async addTileEvent(mapId: number, tileIndex: number, targetUid: string, flags: number): Promise<TileEventRef | null> {
       const data = await this.ensureScriptLoaded(mapId);
-      if (!data) return;
+      if (!data || !this.isValidTileEvent(data, tileIndex, targetUid, flags)) return null;
+      const ref = { uid: ScriptUtils.generateUUID(), tileIndex, targetUid, flags };
+      data.tileEventRefs.push(ref);
+      this.rebuildTileEvents(data);
+      return ref;
+  }
 
-      const existing = data.tileEventRefs.find(r => r.tileIndex === tileIndex);
-      if (existing) {
-          existing.targetUid = targetUid;
-          existing.flags = flags;
-      } else {
-          data.tileEventRefs.push({
-              tileIndex,
-              targetUid,
-              flags
-          });
-      }
+  async updateTileEvent(mapId: number, uid: string, changes: Pick<TileEventRef, 'flags' | 'targetUid'>): Promise<boolean> {
+      const data = await this.ensureScriptLoaded(mapId);
+      const ref = data?.tileEventRefs.find(event => event.uid === uid);
+      if (!data || !ref || !this.isValidTileEvent(data, ref.tileIndex, changes.targetUid, changes.flags, uid)) return false;
+      ref.flags = changes.flags;
+      ref.targetUid = changes.targetUid;
+      this.rebuildTileEvents(data);
+      return true;
+  }
+
+  async duplicateTileEvent(mapId: number, uid: string): Promise<TileEventRef | null> {
+      const data = await this.ensureScriptLoaded(mapId);
+      const ref = data?.tileEventRefs.find(event => event.uid === uid);
+      if (!data || !ref) return null;
+      const candidateFlags = [0xff1, 0xff2, 0xff4, 0xff8]
+          .find(flags => this.isValidTileEvent(data, ref.tileIndex, ref.targetUid, flags));
+      if (candidateFlags === undefined) return null;
+      const copy = { ...ref, uid: ScriptUtils.generateUUID(), flags: candidateFlags };
+      data.tileEventRefs.push(copy);
+      this.rebuildTileEvents(data);
+      return copy;
+  }
+
+  async deleteTileEvent(mapId: number, uid: string): Promise<boolean> {
+      const data = await this.ensureScriptLoaded(mapId);
+      const index = data?.tileEventRefs.findIndex(event => event.uid === uid) ?? -1;
+      if (!data || index < 0) return false;
+      data.tileEventRefs.splice(index, 1);
+      this.rebuildTileEvents(data);
+      return true;
+  }
+
+  async createTileEventHandler(mapId: number, tileIndex: number, flags: number): Promise<TileEventRef | null> {
+      const data = await this.ensureScriptLoaded(mapId);
+      if (!data) return null;
+      // EV_RETURN is a complete, side-effect-free handler and can safely be expanded later.
+      const handler = this.disassembler.disassemble(new Uint8Array([2]), mapId)[0];
+      handler.uid = ScriptUtils.generateUUID();
+      handler.offset = data.rawSize;
+      data.instructions.push(handler);
+      this.recalculateOffsets(data);
+      return this.addTileEvent(mapId, tileIndex, handler.uid, flags);
+  }
+
+  private rebuildTileEvents(data: ScriptData): void {
+      const result = this.compiler.compile(data.instructions, data.staticFuncs, data.tileEventRefs, data.tileEvents);
+      data.tileEvents = result.newTileEvents;
+  }
+
+  private isValidTileEvent(data: ScriptData, tileIndex: number, targetUid: string, flags: number, ignoredUid?: string): boolean {
+      if (!Number.isInteger(tileIndex) || tileIndex < 0 || tileIndex > 1023 ||
+          !Number.isInteger(flags) || flags < 0 || (flags & ~ScriptCompilerService.SUPPORTED_TILE_EVENT_FLAGS) !== 0 ||
+          !data.instructions.some(inst => inst.uid === targetUid)) return false;
+      return !data.tileEventRefs.some(ref => ref.uid !== ignoredUid && ref.tileIndex === tileIndex &&
+          ref.targetUid === targetUid && ref.flags === flags);
   }
 
   private async writeBinaryToJar(mapId: number, bytecode: Uint8Array, staticFuncs: number[], tileEvents: Int32Array) {
@@ -552,6 +601,7 @@ export class DoomScriptService {
         const offset = (packed >>> 16) & 0xFFFF;
 
         tileEventRefs.push({
+            uid: ScriptUtils.generateUUID(),
             tileIndex,
             targetUid: '',
             flags
