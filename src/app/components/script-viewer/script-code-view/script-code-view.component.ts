@@ -152,6 +152,37 @@ type InsertMode = 'before' | 'after' | null;
                                                                 {{ inst.readableName }}
                                                             </div>
                                                             <div class="text-neutral-400 text-[11px] truncate">{{ inst.readableDetails }}</div>
+
+                                                            <!-- Schema-driven semantic reference previews. -->
+                                                            @for (preview of referencePreviews(inst); track preview.argumentIndex) {
+                                                                <div class="mt-1 flex items-center gap-1.5 text-[10px] min-w-0"
+                                                                     [class.text-red-300]="preview.status === 'invalid'"
+                                                                     [class.text-amber-300]="preview.status === 'missing'"
+                                                                     [class.text-cyan-300]="preview.status === 'valid'"
+                                                                     [title]="preview.warning || preview.label">
+                                                                    <span class="text-neutral-500">{{ preview.name }}={{ preview.rawValue }}</span>
+                                                                    <span aria-hidden="true">→</span>
+                                                                    @if (preview.warning) { <span aria-label="Reference warning">⚠</span> }
+                                                                    @if (preview.textureId !== undefined) {
+                                                                        <button (click)="showTexture.emit(preview.textureId!)" class="w-6 h-6 bg-black border border-neutral-700 hover:border-white shrink-0" title="Open texture #{{ preview.textureId }}">
+                                                                            <app-texture-thumbnail [id]="preview.textureId" />
+                                                                        </button>
+                                                                    }
+                                                                    <span class="truncate">{{ preview.label }}</span>
+                                                                    @if (preview.reference === 'entity-index' && preview.status !== 'invalid') {
+                                                                        <button (click)="showEntity.emit(preview.value)" class="text-blue-300 hover:text-white" title="Show entity on map">🎯</button>
+                                                                    }
+                                                                    @if (preview.reference === 'sound-index' && preview.status === 'valid') {
+                                                                        <button (click)="playSound.emit(preview.value)" class="text-green-300 hover:text-white" title="Play sound">🔊</button>
+                                                                    }
+                                                                    @if (preview.reference === 'string-index' && preview.stringChunk !== undefined) {
+                                                                        <button (click)="showText.emit({chunk: preview.stringChunk!, id: preview.value})" class="text-amber-300 hover:text-white" title="Open string editor">📝</button>
+                                                                    }
+                                                                    @if (preview.targetOffset !== undefined && preview.status === 'valid') {
+                                                                        <button (click)="scrollToOffset(preview.targetOffset)" class="text-white hover:text-cyan-200" title="Go to instruction">⤵</button>
+                                                                    }
+                                                                </div>
+                                                            }
                                                             
                                                             <!-- Interactive Buttons -->
                                                             <div class="flex flex-wrap gap-2 mt-1">
@@ -279,6 +310,11 @@ export class ScriptCodeViewComponent {
     getHexDump(bytes: number[]): string {
         if (!bytes) return '';
         return bytes.map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    }
+
+    referencePreviews(inst: ScriptInstruction) {
+        const data = this.scriptData();
+        return data ? this.scriptService.resolveReferenceArguments(data, inst) : [];
     }
 
     scrollToOffset(offset: number) {

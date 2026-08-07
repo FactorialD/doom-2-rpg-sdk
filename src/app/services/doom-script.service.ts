@@ -10,6 +10,8 @@ import { ScriptInstruction, ScriptFunctionTable, TileEventRef } from './scripts/
 import { ScriptUtils } from './scripts/script-utils';
 
 import { MapSprite } from './doom-map.service';
+import { DoomSoundService } from './doom-sound.service';
+import { SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
 
 export type { ScriptInstruction, ScriptFunctionTable, TileEventRef };
 
@@ -21,6 +23,23 @@ export interface ScriptData {
   rawSize: number;
   tileEvents: Int32Array;
   tileEventRefs: TileEventRef[];
+  /** Populated when the map editor has decoded sprites; references still resolve safely without it. */
+  mapSprites?: MapSprite[];
+}
+
+export interface ScriptReferencePreview {
+  argumentIndex: number;
+  name: string;
+  reference: ReferenceType;
+  rawValue: number;
+  value: number;
+  label: string;
+  status: 'valid' | 'missing' | 'invalid';
+  warning?: string;
+  textureId?: number;
+  entityType?: string;
+  stringChunk?: number;
+  targetOffset?: number;
 }
 
 export interface ItemReference {
@@ -36,6 +55,7 @@ export class DoomScriptService {
   private entityService = inject(DoomEntitiesService);
   private textService = inject(DoomTextService);
   private textureService = inject(DoomTextureService);
+  private soundService = inject(DoomSoundService);
   private disassembler = inject(ScriptDisassemblerService);
   private compiler = inject(ScriptCompilerService);
 
@@ -50,11 +70,89 @@ export class DoomScriptService {
       });
   }
 
+  /** Resolve every schema-declared semantic reference for one instruction. */
+  resolveReferenceArguments(data: ScriptData, instruction: ScriptInstruction): ScriptReferencePreview[] {
+      const definition = SCRIPT_OPCODE_SCHEMA[instruction.opcode];
+      if (!definition) return [];
+      const previews: ScriptReferencePreview[] = [];
+      let paramIndex = 0;
+      for (const descriptor of definition.arguments) {
+          const start = paramIndex;
+          const count = this.argumentParameterCount(descriptor, instruction.params, start);
+          paramIndex += count;
+          if (!descriptor.reference || count === 0) continue;
+          let rawValue = Number(instruction.params[start]);
+          if (descriptor.kind === 'lerpSprite') rawValue = (instruction.params[start] ?? 0) | ((instruction.params[start + 1] ?? 0) << 8) | ((instruction.params[start + 2] ?? 0) << 16);
+          const value = descriptor.packedReference ? descriptor.packedReference.decode(rawValue) : rawValue;
+          previews.push(this.resolveReference(data, instruction, descriptor, start, rawValue, value));
+      }
+      return previews;
+  }
+
+  private argumentParameterCount(descriptor: ScriptArgumentDescriptor, params: number[], index: number): number {
+      if (descriptor.kind === 'eval' || descriptor.kind === 'lerpSprite' || descriptor.kind === 'debugString') return params.length - index;
+      if (descriptor.kind === 'lootList') return 1 + (params[index] ?? 0);
+      if (descriptor.kind === 'dropMonsterItem') return 3;
+      return 1;
+  }
+
+  private resolveReference(data: ScriptData, instruction: ScriptInstruction, descriptor: ScriptArgumentDescriptor, argumentIndex: number, rawValue: number, value: number): ScriptReferencePreview {
+      const base = { argumentIndex, name: descriptor.name, reference: descriptor.reference!, rawValue, value };
+      const invalid = (warning: string): ScriptReferencePreview => ({ ...base, label: `#${value}`, status: 'invalid', warning });
+      if (!Number.isInteger(value) || value < 0) return invalid(`Invalid ${descriptor.reference} reference: ${value}`);
+      switch (descriptor.reference) {
+          case 'string-index': {
+              const chunk = data.mapId + 3;
+              const text = this.textService.getStringValue(chunk, value);
+              if (text.startsWith(`STR_${value}`)) return { ...base, label: `String #${value}`, status: 'missing', warning: `String #${value} is missing from chunk ${chunk}`, stringChunk: chunk };
+              const excerpt = text.replace(/\s+/g, ' ').trim();
+              return { ...base, label: `“${excerpt.slice(0, 72)}${excerpt.length > 72 ? '…' : ''}”`, status: 'valid', stringChunk: chunk };
+          }
+          case 'entity-index': {
+              if (value === 255 || value === 4095 || value === 16383) return { ...base, label: 'Current entity', status: 'valid' };
+              const sprite = data.mapSprites?.[value];
+              if (!sprite) return { ...base, label: `Entity #${value}`, status: 'missing', warning: `Map sprite #${value} is unavailable` };
+              const entity = this.entityService.getDefByTileIndex(sprite.textureId);
+              const entityType = entity ? `type ${entity.eType}.${entity.eSubType}` : 'unknown type';
+              return { ...base, label: `Sprite #${value} · ${entityType}`, status: entity ? 'valid' : 'missing', warning: entity ? undefined : `No entity definition for texture #${sprite.textureId}`, textureId: sprite.textureId, entityType };
+          }
+          case 'sound-index': {
+              const blob = this.soundService.getSoundData(value);
+              return blob ? { ...base, label: `Sound #${value} · ${blob.type === 'audio/midi' ? 'MIDI' : 'WAV'}`, status: 'valid' } : { ...base, label: `Sound #${value}`, status: 'missing', warning: `Sound #${value} is missing` };
+          }
+          case 'map-index': {
+              const mapId = value + 1;
+              const exists = !!this.fileService.getFile(`map0${mapId - 1}.bin`);
+              return { ...base, value: mapId, label: `Map ${String(mapId).padStart(2, '0')} · spawn ${instruction.params[1] ?? '?'}`, status: exists ? 'valid' : 'missing', warning: exists ? undefined : `Map ${mapId} is missing` };
+          }
+          case 'tile-coordinate': {
+              const tile = value & 0x3ff;
+              return { ...base, value: tile, label: `Tile (${tile & 31}, ${tile >> 5 & 31})`, status: value <= 0xffff ? 'valid' : 'invalid', warning: value <= 0xffff ? undefined : 'Packed tile is outside the valid range' };
+          }
+          case 'tile-event-index': {
+              const event = data.tileEventRefs[value];
+              if (!event) return invalid(`Tile event #${value} does not exist`);
+              return { ...base, label: `Tile event #${value} · (${event.tileIndex & 31}, ${event.tileIndex >> 5 & 31})`, status: 'valid' };
+          }
+          case 'instruction-relative':
+          case 'instruction-absolute': {
+              const targetOffset = descriptor.reference === 'instruction-relative' ? instruction.offset + instruction.size + value : value;
+              const target = data.instructions.find(candidate => candidate.offset === targetOffset);
+              if (!target) return { ...base, label: `0x${targetOffset.toString(16).toUpperCase()}`, status: 'invalid', warning: `No instruction starts at 0x${targetOffset.toString(16).toUpperCase()}`, targetOffset };
+              const staticFunction = Object.entries(data.staticFuncs).find(([, uid]) => uid === target.uid)?.[0];
+              return { ...base, label: staticFunction === undefined ? `${target.name} @ 0x${targetOffset.toString(16).toUpperCase()}` : `Static Func ${staticFunction} · ${target.name}`, status: 'valid', targetOffset };
+          }
+          case 'texture-index':
+              return { ...base, label: `Texture #${value}`, status: 'valid', textureId: value };
+      }
+  }
+
   /**
    * Links script instructions to map sprites using UUIDs.
    * This ensures that if sprites are reordered, the scripts can be updated.
    */
   linkEntitiesToScripts(scriptData: ScriptData, sprites: MapSprite[]) {
+      scriptData.mapSprites = sprites;
       for (const inst of scriptData.instructions) {
           if (inst.referencedEntityId !== undefined && inst.entityArgIndex !== undefined) {
               const targetSprite = sprites[inst.referencedEntityId];
