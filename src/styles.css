@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Doom-like palette overrides */
+body {
+  background-color: #1a1a1a;
+  color: #d4d4d4;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

@@ -1,9 +1,7 @@
 
 import { Injectable, signal, WritableSignal } from '@angular/core';
+import JSZip from 'jszip';
 import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
-
-// JSZip is loaded via CDN in index.html
-declare var JSZip: any;
 
 @Injectable({
   providedIn: 'root'
