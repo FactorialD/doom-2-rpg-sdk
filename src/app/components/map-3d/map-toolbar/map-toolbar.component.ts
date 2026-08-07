@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { MapRendererService } from '../../../services/map-renderer.service';
 import { EntityPickerComponent, EntityTemplate } from '../entity-picker/entity-picker.component';
 
-export type EditMode = 'select' | 'paint';
+export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
 
 @Component({
   selector: 'app-map-toolbar',
@@ -46,6 +46,10 @@ export type EditMode = 'select' | 'paint';
                   class="px-3 py-1 text-xs text-white rounded transition-colors" title="Paint Textures">
                   🎨 Paint
               </button>
+              <button (click)="editModeChange.emit('wall')" [class.bg-red-800]="editMode() === 'wall'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe wall">🧱 Wall</button>
+              <button (click)="editModeChange.emit('polygon')" [class.bg-red-800]="editMode() === 'polygon'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe flat polygon">⬡ Polygon</button>
            </div>
            
            <div class="h-6 w-px bg-neutral-700"></div>
@@ -65,6 +69,12 @@ export type EditMode = 'select' | 'paint';
       </div>
       
       <div class="flex items-center gap-2">
+          <button (click)="undo.emit()" [disabled]="!canUndo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Undo">↶</button>
+          <button (click)="redo.emit()" [disabled]="!canRedo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Redo">↷</button>
+          @if (operationActive()) {
+            <button (click)="confirmOperation.emit()" class="px-2 py-1 text-xs font-bold rounded bg-green-700">✓ Confirm</button>
+            <button (click)="cancelOperation.emit()" class="px-2 py-1 text-xs rounded bg-neutral-700">✕ Cancel</button>
+          }
           <button 
               (click)="showEntityPicker = !showEntityPicker"
               class="flex items-center gap-2 px-3 py-1 text-xs font-bold text-white bg-blue-700 hover:bg-blue-600 rounded transition-colors"
@@ -104,14 +114,24 @@ export type EditMode = 'select' | 'paint';
 export class MapToolbarComponent {
     selectedMapId = input<number>(1);
     editMode = input<EditMode>('select');
+    canUndo = input(false);
+    canRedo = input(false);
+    operationActive = input(false);
     
     loadMap = output<number>();
     editModeChange = output<EditMode>();
     saveMap = output<void>();
+
     addEntity = output<EntityTemplate>();
     showEntityPicker = false;
 
     pickEntity(template: EntityTemplate) { this.showEntityPicker = false; this.addEntity.emit(template); }
+
+    undo = output<void>();
+    redo = output<void>();
+    confirmOperation = output<void>();
+    cancelOperation = output<void>();
+
 
     constructor(public renderer: MapRendererService) {}
 }

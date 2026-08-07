@@ -25,6 +25,10 @@ export class MapSerializer {
     private sortedSprites: MapSprite[] = [];
     private head_numPolys: number = 0;
     private head_numLines: number = 0;
+    private old_numNodes = 0;
+    private old_numLeaf = 0;
+    private old_numNormals = 0;
+    private old_numVerts = 0;
     private copiedMarkerCount: number = 0;
 
     serialize(mapData: MapData, originalBuffer: ArrayBuffer, fileName: string = 'map file'): Uint8Array<ArrayBuffer> {
@@ -41,6 +45,7 @@ export class MapSerializer {
 
         // 1. Prepare Data
         this.prepareSprites();
+        this.validateGeometry();
 
         // 2. Write Sections
         this.writeHeader();
@@ -124,12 +129,12 @@ export class MapSerializer {
     private writeHeader() {
         this.copyBytes(11); // Version...Flags
 
-        const head_numNodes = this.reader.readUShort(); this.writer.writeUShort(head_numNodes);
-        const head_numLeaf = this.reader.readUShort(); this.writer.writeUShort(head_numLeaf);
-        this.head_numLines = this.reader.readUShort(); this.writer.writeUShort(this.head_numLines);
-        const head_numNormals = this.reader.readUShort(); this.writer.writeUShort(head_numNormals);
-        this.head_numPolys = this.reader.readUShort(); this.writer.writeUShort(this.head_numPolys);
-        const head_numVerts = this.reader.readUShort(); this.writer.writeUShort(head_numVerts);
+        this.old_numNodes = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.nodes.length);
+        this.old_numLeaf = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.leaves.length);
+        this.head_numLines = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.lines.length);
+        this.old_numNormals = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.normals.length);
+        this.head_numPolys = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.polygons.length);
+        this.old_numVerts = this.reader.readUShort(); this.writer.writeUShort(this.mapData.geometry.sourceVertices.length);
 
         // Skip original sprite counts
         this.reader.readUShort();
@@ -175,40 +180,33 @@ export class MapSerializer {
     }
 
     private writeGeometryStructures() {
-        const peekReader = this.reader.createReader();
-        peekReader.position = 11;
-        const numNodes = peekReader.readUShort();
-        const numLeaf = peekReader.readUShort();
-        peekReader.readUShort(); // lines
-        const numNormals = peekReader.readUShort();
-
-        this.copyMarker();
-        this.copyBytes(numNormals * 3 * 2);
-
-        this.copyMarker(); this.copyBytes(numNodes * 2);
-        this.copyMarker(); this.copyBytes(numNodes);
-        this.copyMarker(); this.copyBytes(numNodes * 2); this.copyBytes(numNodes * 2);
-        this.copyMarker(); this.copyBytes(numNodes * 2); this.copyBytes(numNodes * 2);
-
-        this.copyMarker(); this.copyBytes(numLeaf * 2); this.copyBytes(numLeaf * 2);
+        const g = this.mapData.geometry;
+        this.copyMarker(); this.reader.skip(this.old_numNormals * 6);
+        for (const n of g.normals) { this.writer.writeShort(n.x); this.writer.writeShort(n.y); this.writer.writeShort(n.z); }
+        this.copyMarker(); this.reader.skip(this.old_numNodes * 2); for (const n of g.nodes) this.writer.writeUShort(n.offset);
+        this.copyMarker(); this.reader.skip(this.old_numNodes); for (const n of g.nodes) this.writer.writeUByte(n.normalIndex);
+        this.copyMarker(); this.reader.skip(this.old_numNodes * 4);
+        for (const n of g.nodes) this.writer.writeUShort(n.child1); for (const n of g.nodes) this.writer.writeUShort(n.child2);
+        this.copyMarker(); this.reader.skip(this.old_numNodes * 4);
+        for (const n of g.nodes) { this.writer.writeUByte(n.minX); this.writer.writeUByte(n.maxX); }
+        for (const n of g.nodes) { this.writer.writeUByte(n.minY); this.writer.writeUByte(n.maxY); }
+        this.copyMarker(); this.reader.skip(this.old_numLeaf * 4);
+        for (const l of g.leaves) this.writer.writeUShort(l.vertexOffset);
+        for (const l of g.leaves) this.writer.writeUShort(l.polygonOffset);
     }
 
     private writePolygons() {
         this.copyMarker();
-
-        this.reader.skip(this.head_numPolys);
-
-        for (let i = 0; i < this.head_numPolys; i++) {
-            let tid = this.mapData.geometry.textureIds[i] || 0;
+        const g = this.mapData.geometry;
+        this.reader.skip(this.head_numPolys * 2 + this.old_numVerts * 5);
+        for (const poly of g.polygons) {
+            let tid = poly.textureId;
             if (tid >= SpecialTextureIds.WALL_OFFSET) tid -= SpecialTextureIds.WALL_OFFSET;
             this.writer.writeUByte(tid);
         }
-
-        this.reader.skip(this.head_numPolys);
-
-        for (let i = 0; i < this.head_numPolys; i++) {
-            let flags = this.mapData.geometry.flags[i] || 0;
-            const tid = this.mapData.geometry.textureIds[i];
+        for (const poly of g.polygons) {
+            let flags = poly.flags;
+            const tid = poly.textureId;
 
             if (tid >= SpecialTextureIds.WALL_OFFSET) {
                 flags |= PolyFlag.WallTexture;
@@ -217,22 +215,24 @@ export class MapSerializer {
             }
             this.writer.writeUByte(flags);
         }
-
-        const peekReader = this.reader.createReader();
-        peekReader.position = 21;
-        const numVerts = peekReader.readUShort();
-
-        this.copyBytes(numVerts * 5);
+        for (const v of g.sourceVertices) this.writer.writeUByte(v.x);
+        for (const v of g.sourceVertices) this.writer.writeUByte(v.y);
+        for (const v of g.sourceVertices) this.writer.writeUByte(v.z);
+        for (const v of g.sourceVertices) this.writer.writeByte(v.u);
+        for (const v of g.sourceVertices) this.writer.writeByte(v.v);
     }
 
     private writeBSPAndHeightmap() {
+        const lines = this.mapData.geometry.lines;
         this.copyMarker();
-        this.copyBytes(Math.floor((this.head_numLines + 1) / 2));
-        this.copyBytes(this.head_numLines * 2);
-        this.copyBytes(this.head_numLines * 2);
+        this.reader.skip(Math.floor((this.head_numLines + 1) / 2) + this.head_numLines * 4);
+        for (let i = 0; i < lines.length; i += 2) this.writer.writeUByte(lines[i].flags | ((lines[i + 1]?.flags ?? 0) << 4));
+        for (const line of lines) { this.writer.writeUByte(line.x1); this.writer.writeUByte(line.x2); }
+        for (const line of lines) { this.writer.writeUByte(line.y1); this.writer.writeUByte(line.y2); }
 
         this.copyMarker();
-        this.copyBytes(1024);
+        this.reader.skip(1024);
+        for (const value of this.mapData.heightMap) this.writer.writeByte(value);
     }
 
     private skipOldSprites() {
@@ -353,6 +353,27 @@ export class MapSerializer {
     }
 
     private writeMarker() { this.writer.writeInt(-889275714); }
+
+    private validateGeometry() {
+        const g = this.mapData.geometry;
+        // Compatibility for old callers which only paint textures; structural serialization requires the lossless model.
+        if (!g.polygons || !g.sourceVertices || !g.nodes || !g.leaves || !g.normals || !g.lines) return;
+        const fits = (n: number, min: number, max: number) => Number.isInteger(n) && n >= min && n <= max;
+        if (![g.nodes.length, g.leaves.length, g.lines.length, g.normals.length, g.polygons.length, g.sourceVertices.length].every(n => fits(n, 0, 0xffff))) {
+            throw new Error('Geometry section count exceeds uint16');
+        }
+        g.vertices = g.vertices ?? new Float32Array();
+        g.uvs = g.uvs ?? new Float32Array();
+        g.polygons.forEach((p, i) => {
+            if (!fits(p.vertexCount, 2, 9) || !fits(p.vertexStart, 0, g.sourceVertices.length - p.vertexCount)) throw new Error(`Polygon ${i} has an invalid vertex range`);
+            if (!fits(p.textureId >= SpecialTextureIds.WALL_OFFSET ? p.textureId - SpecialTextureIds.WALL_OFFSET : p.textureId, 0, 255)) throw new Error(`Polygon ${i} texture ID does not fit uint8`);
+        });
+        g.sourceVertices.forEach((v, i) => {
+            if (![v.x, v.y, v.z].every(n => fits(n, 0, 255)) || ![v.u, v.v].every(n => fits(n, -128, 127))) throw new Error(`Vertex ${i} does not fit the map numeric fields`);
+        });
+        g.lines.forEach((l, i) => { if (!fits(l.flags, 0, 15) || ![l.x1, l.y1, l.x2, l.y2].every(n => fits(n, 0, 255))) throw new Error(`Collision line ${i} is invalid`); });
+        if (g.heightMap.length !== 1024) throw new Error('Heightmap must contain exactly 1024 bytes');
+    }
 
 
     private copyMarker() {

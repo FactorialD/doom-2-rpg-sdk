@@ -21,7 +21,7 @@ test('insert and delete relocate relative jumps, static functions, and tile even
     const start = instruction('start', 1, [0], 'return');
     const ret = instruction('return', 2, []);
     const refs = { 0: 'return' };
-    const events = [{ tileIndex: 37, targetUid: 'return', flags: 0x12345678 }];
+    const events = [{ uid: 'event-1', tileIndex: 37, targetUid: 'return', flags: 0xff4 }];
 
     const initial = compiler.compile([start, ret], refs, events, new Int32Array());
     assert.deepEqual(initial.errors, []);
@@ -35,10 +35,28 @@ test('insert and delete relocate relative jumps, static functions, and tile even
     assert.equal(afterInsert.newStaticFuncs[0], 6);
     assert.equal(afterInsert.newTileEvents[0] >>> 16, 6);
     assert.equal(afterInsert.newTileEvents[0] & 0xffff, 37);
-    assert.equal(afterInsert.newTileEvents[1], 0x12345678);
+    assert.equal(afterInsert.newTileEvents[1], 0xff4);
 
     const afterDelete = compiler.compile([start, ret], refs, events, afterInsert.newTileEvents);
     assert.deepEqual(Array.from(afterDelete.binary), Array.from(initial.binary));
     assert.equal(afterDelete.newStaticFuncs[0], 3);
     assert.equal(afterDelete.newTileEvents[0] >>> 16, 3);
+});
+
+test('compiles multiple events for one tile and rejects invalid or duplicate references', () => {
+    const compiler = new ScriptCompilerService();
+    const ret = instruction('return', 2, []);
+    const valid = compiler.compile([ret], {}, [
+        { uid: 'a', tileIndex: 12, targetUid: 'return', flags: 0xff1 },
+        { uid: 'b', tileIndex: 12, targetUid: 'return', flags: 0xff4 }
+    ], new Int32Array());
+    assert.deepEqual(valid.errors, []);
+    assert.equal(valid.newTileEvents.length, 4);
+
+    const invalid = compiler.compile([ret], {}, [
+        { uid: 'a', tileIndex: 1024, targetUid: 'missing', flags: 0x80000 },
+        { uid: 'a', tileIndex: 12, targetUid: 'return', flags: 0xff4 }
+    ], new Int32Array());
+    assert.ok(invalid.errors.some(error => error.includes('Invalid tile index')));
+    assert.ok(invalid.errors.some(error => error.includes('Duplicate')));
 });
