@@ -45,6 +45,7 @@ export interface ScriptFunctionTable {
 }
 
 export interface TileEventRef {
+    uid: string;       // Stable editor identity (the binary format has no event ID)
     tileIndex: number; // 0-1023
     targetUid: string; // The instruction UID this tile triggers
     flags: number;

@@ -73,6 +73,7 @@ export type EditMode = 'select' | 'paint';
                 [data]="info"
                 [scriptData]="scriptData()"
                 (jumpToScript)="jumpToScript.emit($event)"
+                (eventsChanged)="eventsChanged.emit($event)"
             />
 
         } @else if (geometryDetails(); as poly) {
@@ -113,4 +114,5 @@ export class MapInspectorComponent {
     
     // Navigation Output
     jumpToScript = output<string>(); // Target UID
+    eventsChanged = output<number>();
 }
