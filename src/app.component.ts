@@ -23,7 +23,7 @@ import { EditorService } from './app/services/editor.service';
       <app-toolbar class="flex-none z-10" />
 
       <!-- Main Workspace -->
-      <main class="flex-1 overflow-hidden relative">
+      <main class="flex-1 min-h-0 overflow-hidden relative">
            
            <!-- Use hidden classes instead of @if/@switch to keep components alive (preserving scroll/state) -->
            

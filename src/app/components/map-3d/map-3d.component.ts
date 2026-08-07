@@ -30,7 +30,7 @@ import * as THREE from 'three';
   template: `
     <div class="flex w-full h-full bg-[#111]">
       <!-- 3D Viewport Area -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="flex-1 flex flex-col min-w-0 min-h-0">
           
           <app-map-toolbar
             [selectedMapId]="selectedMapId()"
