@@ -7,6 +7,7 @@ import { ScriptAssemblerService, AssemblyResult } from '../../../services/script
 import { MonsterFlagEditorComponent } from '../monster-flag-editor/monster-flag-editor.component';
 import { DialogStyleEditorComponent } from '../dialog-style-editor/dialog-style-editor.component';
 import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/opcode-autocomplete.component';
+import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
 
 @Component({
   selector: 'app-script-instruction-editor',
@@ -16,7 +17,8 @@ import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/
     FormsModule, 
     MonsterFlagEditorComponent, 
     DialogStyleEditorComponent, 
-    OpcodeAutocompleteComponent
+    OpcodeAutocompleteComponent,
+    StringReferencePickerComponent
   ],
   template: `
     <div class="p-2 bg-neutral-800 border-l-4" [class.border-green-500]="isInsertMode()" [class.border-blue-500]="!isInsertMode()">
@@ -71,6 +73,12 @@ import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/
                  }
             </div>
         </div>
+
+        @if (stringArgumentIndex() !== -1) {
+          <app-string-reference-picker
+            [mapId]="mapId()" [chunkId]="activeStringChunk()" [stringId]="activeStringId()"
+            (selected)="selectString($event)" />
+        }
 
         @if (editError) {
             <div class="text-red-400 mb-2 text-xs flex items-center gap-1"><span>⚠</span> {{ editError }}</div>
@@ -202,5 +210,36 @@ export class ScriptInstructionEditorComponent {
             args: this.editArgs,
             bytes: result.bytes
         });
+    }
+
+    stringArgumentIndex(): number {
+        const definition = Object.values(SCRIPT_OPCODE_SCHEMA).find(item => item.name === this.editOpName);
+        return definition?.arguments.findIndex(argument => argument.reference === 'string-index') ?? -1;
+    }
+
+    private argumentValues(): string[] {
+        return this.editArgs.trim() ? this.editArgs.trim().split(/\s+/) : [];
+    }
+
+    activeStringId(): number {
+        return Number(this.argumentValues()[this.stringArgumentIndex()]) || 0;
+    }
+
+    activeStringChunk(): number {
+        // EV_CAMERA_STR has an explicit neighbouring chunk argument in the SDK
+        // schema. ScriptThread uses Canvas.loadMapStringID for all implicit refs.
+        return this.editOpName === 'EV_CAMERA_STR'
+            ? (Number(this.argumentValues()[0]) || 0)
+            : this.mapId() + 3;
+    }
+
+    selectString(stringId: number) {
+        const index = this.stringArgumentIndex();
+        if (index < 0) return;
+        const values = this.argumentValues();
+        while (values.length <= index) values.push('0');
+        values[index] = String(stringId);
+        this.editArgs = values.join(' ');
+        this.validateEdit();
     }
 }

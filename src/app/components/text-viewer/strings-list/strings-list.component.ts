@@ -154,9 +154,7 @@ export class StringsListComponent implements OnChanges {
     }
     
     addString() {
-        const newId = this.strings.length > 0 
-            ? Math.max(...this.strings.map(s => s.id)) + 1 
-            : 0;
+        const newId = this.textService.getNextStringId(this.strings);
             
         const newEntry: TextEntry = {
             id: newId,
