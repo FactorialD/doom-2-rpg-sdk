@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DoomFileService } from '../../services/doom-file.service';
 import { DoomSoundService } from '../../services/doom-sound.service';
+import { EditorService } from '../../services/editor.service';
 
 @Component({
   selector: 'app-sound-viewer',
@@ -35,7 +36,8 @@ import { DoomSoundService } from '../../services/doom-sound.service';
             @for (id of filteredIds(); track id) {
               <button
                 type="button"
-                (click)="selectedId.set(id)"
+                (click)="selectSound(id)"
+                [attr.aria-label]="'Inspect sound ' + id"
                 [class.bg-red-950]="selectedId() === id"
                 [class.text-red-300]="selectedId() === id"
                 class="w-full rounded px-3 py-2 text-left text-sm hover:bg-neutral-800">
@@ -54,16 +56,31 @@ import { DoomSoundService } from '../../services/doom-sound.service';
           <div class="w-full max-w-lg rounded-lg border border-neutral-800 bg-[#1a1a1a] p-6 shadow-xl">
             <p class="text-xs font-bold uppercase tracking-widest text-neutral-500">Selected resource</p>
             <h1 class="mt-2 text-2xl font-bold text-white">Sound #{{ id }}</h1>
-            <p class="mt-2 text-sm text-neutral-500">Playback preview only. Sound editing and replacement are not supported.</p>
-            <div class="mt-6 flex gap-3">
-              <button type="button" (click)="soundService.playSound(id)" class="rounded bg-red-800 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">▶ Play</button>
-              <button type="button" (click)="soundService.stopSound()" [disabled]="soundService.playingSoundId() === null" class="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-bold text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40">■ Stop</button>
-            </div>
-            @if (soundService.playingSoundId() === id) {
-              <p class="mt-4 text-sm text-green-400">Playing sound #{{ id }}…</p>
+            <p class="mt-2 text-sm text-neutral-500">Read-only playback through the built-in MIDI synthesizer or browser WAV/AU decoder.</p>
+            @if (soundService.loading()) {
+              <p class="mt-4 text-sm text-amber-300" role="status">Loading and parsing sound…</p>
             }
+            @if (soundService.format(); as format) {
+              <dl class="mt-4 grid grid-cols-2 gap-2 rounded border border-neutral-800 bg-neutral-950/60 p-3 text-sm">
+                <dt class="text-neutral-500">Format</dt><dd class="text-right uppercase text-white">{{ format }}</dd>
+                @if (soundService.midiInfo(); as midi) {
+                  <dt class="text-neutral-500">MIDI format</dt><dd class="text-right text-white">{{ midi.header.format }}</dd>
+                  <dt class="text-neutral-500">Tracks</dt><dd class="text-right text-white">{{ midi.header.trackCount }}</dd>
+                  @if (trackNames(midi).length) { <dt class="text-neutral-500">Track name</dt><dd class="text-right text-white">{{ trackNames(midi).join(', ') }}</dd> }
+                }
+              </dl>
+            }
+            <div class="mt-6 flex gap-3">
+              <button type="button" aria-label="Play or pause selected sound" (click)="togglePlayback(id)" [disabled]="soundService.loading() || soundService.format() === 'unknown'" class="rounded bg-red-800 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">{{ soundService.playingSoundId() === id ? '⏸ Pause' : '▶ Play' }}</button>
+              <button type="button" aria-label="Stop selected sound" (click)="soundService.stopSound()" [disabled]="soundService.playingSoundId() === null && soundService.positionSeconds() === 0" class="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-bold text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40">■ Stop</button>
+            </div>
+            <div class="mt-5">
+              <div class="mb-1 flex justify-between text-xs tabular-nums text-neutral-400"><span>{{ formatTime(soundService.positionSeconds()) }}</span><span>{{ formatTime(soundService.durationSeconds()) }}</span></div>
+              <input type="range" aria-label="Playback position" min="0" [max]="soundService.durationSeconds() || 0" step="0.01" [ngModel]="soundService.positionSeconds()" (ngModelChange)="soundService.seek(+$event)" [disabled]="soundService.durationSeconds() <= 0" class="w-full accent-red-700" />
+            </div>
+            <label class="mt-4 flex items-center gap-3 text-sm text-neutral-400"><span>Volume</span><input type="range" aria-label="Playback volume" min="0" max="1" step="0.01" [ngModel]="soundService.volume()" (ngModelChange)="soundService.setVolume(+$event)" class="flex-1 accent-red-700" /></label>
             @if (soundService.playbackError(); as error) {
-              <p class="mt-4 rounded border border-red-900/60 bg-red-950/40 p-3 text-sm text-red-300">{{ error }}</p>
+              <p role="alert" class="mt-4 rounded border border-red-900/60 bg-red-950/40 p-3 text-sm text-red-300">{{ error }}</p>
             }
           </div>
         } @else {
@@ -80,6 +97,7 @@ import { DoomSoundService } from '../../services/doom-sound.service';
 export class SoundViewerComponent {
   readonly fileService = inject(DoomFileService);
   readonly soundService = inject(DoomSoundService);
+  private readonly editorService = inject(EditorService);
   readonly query = signal('');
   readonly selectedId = signal<number | null>(null);
   readonly filteredIds = computed(() => {
@@ -94,5 +112,11 @@ export class SoundViewerComponent {
         this.selectedId.set(null);
       }
     });
+    effect(() => { if (this.editorService.activeTab() !== 'sounds') this.soundService.stopSound(); });
   }
+
+  selectSound(id: number) { this.selectedId.set(id); this.soundService.loadSound(id); }
+  togglePlayback(id: number) { if (this.soundService.playingSoundId() === id) this.soundService.pauseSound(); else void this.soundService.playSound(id); }
+  formatTime(seconds: number) { if (!Number.isFinite(seconds)) return '0:00'; const whole = Math.max(0, Math.floor(seconds)); return `${Math.floor(whole / 60)}:${(whole % 60).toString().padStart(2, '0')}`; }
+  trackNames(midi: import('../../services/midi/midi-types').ParsedMidi) { return midi.tracks.map(track => track.name).filter((name): name is string => !!name); }
 }
