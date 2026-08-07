@@ -35,21 +35,17 @@ export class DoomTextService {
 
   private FONT_WIDTH = 12;
   private FONT_HEIGHT = 16;
-  
-  private CHAR_COLORS = [
-    0xFFFFFF, // WHITE
-    0xFF0000, // RED
-    0x00FF00, // GREEN
-    0x8BBCCD, // MAP (Cyan-ish)
-    0x0000FF, // BLUE
-    0x318C43, // DARK GREEN/CYAN
-    0xAFAFAF, // GRAY-ish
-    0x7F0000, // DARK RED
-    0x7F7F7F, // GRAY
-    0x000000, // BLACK
-    0x3F3F3F, // DARK GRAY
-    0xBFBFBF  // LIGHT GRAY
-  ];
+  private readonly FONT_COLUMNS = 16;
+  private readonly FONT_GLYPH_COUNT = 144;
+  private readonly FONT_ADVANCE = 9;
+  private readonly FONT_SPACE_ADVANCE = 7;
+  private readonly MISSING_GLYPH_INDEX = 30;
+  private readonly glyphRects = Array.from({ length: this.FONT_GLYPH_COUNT }, (_, index) => ({
+      x: (index % this.FONT_COLUMNS) * this.FONT_WIDTH,
+      y: Math.floor(index / this.FONT_COLUMNS) * this.FONT_HEIGHT,
+      w: this.FONT_WIDTH,
+      h: this.FONT_HEIGHT
+  }));
 
   /**
    * Helper to synchronously get a string value if the file is available.
@@ -290,9 +286,69 @@ export class DoomTextService {
     }));
   }
   
-  // Rendering methods preserved...
   getCharRect(charCode: number): {x: number, y: number, w: number, h: number} {
-      return {x:0,y:0,w:0,h:0}; // Stub for brevity, assuming existing impl
+      // Most atlas entries are sequential from '!' (33). These exceptions are
+      // the non-sequential glyphs used by the original game's Text class.
+      const specialGlyphs: Record<number, number> = {
+          0x0085: 94, // ellipsis in the game's single-byte text representation
+          0x008b: 101,
+          0x008c: 142,
+          0x008d: 100,
+          0x0099: 107,
+          0x009c: 143,
+          0x00a1: 120,
+          0x00a2: 127,
+          0x00a6: 124,
+          0x00a9: 106,
+          0x00aa: 135,
+          0x00b0: 126,
+          0x00ba: 63,
+          0x00bc: 108,
+          0x00bd: 109,
+          0x00be: 110,
+          0x00bf: 119,
+          0x00df: 117,
+          0x00e7: 116,
+          0x00f0: 118,
+          0x0152: 142, // Windows-1252 0x8c
+          0x0153: 143, // Windows-1252 0x9c
+          0x2026: 94   // Windows-1252 0x85
+      };
+      const glyphIndex = specialGlyphs[charCode] ?? charCode - 33;
+      return this.glyphRects[glyphIndex] ?? this.glyphRects[this.MISSING_GLYPH_INDEX];
   }
-  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement) {}
+
+  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement) {
+      const lines = text.replace(/\r\n?/g, '\n').split(/[\n|]/);
+      const lineWidths = lines.map(line => Array.from(line).reduce((width, char) => {
+          return width + (char === ' ' || char === '\u00a0' ? this.FONT_SPACE_ADVANCE : this.FONT_ADVANCE);
+      }, 0));
+
+      canvas.width = Math.max(1, ...lineWidths);
+      canvas.height = Math.max(1, lines.length * this.FONT_HEIGHT);
+
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = false;
+
+      lines.forEach((line, lineIndex) => {
+          let x = 0;
+          for (const char of Array.from(line)) {
+              if (char === ' ' || char === '\u00a0') {
+                  x += this.FONT_SPACE_ADVANCE;
+                  continue;
+              }
+
+              const rect = this.getCharRect(char.codePointAt(0)!);
+              context.drawImage(
+                  fontImage,
+                  rect.x, rect.y, rect.w, rect.h,
+                  x, lineIndex * this.FONT_HEIGHT, rect.w, rect.h
+              );
+              x += this.FONT_ADVANCE;
+          }
+      });
+  }
 }
