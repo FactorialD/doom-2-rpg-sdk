@@ -64,7 +64,7 @@ export function parseResourceFileIndex(buffer: ArrayBuffer): ResourceFileIndexEn
   return entries;
 }
 
-export function flattenResourceFileIndex(entries: readonly ResourceFileIndexEntry[]): Int32Array {
+export function flattenResourceFileIndex(entries: readonly ResourceFileIndexEntry[]): Int32Array<ArrayBuffer> {
   const result = new Int32Array(entries.length * 3);
   entries.forEach((entry, index) => {
     result[index * 3] = entry.fileId;

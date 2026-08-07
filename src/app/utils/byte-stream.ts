@@ -1,14 +1,27 @@
 
 export class ByteStream {
-    public view: DataView;
+    public view: DataView<ArrayBufferLike>;
     private cursor: number = 0;
 
     constructor(
-        buffer: ArrayBuffer,
+        buffer: ArrayBufferLike,
         public littleEndian: boolean = true,
-        public readonly fileName: string = 'binary data'
+        public readonly fileName: string = 'binary data',
+        byteOffset: number = 0,
+        byteLength?: number
     ) {
-        this.view = new DataView(buffer);
+        this.view = new DataView(buffer, byteOffset, byteLength);
+    }
+
+    /** Creates an independent reader over the exact same byte range. */
+    createReader(): ByteStream {
+        return new ByteStream(
+            this.view.buffer,
+            this.littleEndian,
+            this.fileName,
+            this.view.byteOffset,
+            this.view.byteLength
+        );
     }
 
     get position(): number {
@@ -135,7 +148,7 @@ export function checkedLength(
 }
 
 export class BinaryWriter {
-    private buffer: Uint8Array;
+    private buffer: Uint8Array<ArrayBuffer>;
     private view: DataView;
     private cursor: number = 0;
 
@@ -152,7 +165,7 @@ export class BinaryWriter {
     private ensureCapacity(additionalBytes: number) {
         if (this.cursor + additionalBytes > this.buffer.length) {
             const newSize = Math.max(this.buffer.length * 2, this.cursor + additionalBytes + 1024);
-            const newBuffer = new Uint8Array(newSize);
+            const newBuffer: Uint8Array<ArrayBuffer> = new Uint8Array(newSize);
             newBuffer.set(this.buffer);
             this.buffer = newBuffer;
             this.view = new DataView(this.buffer.buffer);
@@ -206,7 +219,7 @@ export class BinaryWriter {
     // Helper to write string with null terminator if needed, or length prefixed
     // For Doom RPG simple byte arrays are mostly used.
 
-    getData(): Uint8Array {
+    getData(): Uint8Array<ArrayBuffer> {
         return this.buffer.slice(0, this.cursor);
     }
 }
