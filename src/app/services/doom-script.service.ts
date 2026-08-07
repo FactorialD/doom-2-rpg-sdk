@@ -485,7 +485,7 @@ export class DoomScriptService {
                         let currIdx = instructions.indexOf(targetInst);
                         while(currIdx < instructions.length) {
                             const inst = instructions[currIdx];
-                            console.log(`  ${inst.offset}: ${inst.opcodeName} ${inst.params.join(',')}`);
+                            console.log(`  ${inst.offset}: ${inst.name} ${inst.params.join(',')}`);
                             if (inst.opcode === 0 || inst.opcode === 1) break; // EV_END or EV_RETURN
                             currIdx++;
                         }
