@@ -116,6 +116,7 @@ import { PolyFlag } from '../../core/constants/geometry';
                     [scriptData]="currentScriptData()"
                     (setTextureForPoly)="setTextureForSelectedPoly($event.texId)"
                     (jumpToScript)="onJumpToScript($event)"
+                    (eventsChanged)="onTileEventsChanged($event)"
                     (entityUpdated)="onEntityUpdated()"
                     (deleteEntity)="deleteSelectedEntity()"
                     (swapEntityId)="swapSelectedEntity()"
@@ -207,7 +208,9 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           this.editorService.scriptsUpdated(); 
           const mapId = this.selectedMapId();
           if (this.mapData && !this.isLoading()) {
-              this.scriptService.loadAndDisassemble(mapId, true).then(d => {
+              // Event edits already live in DoomScriptService's shared cache. Do not
+              // force a JAR re-read here or an external update would discard them.
+              this.scriptService.ensureScriptLoaded(mapId).then(d => {
                   this.currentScriptData.set(d);
               });
           }
@@ -557,6 +560,16 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       
       // Re-select the entity to update the inspector
       this.renderer.selectEntity(this.selectedEntityId(), false);
+  }
+
+  onTileEventsChanged(tileIndex: number) {
+      if (!this.mapData || tileIndex < 0 || tileIndex >= this.mapData.heightMap.length) return;
+      const hasEvents = this.currentScriptData()?.tileEventRefs.some(ref => ref.tileIndex === tileIndex) ?? false;
+      // Game.executeTile only examines tiles carrying the event marker bit.
+      this.mapData.heightMap[tileIndex] = hasEvents
+          ? this.mapData.heightMap[tileIndex] | 0x40
+          : this.mapData.heightMap[tileIndex] & ~0x40;
+      this.editorService.notifyScriptsChanged();
   }
   
   deleteSelectedEntity() {
