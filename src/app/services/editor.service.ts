@@ -1,7 +1,7 @@
 
 import { Injectable, signal } from '@angular/core';
 
-export type EditorTab = 'map' | 'textures' | 'text' | 'scripts' | 'palettes' | 'items' | 'variables';
+export type EditorTab = 'map' | 'textures' | 'text' | 'scripts' | 'palettes' | 'items' | 'variables' | 'sounds';
 
 export interface EntitySelection {
     mapId: number;

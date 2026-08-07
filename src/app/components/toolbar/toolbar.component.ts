@@ -38,7 +38,7 @@ import { CommonModule } from '@angular/common';
       </div>
 
       <nav class="flex gap-1">
-        <button 
+        <button
           (click)="service.activeTab.set('map')"
           [class.bg-neutral-800]="service.activeTab() === 'map'"
           [class.text-white]="service.activeTab() === 'map'"
@@ -80,7 +80,14 @@ import { CommonModule } from '@angular/common';
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Vars
         </button>
-        <button 
+        <button
+          (click)="service.activeTab.set('sounds')"
+          [class.bg-neutral-800]="service.activeTab() === 'sounds'"
+          [class.text-white]="service.activeTab() === 'sounds'"
+          class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
+          Sounds
+        </button>
+        <button
           (click)="service.activeTab.set('scripts')"
           [class.bg-neutral-800]="service.activeTab() === 'scripts'"
           [class.text-white]="service.activeTab() === 'scripts'"
