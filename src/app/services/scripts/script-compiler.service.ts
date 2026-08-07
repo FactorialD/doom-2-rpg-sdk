@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { ScriptInstruction, ScriptFunctionTable, TileEventRef } from './script-types';
 import { SCRIPT_OPCODE_SCHEMA } from './script-opcode-schema';
 import { calculateInstructionSize, encodeInstruction } from './script-instruction-codec';
-import { BinaryWriter } from '../../../utils/byte-stream';
+import { BinaryWriter } from '../../utils/byte-stream';
 
 export interface CompilationResult {
     binary: Uint8Array;

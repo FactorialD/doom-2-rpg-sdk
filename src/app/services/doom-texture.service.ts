@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
-import { ByteStream } from '../../utils/byte-stream';
+import { ByteStream } from '../utils/byte-stream';
 import { SpriteCodec } from '../logic/sprite-codec';
 import { TextureInfo, TextureCategory } from './textures/texture-types';
 import { TextureMappingService } from './textures/texture-mapping.service';

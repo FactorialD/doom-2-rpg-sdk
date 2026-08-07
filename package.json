@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "ng serve",
     "build": "ng build",
+    "test": "node --import ./tests/register-typescript.mjs --test tests/*.test.ts src/app/**/*.spec.ts src/app/**/**/*.spec.ts",
     "test:index": "node --test tests/resource-file-index.test.ts",
     "preview": "ng serve --configuration=production"
   },

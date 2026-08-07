@@ -3,7 +3,7 @@ import {
   encodeSingleByte,
   SINGLE_BYTE_CODE_PAGES,
   type SingleByteEncoding
-} from '../src/app/services/single-byte-codec.js';
+} from '../src/app/services/single-byte-codec.ts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

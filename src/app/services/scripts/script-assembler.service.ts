@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BinaryWriter } from '../../../utils/byte-stream';
+import { BinaryWriter } from '../../utils/byte-stream';
 import { encodeInstruction, validateInstruction } from './script-instruction-codec';
 import { SCRIPT_OPCODE_SCHEMA } from './script-opcode-schema';
 

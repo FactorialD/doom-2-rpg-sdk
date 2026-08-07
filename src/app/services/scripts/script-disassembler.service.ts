@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomEntitiesService } from '../doom-entities.service';
 import { DoomTextService } from '../doom-text.service';
-import { ByteStream } from '../../../utils/byte-stream';
+import { ByteStream } from '../../utils/byte-stream';
 import { SCRIPT_OPCODE_SCHEMA } from './script-opcode-schema';
 import { decodeInstruction } from './script-instruction-codec';
 import { ScriptInstruction } from './script-types';

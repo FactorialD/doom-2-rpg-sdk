@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
-import { ByteStream, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../../utils/byte-stream';
+import { ByteStream, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../utils/byte-stream';
 import { DoomGeometryService, MapGeometry } from './doom-geometry.service';
 import { SpecialTextureIds } from '../core/constants/texture-groups';
 import { SpriteFlag } from '../core/constants/map-flags';

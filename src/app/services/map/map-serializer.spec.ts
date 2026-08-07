@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { MapSerializer } from './map-serializer.ts';
+import { MAP_FIRST_MARKER, MAP_MARKER } from '../../utils/byte-stream.ts';
+import type { MapData } from '../doom-map.service.ts';
+
+function syntheticEmptyMap(): Uint8Array {
+    const bytes = new Uint8Array(46 + 6 + 4 * 13 + 1024 + 8);
+    const view = new DataView(bytes.buffer);
+    // The 46-byte header is intentionally non-zero outside count fields.
+    bytes.set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    let position = 46;
+    const marker = (value: number) => { view.setInt32(position, value, true); position += 4; };
+    marker(MAP_FIRST_MARKER); view.setUint16(position, 0, true); position += 2;
+    marker(MAP_FIRST_MARKER);
+    for (let i = 0; i < 8; i++) marker(MAP_MARKER);
+    position += 1024; // untouched height map
+    for (let i = 0; i < 4; i++) marker(MAP_MARKER);
+    bytes.set([0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4], position); // cameras/unknown remainder
+    return bytes;
+}
+
+test('synthetic map parse/serialize shape preserves every untouched section and remainder', () => {
+    const original = syntheticEmptyMap();
+    const serializer = Object.create(MapSerializer.prototype) as MapSerializer;
+    Object.assign(serializer, {
+        coordinateService: { analyzeSpriteType: () => ({ type: 'normal', fileZ: 0 }) },
+        scriptService: {},
+        scriptCompiler: {}
+    });
+    const map = {
+        header: { spawnIndex: 0, spawnDir: 0, numPolys: 0, numVerts: 0, numSprites: 0 },
+        geometry: { textureIds: new Uint16Array(), flags: new Uint8Array() },
+        sprites: [],
+        bspTree: { id: 0, isLeaf: true, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 } },
+        heightMap: new Int8Array(1024),
+        remainderOffset: original.length - 8
+    } as unknown as MapData;
+
+    const serialized = serializer.serialize(map, original.buffer, 'synthetic-map.bin');
+    assert.deepEqual(serialized, original);
+    // A second parse/serialize-shaped pass must remain byte exact as well.
+    assert.deepEqual(serializer.serialize(map, serialized.buffer, 'synthetic-map-2.bin'), original);
+});

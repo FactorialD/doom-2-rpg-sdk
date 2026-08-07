@@ -1,7 +1,7 @@
 
 import { Injectable, inject, signal } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
-import { ByteStream } from '../../utils/byte-stream';
+import { ByteStream } from '../utils/byte-stream';
 
 export interface EntityDef {
     tileIndex: number;
