@@ -30,6 +30,7 @@ export class MapRendererService implements OnDestroy {
   private camera!: THREE.PerspectiveCamera;
   private renderer!: THREE.WebGLRenderer;
   private animationFrameId: number | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   
   private boundsHelper: THREE.Box3Helper | null = null;
   private selectionHelper: THREE.Box3Helper | null = null;
@@ -48,6 +49,7 @@ export class MapRendererService implements OnDestroy {
   constructor() {}
 
   init(canvas: HTMLCanvasElement) {
+    if (this.renderer) this.dispose();
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
 
@@ -101,7 +103,7 @@ export class MapRendererService implements OnDestroy {
 
     this.animate();
 
-    const resizeObs = new ResizeObserver(() => {
+    this.resizeObserver = new ResizeObserver(() => {
         if (!canvas.parentElement) return;
         const nw = canvas.parentElement.clientWidth;
         const nh = canvas.parentElement.clientHeight;
@@ -109,7 +111,7 @@ export class MapRendererService implements OnDestroy {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(nw, nh, false);
     });
-    resizeObs.observe(canvas.parentElement!);
+    this.resizeObserver.observe(canvas.parentElement!);
   }
 
   getCameraPosition(): THREE.Vector3 {
@@ -290,8 +292,15 @@ export class MapRendererService implements OnDestroy {
   dispose() {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.controls.dispose();
     this.clearScene();
+    if (this.transformControls) {
+        this.transformControls.dispose();
+    }
     if (this.renderer) {
         this.renderer.dispose();
     }

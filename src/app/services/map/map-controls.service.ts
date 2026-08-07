@@ -2,12 +2,14 @@
 import { Injectable, signal, effect } from '@angular/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { isMapKeyboardControlAllowed } from './map-keyboard-control';
 
 @Injectable({
   providedIn: 'root'
 })
 export class MapControlsService {
   flyMode = signal(false);
+  flySpeed = signal(4000);
 
   private camera!: THREE.PerspectiveCamera;
   private controls!: OrbitControls;
@@ -15,11 +17,51 @@ export class MapControlsService {
   
   // FPS Camera State
   private isRightMouseDown = false;
-  private flySpeed = 4000; // World units per second
+  private wheelSpeedMultiplier = 1;
+  private wheelResetTimer: ReturnType<typeof setTimeout> | null = null;
   private lookSpeed = 0.0025;
   
   // Euler angles for stable FPS rotation (Y = Yaw, X = Pitch)
   private euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  private inputCanvas: HTMLCanvasElement | null = null;
+
+  private readonly onKeyDown = (event: KeyboardEvent) => {
+      if (event.code && isMapKeyboardControlAllowed(event.target)) this.keys.add(event.code.toLowerCase());
+  };
+  private readonly onKeyUp = (event: KeyboardEvent) => {
+      if (event.code) this.keys.delete(event.code.toLowerCase());
+  };
+  private readonly onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 2) return;
+      this.isRightMouseDown = true;
+      if (this.flyMode()) this.euler.setFromQuaternion(this.camera.quaternion, 'YXZ');
+  };
+  private readonly onMouseUp = () => this.isRightMouseDown = false;
+  private readonly onMouseMove = (event: MouseEvent) => {
+      if (!this.flyMode() || !this.isRightMouseDown) return;
+      this.euler.y -= (event.movementX || 0) * this.lookSpeed;
+      this.euler.x -= (event.movementY || 0) * this.lookSpeed;
+      const limit = Math.PI / 2 - 0.01;
+      this.euler.x = Math.max(-limit, Math.min(limit, this.euler.x));
+      this.camera.quaternion.setFromEuler(this.euler);
+  };
+  private readonly onContextMenu = (event: Event) => event.preventDefault();
+  private readonly onWindowBlur = () => this.clearInputState();
+  private readonly onVisibilityChange = () => {
+      if (document.hidden) this.clearInputState();
+  };
+  private readonly onWheel = (event: WheelEvent) => {
+      if (!this.flyMode()) return;
+      this.wheelSpeedMultiplier = THREE.MathUtils.clamp(
+          this.wheelSpeedMultiplier * (event.deltaY < 0 ? 1.25 : 0.8), 0.25, 4
+      );
+      if (this.wheelResetTimer) clearTimeout(this.wheelResetTimer);
+      this.wheelResetTimer = setTimeout(() => {
+          this.wheelSpeedMultiplier = 1;
+          this.wheelResetTimer = null;
+      }, 750);
+      event.preventDefault();
+  };
 
   constructor() {
       effect(() => {
@@ -54,6 +96,7 @@ export class MapControlsService {
   }
 
   init(camera: THREE.PerspectiveCamera, canvas: HTMLCanvasElement) {
+    this.dispose();
     this.camera = camera;
     
     this.controls = new OrbitControls(this.camera, canvas);
@@ -76,6 +119,51 @@ export class MapControlsService {
       this.flyMode.update(v => !v);
   }
 
+  setFlySpeed(speed: number) {
+      if (Number.isFinite(speed)) this.flySpeed.set(THREE.MathUtils.clamp(speed, 250, 20000));
+  }
+
+  clearInputState() {
+      this.keys.clear();
+      this.isRightMouseDown = false;
+  }
+
+  resetView() {
+      if (!this.camera || !this.controls) return;
+      this.flyMode.set(false);
+      this.camera.position.set(16384, 12000, 24000);
+      this.controls.target.set(16384, 0, 16384);
+      this.controls.update();
+  }
+
+  focusAt(point: THREE.Vector3) {
+      if (!this.camera || !this.controls) return;
+      this.flyMode.set(false);
+      this.controls.target.copy(point);
+      this.controls.update();
+  }
+
+  dispose() {
+      const canvas = this.inputCanvas;
+      window.removeEventListener('keydown', this.onKeyDown);
+      window.removeEventListener('keyup', this.onKeyUp);
+      window.removeEventListener('mouseup', this.onMouseUp);
+      window.removeEventListener('mousemove', this.onMouseMove);
+      window.removeEventListener('blur', this.onWindowBlur);
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      if (canvas) {
+          canvas.removeEventListener('mousedown', this.onMouseDown);
+          canvas.removeEventListener('contextmenu', this.onContextMenu);
+          canvas.removeEventListener('wheel', this.onWheel);
+      }
+      if (this.wheelResetTimer) clearTimeout(this.wheelResetTimer);
+      this.wheelResetTimer = null;
+      this.wheelSpeedMultiplier = 1;
+      this.clearInputState();
+      this.controls?.dispose();
+      this.inputCanvas = null;
+  }
+
   update(delta: number) {
       if (this.flyMode()) {
         const d = Math.min(delta, 0.1); // Cap delta to prevent huge jumps on lag
@@ -86,60 +174,21 @@ export class MapControlsService {
   }
 
   private setupInputs(canvas: HTMLCanvasElement) {
-      window.addEventListener('keydown', (e) => {
-          if (e.code) {
-             this.keys.add(e.code.toLowerCase());
-          }
-      });
-      window.addEventListener('keyup', (e) => {
-          if (e.code) {
-             this.keys.delete(e.code.toLowerCase());
-          }
-      });
-
-      canvas.addEventListener('mousedown', (e) => {
-          if (e.button === 2) { // Right Click
-              this.isRightMouseDown = true;
-              
-              // Only prevent default if we are controlling camera to avoid context menu
-              if (this.flyMode()) {
-                  this.euler.setFromQuaternion(this.camera.quaternion, 'YXZ');
-              }
-          }
-      });
-
-      window.addEventListener('mouseup', () => {
-          this.isRightMouseDown = false;
-      });
-
-      window.addEventListener('mousemove', (e) => {
-          // Only rotate in fly mode if right mouse is held (FPS style)
-          // Since OrbitControls is disabled, LMB won't rotate anymore.
-          if (this.flyMode() && this.isRightMouseDown) {
-              const movementX = e.movementX || 0;
-              const movementY = e.movementY || 0;
-
-              // Update Yaw (Y-axis) - Left/Right
-              this.euler.y -= movementX * this.lookSpeed;
-
-              // Update Pitch (X-axis) - Up/Down
-              this.euler.x -= movementY * this.lookSpeed;
-
-              // Clamp Pitch to avoid flipping (approx -90 to 90 degrees)
-              const limit = Math.PI / 2 - 0.01;
-              this.euler.x = Math.max(-limit, Math.min(limit, this.euler.x));
-
-              // Apply rotation
-              this.camera.quaternion.setFromEuler(this.euler);
-          }
-      });
-
-      // Prevent context menu
-      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+      this.inputCanvas = canvas;
+      window.addEventListener('keydown', this.onKeyDown);
+      window.addEventListener('keyup', this.onKeyUp);
+      window.addEventListener('mouseup', this.onMouseUp);
+      window.addEventListener('mousemove', this.onMouseMove);
+      window.addEventListener('blur', this.onWindowBlur);
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+      canvas.addEventListener('mousedown', this.onMouseDown);
+      canvas.addEventListener('contextmenu', this.onContextMenu);
+      canvas.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
   private processFlyMovement(delta: number) {
-      const speed = this.keys.has('shiftleft') || this.keys.has('shiftright') ? this.flySpeed * 2.5 : this.flySpeed;
+      const baseSpeed = this.flySpeed() * this.wheelSpeedMultiplier;
+      const speed = this.keys.has('shiftleft') || this.keys.has('shiftright') ? baseSpeed * 2.5 : baseSpeed;
       const dist = speed * delta;
 
       // Calculate forward/right vectors based on current Yaw (ignore Pitch for movement to keep it flat-ish relative to horizon if preferred, but usually FPS flies in look dir)
