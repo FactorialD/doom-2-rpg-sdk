@@ -6,6 +6,8 @@ export type ReferenceType = 'instruction-relative' | 'instruction-absolute' | 't
   'entity-index' | 'string-index' | 'sound-index' | 'map-index';
 
 export interface PackedReferenceCodec {
+  readonly min: number;
+  readonly max: number;
   decode(value: number): number;
   encode(reference: number, previousValue: number): number;
   replaceReference(params: number[], argumentIndex: number, reference: number): number[];
@@ -39,6 +41,8 @@ export interface ScriptOpcodeDefinition {
 }
 
 const packed = (mask: number, shift = 0): PackedReferenceCodec => ({
+  min: 0,
+  max: mask,
   decode: value => (value >>> shift) & mask,
   encode: (reference, previous) => (previous & ~(mask << shift)) | ((reference & mask) << shift),
   replaceReference: (params, index, reference) => {
@@ -58,9 +62,9 @@ const formats: Record<string, readonly ScriptArgumentDescriptor[]> = {
 };
 const a = (...kinds: Array<'u8'|'s8'|'u16'|'s16'|'s32'>) => kinds.map((k, i) => primitive(formats[k][0].kind, `arg${i}`));
 const rows: Array<[number,string,string,readonly ScriptArgumentDescriptor[]]> = [
-  [0,'EV_EVAL','Condition Check',formats.eval],[1,'EV_JUMP','Jump',a('u16')],[2,'EV_RETURN','Return',[]],
+  [0,'EV_EVAL','Condition Check',formats.eval],[1,'EV_JUMP','Jump',[primitive('u16be','target','instruction-relative')]],[2,'EV_RETURN','Return',[]],
   [3,'EV_MESSAGE','Show Message',[primitive('u16be','string','string-index')]],[4,'EV_LERPSPRITE','Move Sprite',formats.lerp],
-  [5,'EV_STARTCINEMATIC','Cinematic',a('u8')],[6,'EV_SETSTATE','Set Game State',a('u8','s16')],[7,'EV_CALL_FUNC','Call Script',a('u16')],
+  [5,'EV_STARTCINEMATIC','Cinematic',a('u8')],[6,'EV_SETSTATE','Set Game State',a('u8','s16')],[7,'EV_CALL_FUNC','Call Script',[primitive('u16be','target','instruction-absolute')]],
   [8,'EV_ITEM_COUNT','Check Item Count',a('u16','u8')],[9,'EV_TILE_EMPTY','Check Tile Empty',a('u16','u8')],[10,'EV_WEAPON_EQUIPPED','Check Weapon',a('u8')],
   [11,'EV_CHANGE_MAP','Change Map',[primitive('u8','map','map-index'),primitive('u16be','spawn')]],[12,'EV_CAMERA_STR','Camera String',[primitive('u16be','chunk'),primitive('u16be','string','string-index')]],
   [13,'EV_DIALOG','Show Dialog',[primitive('u8','string','string-index'),primitive('u8','style')]],[14,'EV_WAIT','Wait',a('u8')],[15,'EV_GOTO','Goto',a('u16')],
