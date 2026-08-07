@@ -235,9 +235,9 @@ export class TextViewerComponent {
       this.selectedEncoding(),
     );
 
-    if (result.success) {
+    if (result.success === true) {
       alert("Strings saved to memory! You can now download the modded JAR.");
-    } else if (result.error) {
+    } else if (result.success === false && result.error) {
       const error = result.error;
       alert(
         `Cannot encode line ${error.line}, position ${error.position}: "${error.character}" is not representable in ${error.encoding}.`,
