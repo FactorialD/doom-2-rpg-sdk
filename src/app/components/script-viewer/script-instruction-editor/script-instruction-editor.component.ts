@@ -5,6 +5,7 @@ import { ScriptData, ScriptInstruction } from '../../../services/doom-script.ser
 import { SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
 import { ScriptAssemblerService, AssemblyResult } from '../../../services/scripts/script-assembler.service';
 import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/opcode-autocomplete.component';
+import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
 import { ScriptArgumentControlComponent, ScriptReferenceOptions } from '../script-argument-control/script-argument-control.component';
 import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString } from '../script-argument-control/script-argument-value';
 
@@ -14,7 +15,10 @@ import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString }
   imports: [
     CommonModule, 
     FormsModule, 
+    MonsterFlagEditorComponent, 
+    DialogStyleEditorComponent, 
     OpcodeAutocompleteComponent,
+    StringReferencePickerComponent
     ScriptArgumentControlComponent
   ],
   template: `
@@ -58,6 +62,12 @@ import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString }
               </div>
             </div>
         </div>
+
+        @if (stringArgumentIndex() !== -1) {
+          <app-string-reference-picker
+            [mapId]="mapId()" [chunkId]="activeStringChunk()" [stringId]="activeStringId()"
+            (selected)="selectString($event)" />
+        }
 
         @if (editError) {
             <div class="text-red-400 mb-2 text-xs flex items-center gap-1"><span>⚠</span> {{ editError }}</div>
@@ -225,5 +235,36 @@ export class ScriptInstructionEditorComponent {
             args,
             bytes: result.bytes
         });
+    }
+
+    stringArgumentIndex(): number {
+        const definition = Object.values(SCRIPT_OPCODE_SCHEMA).find(item => item.name === this.editOpName);
+        return definition?.arguments.findIndex(argument => argument.reference === 'string-index') ?? -1;
+    }
+
+    private argumentValues(): string[] {
+        return this.editArgs.trim() ? this.editArgs.trim().split(/\s+/) : [];
+    }
+
+    activeStringId(): number {
+        return Number(this.argumentValues()[this.stringArgumentIndex()]) || 0;
+    }
+
+    activeStringChunk(): number {
+        // EV_CAMERA_STR has an explicit neighbouring chunk argument in the SDK
+        // schema. ScriptThread uses Canvas.loadMapStringID for all implicit refs.
+        return this.editOpName === 'EV_CAMERA_STR'
+            ? (Number(this.argumentValues()[0]) || 0)
+            : this.mapId() + 3;
+    }
+
+    selectString(stringId: number) {
+        const index = this.stringArgumentIndex();
+        if (index < 0) return;
+        const values = this.argumentValues();
+        while (values.length <= index) values.push('0');
+        values[index] = String(stringId);
+        this.editArgs = values.join(' ');
+        this.validateEdit();
     }
 }
