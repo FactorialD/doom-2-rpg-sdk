@@ -233,13 +233,14 @@ export class DoomMapService {
 
         // --- 3. Read Geometry Data Structures ---
         readMarker(stream, MAP_FIRST_MARKER, 'normals');
-        stream.skip(numNormals * 3 * 2);
+        const normals = new Int16Array(numNormals * 3);
+        for (let i = 0; i < normals.length; i++) normals[i] = stream.readShort();
 
         readMarker(stream, MAP_MARKER, 'node offsets');
         const nodeOffsets = stream.readUint16Array(numNodes);
 
         readMarker(stream, MAP_MARKER, 'node normal indices');
-        stream.skip(numNodes);
+        const nodeNormalIdxs = stream.readByteArray(numNodes);
 
         readMarker(stream, MAP_MARKER, 'node children');
         const nodeChildOffset1 = stream.readUint16Array(numNodes);
@@ -267,9 +268,9 @@ export class DoomMapService {
 
         // --- 5. Read Sprites ---
         readMarker(stream, MAP_MARKER, 'lines');
-        stream.skip(Math.floor((numLines + 1) / 2));
-        stream.skip(numLines * 2);
-        stream.skip(numLines * 2);
+        const lineFlags = stream.readByteArray(Math.floor((numLines + 1) / 2));
+        const lineXs = stream.readByteArray(numLines * 2);
+        const lineYs = stream.readByteArray(numLines * 2);
 
         readMarker(stream, MAP_MARKER, 'heightmap');
         const heightMapU8 = stream.readByteArray(1024);
@@ -319,10 +320,11 @@ export class DoomMapService {
 
         // --- Process Geometry (Delegated) ---
         const geometry = this.geometryService.processGeometry(
-            numNodes, numPolys, numVerts,
-            nodeOffsets, nodeChildOffset1, nodePolyOffset, nodeVertOffset,
+            normals, nodeOffsets, nodeNormalIdxs, nodeChildOffset1, nodeChildOffset2,
+            nodeBoundXs, nodeBoundYs, nodePolyOffset, nodeVertOffset,
             polyTex, polyFlags,
-            polyXs, polyYs, polyZs, polyUs, polyVs
+            polyXs, polyYs, polyZs, polyUs, polyVs,
+            lineFlags, lineXs, lineYs, heightMap
         );
 
         const bspTree = this.buildBspTree(0, nodeOffsets, nodeChildOffset1, nodeChildOffset2, nodeBoundXs, nodeBoundYs);
