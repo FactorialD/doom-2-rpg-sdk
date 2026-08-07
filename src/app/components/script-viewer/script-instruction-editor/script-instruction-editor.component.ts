@@ -1,13 +1,13 @@
 import { Component, input, output, signal, inject, ViewChild, ElementRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ScriptInstruction } from '../../../services/doom-script.service';
+import { ScriptData, ScriptInstruction } from '../../../services/doom-script.service';
 import { SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
 import { ScriptAssemblerService, AssemblyResult } from '../../../services/scripts/script-assembler.service';
-import { MonsterFlagEditorComponent } from '../monster-flag-editor/monster-flag-editor.component';
-import { DialogStyleEditorComponent } from '../dialog-style-editor/dialog-style-editor.component';
 import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/opcode-autocomplete.component';
 import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
+import { ScriptArgumentControlComponent, ScriptReferenceOptions } from '../script-argument-control/script-argument-control.component';
+import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString } from '../script-argument-control/script-argument-value';
 
 @Component({
   selector: 'app-script-instruction-editor',
@@ -19,6 +19,7 @@ import { StringReferencePickerComponent } from '../string-reference-picker/strin
     DialogStyleEditorComponent, 
     OpcodeAutocompleteComponent,
     StringReferencePickerComponent
+    ScriptArgumentControlComponent
   ],
   template: `
     <div class="p-2 bg-neutral-800 border-l-4" [class.border-green-500]="isInsertMode()" [class.border-blue-500]="!isInsertMode()">
@@ -50,27 +51,15 @@ import { StringReferencePickerComponent } from '../string-reference-picker/strin
             </div>
 
             <div class="flex-[2]">
-                 @if (editOpName === 'EV_MONSTERFLAGOP') {
-                     <app-monster-flag-editor 
-                        [(args)]="editArgs"
-                        (argsChange)="validateEdit()">
-                     </app-monster-flag-editor>
-                 } @else if (editOpName === 'EV_DIALOG') {
-                     <app-dialog-style-editor
-                        [(args)]="editArgs"
-                        [mapId]="mapId()"
-                        (argsChange)="validateEdit()">
-                     </app-dialog-style-editor>
-                 } @else {
-                    <label class="block text-[9px] text-neutral-500 uppercase font-bold">Arguments ({{ editOpFormat }})</label>
-                    <input 
-                        type="text" 
-                        [(ngModel)]="editArgs"
-                        (input)="validateEdit()"
-                        class="w-full bg-neutral-950 border border-neutral-600 text-amber-500 px-2 py-1 rounded focus:border-blue-500 outline-none font-mono"
-                        placeholder="e.g. 10 255"
-                    >
-                 }
+              <label class="block text-[9px] text-neutral-500 uppercase font-bold">Arguments ({{ editOpFormat }})</label>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                @for (argument of argumentValues; track $index) {
+                  <app-script-argument-control [control]="argument" [options]="referenceOptions"
+                    (changed)="updateArgument($index, $event)" />
+                } @empty {
+                  <div class="text-[10px] text-neutral-600 italic">No arguments</div>
+                }
+              </div>
             </div>
         </div>
 
@@ -100,6 +89,7 @@ export class ScriptInstructionEditorComponent {
     instruction = input<ScriptInstruction | null>(null);
     insertMode = input<'before' | 'after' | null>(null);
     mapId = input<number>(1);
+    scriptData = input<ScriptData | null>(null);
     
     save = output<{opcodeName: string, args: string, bytes: number[]}>();
     cancel = output<void>();
@@ -108,7 +98,8 @@ export class ScriptInstructionEditorComponent {
     assembler = inject(ScriptAssemblerService);
     
     editOpName = '';
-    editArgs = '';
+    argumentValues: ScriptArgumentValue[] = [];
+    referenceOptions: ScriptReferenceOptions = {};
     editOpFormat = '';
     editError = '';
     
@@ -128,13 +119,12 @@ export class ScriptInstructionEditorComponent {
             if (mode) {
                 // Insert Defaults
                 this.editOpName = 'EV_WAIT';
-                this.editArgs = '0';
             } else if (inst) {
                 // Edit existing
                 this.editOpName = inst.name;
-                this.editArgs = inst.formattedArgs;
             }
-            
+            this.resetArguments(inst?.params ?? []);
+            this.buildReferenceOptions();
             this.updateOpFormat();
             this.validateEdit();
             
@@ -175,12 +165,44 @@ export class ScriptInstructionEditorComponent {
         this.editOpName = item.name;
         this.showAutocomplete.set(false);
         this.updateOpFormat();
+        this.resetArguments([]);
         this.validateEdit();
     }
     
     updateOpFormat() {
         const op = this.opcodeList.find(o => o.name === this.editOpName);
         this.editOpFormat = op ? op.format || 'none' : 'Unknown';
+    }
+
+    private resetArguments(params: readonly number[]) {
+        const op = this.opcodeList.find(o => o.name === this.editOpName);
+        this.argumentValues = op ? createScriptArgumentValues(SCRIPT_OPCODE_SCHEMA[op.id].arguments, params) : [];
+    }
+
+    private buildReferenceOptions() {
+        const data = this.scriptData();
+        const instruction = this.instruction();
+        const instructions = data?.instructions ?? [];
+        const end = instruction ? instruction.offset + instruction.size : 0;
+        const absolute = instructions.map(item => ({ value: item.offset, label: `${item.name} @ 0x${item.offset.toString(16)}` }));
+        this.referenceOptions = {
+            'instruction-absolute': absolute,
+            'instruction-relative': instructions.map(item => ({ value: item.offset - end, label: `${item.name} @ 0x${item.offset.toString(16)}` })),
+            'tile-event-index': Array.from({ length: (data?.tileEvents.length ?? 0) / 2 }, (_, value) => ({ value, label: `Tile event ${value}` })),
+            'entity-index': this.numericOptions(256, 'Entity'),
+            'string-index': this.numericOptions(256, 'String'),
+            'sound-index': this.numericOptions(256, 'Sound'),
+            'map-index': this.numericOptions(10, 'Map', 1)
+        };
+    }
+
+    private numericOptions(count: number, label: string, start = 0) {
+        return Array.from({ length: count }, (_, index) => ({ value: index + start, label: `${label} ${index + start}` }));
+    }
+
+    updateArgument(index: number, value: ScriptArgumentValue) {
+        this.argumentValues = this.argumentValues.map((argument, i) => i === index ? value : argument);
+        this.validateEdit();
     }
     
     validateEdit() {
@@ -190,7 +212,9 @@ export class ScriptInstructionEditorComponent {
             return;
         }
         
-        const result = this.assembler.assemble(op.id, this.editArgs);
+        const argumentError = this.argumentValues.find(argument => argument.error)?.error;
+        if (argumentError) { this.editError = argumentError; return; }
+        const result = this.assembler.assemble(op.id, scriptArgumentString(this.argumentValues));
         if (result.error) {
             this.editError = result.error;
         } else {
@@ -203,11 +227,12 @@ export class ScriptInstructionEditorComponent {
         if (this.editError) return;
         
         const op = this.opcodeList.find(o => o.name === this.editOpName)!;
-        const result = this.assembler.assemble(op.id, this.editArgs);
+        const args = scriptArgumentString(this.argumentValues);
+        const result = this.assembler.assemble(op.id, args);
         
         this.save.emit({
             opcodeName: this.editOpName,
-            args: this.editArgs,
+            args,
             bytes: result.bytes
         });
     }
