@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from '../doom-file.service';
-import { ByteStream, BinaryWriter } from '../../../utils/byte-stream';
+import { ByteStream, BinaryWriter } from '../../utils/byte-stream';
 import { TextureInfo, TextureCategory } from './texture-types';
 
 @Injectable({

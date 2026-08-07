@@ -1,4 +1,4 @@
-import { BinaryWriter, ByteStream } from '../../../utils/byte-stream';
+import { BinaryWriter, ByteStream } from '../../utils/byte-stream';
 import { SCRIPT_OPCODE_SCHEMA, ArgumentKind, ScriptArgumentDescriptor } from './script-opcode-schema';
 import { ScriptInstruction } from './script-types';
 

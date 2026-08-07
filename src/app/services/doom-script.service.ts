@@ -3,7 +3,7 @@ import { DoomFileService } from './doom-file.service';
 import { DoomEntitiesService } from './doom-entities.service';
 import { DoomTextService } from './doom-text.service';
 import { DoomTextureService } from './doom-texture.service';
-import { ByteStream, BinaryWriter, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../../utils/byte-stream';
+import { ByteStream, BinaryWriter, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../utils/byte-stream';
 import { ScriptDisassemblerService } from './scripts/script-disassembler.service';
 import { ScriptCompilerService } from './scripts/script-compiler.service';
 import { ScriptInstruction, ScriptFunctionTable, TileEventRef } from './scripts/script-types';

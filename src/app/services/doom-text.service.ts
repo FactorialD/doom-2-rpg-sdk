@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
-import { ByteStream } from '../../utils/byte-stream';
+import { ByteStream } from '../utils/byte-stream';
 import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
 import { encodeSingleByte } from './single-byte-codec';
 import type { SingleByteEncoding, TextEncodingError } from './single-byte-codec';

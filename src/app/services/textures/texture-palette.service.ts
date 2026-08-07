@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { DoomFileService } from '../doom-file.service';
-import { ByteStream, BinaryWriter } from '../../../utils/byte-stream';
+import { ByteStream, BinaryWriter } from '../../utils/byte-stream';
 import { J2ME } from '../../../logic/j2me-port';
 import { TextureMappingService } from './texture-mapping.service';
 
