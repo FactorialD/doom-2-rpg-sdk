@@ -25,7 +25,7 @@ export class MapSerializer {
     private head_numLines: number = 0;
     private copiedMarkerCount: number = 0;
 
-    serialize(mapData: MapData, originalBuffer: ArrayBuffer, fileName: string = 'map file'): Uint8Array {
+    serialize(mapData: MapData, originalBuffer: ArrayBuffer, fileName: string = 'map file'): Uint8Array<ArrayBuffer> {
         this.mapData = mapData;
         this.reader = new ByteStream(originalBuffer, true, fileName);
         this.reader.ensureAvailable(46, 'header');
@@ -170,7 +170,7 @@ export class MapSerializer {
     }
 
     private writeGeometryStructures() {
-        const peekReader = new ByteStream(this.reader.view.buffer, true, this.reader.fileName);
+        const peekReader = this.reader.createReader();
         peekReader.position = 11;
         const numNodes = peekReader.readUShort();
         const numLeaf = peekReader.readUShort();
@@ -213,7 +213,7 @@ export class MapSerializer {
             this.writer.writeUByte(flags);
         }
 
-        const peekReader = new ByteStream(this.reader.view.buffer, true, this.reader.fileName);
+        const peekReader = this.reader.createReader();
         peekReader.position = 21;
         const numVerts = peekReader.readUShort();
 
@@ -231,7 +231,7 @@ export class MapSerializer {
     }
 
     private skipOldSprites() {
-        const peekReader = new ByteStream(this.reader.view.buffer, true, this.reader.fileName);
+        const peekReader = this.reader.createReader();
         peekReader.position = 23;
         const oldNumNormal = peekReader.readUShort();
         const oldNumZ = peekReader.readShort();

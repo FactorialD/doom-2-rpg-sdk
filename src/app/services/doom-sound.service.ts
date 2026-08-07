@@ -8,7 +8,7 @@ import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resour
 })
 export class DoomSoundService {
   private fileService = inject(DoomFileService);
-  private soundIndex = new Int32Array();
+  private soundIndex: Int32Array<ArrayBuffer> = new Int32Array();
   private audio: HTMLAudioElement | null = null;
   private objectUrl: string | null = null;
 
