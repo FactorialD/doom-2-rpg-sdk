@@ -83,6 +83,11 @@ export class DoomEntitiesService {
     getDef(index: number): EntityDef | undefined {
          return this.entityDefs[index];
     }
+
+    /** Snapshot used by entity pickers. Definitions remain owned by this service. */
+    getAllDefs(): readonly EntityDef[] {
+        return this.entityDefs;
+    }
     
     /**
      * Finds an Entity Definition that uses this specific texture ID as its base.

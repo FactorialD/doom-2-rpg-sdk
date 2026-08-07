@@ -7,6 +7,7 @@ import { PolyFlag } from '../../core/constants/geometry';
 import { MapCoordinateService } from './map-coordinate.service';
 import { DoomScriptService } from '../doom-script.service';
 import { ScriptCompilerService } from '../scripts/script-compiler.service';
+import { MapValidationService } from './map-validation.service';
 
 @Injectable({
     providedIn: 'root'
@@ -17,6 +18,7 @@ export class MapSerializer {
     private coordinateService = inject(MapCoordinateService);
     private scriptService = inject(DoomScriptService);
     private scriptCompiler = inject(ScriptCompilerService);
+    private validation = inject(MapValidationService);
 
     // Context
     private mapData!: MapData;
@@ -26,6 +28,9 @@ export class MapSerializer {
     private copiedMarkerCount: number = 0;
 
     serialize(mapData: MapData, originalBuffer: ArrayBuffer, fileName: string = 'map file'): Uint8Array<ArrayBuffer> {
+        // Optional only for the deliberately injector-free byte-shape unit fixture.
+        const validationErrors = this.validation?.validate(mapData) ?? [];
+        if (validationErrors.length) throw new Error(`Map validation failed:\n${validationErrors.join('\n')}`);
         this.mapData = mapData;
         this.reader = new ByteStream(originalBuffer, true, fileName);
         this.reader.ensureAvailable(46, 'header');

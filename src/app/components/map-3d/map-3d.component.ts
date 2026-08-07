@@ -15,6 +15,8 @@ import { TextureThumbnailComponent } from '../texture-viewer/texture-thumbnail/t
 import { MapToolbarComponent, EditMode } from './map-toolbar/map-toolbar.component';
 import { MapInspectorComponent, EntityDetails, GeometrySelection } from './map-inspector/map-inspector.component';
 import * as THREE from 'three';
+import { EntityTemplate } from './entity-picker/entity-picker.component';
+import { MapValidationService } from '../../services/map/map-validation.service';
 
 @Component({
   selector: 'app-map-3d',
@@ -38,7 +40,7 @@ import * as THREE from 'three';
             (loadMap)="loadMap($event)"
             (editModeChange)="editMode.set($event)"
             (saveMap)="saveMap()"
-            (addEntity)="addEntity()"
+            (addEntity)="addEntity($event)"
            />
 
           <!-- Canvas -->
@@ -124,6 +126,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   fileService = inject(DoomFileService);
   renderer = inject(MapRendererService);
   editorService = inject(EditorService);
+  mapValidation = inject(MapValidationService);
 
   currentTextureId = this.editorService.currentTextureId; 
 
@@ -307,6 +310,8 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   
   async saveMap() {
       if (!this.mapData) return;
+      const validationErrors = this.mapValidation.validate(this.mapData);
+      if (validationErrors.length) { alert(`Map cannot be saved:\n\n${validationErrors.join('\n')}`); return; }
       
       try {
           // The MapSerializer handles sorting sprites, updating script indices, compiling scripts, and patching the header.
@@ -358,7 +363,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       this.renderer.selectEntity(id, focusCamera);
   }
   
-  addEntity() {
+  addEntity(template: EntityTemplate) {
       if (!this.mapData) return;
       
       let spawnPos: THREE.Vector3;
@@ -373,11 +378,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           spawnPos = pos.add(dir.multiplyScalar(100));
       }
       
-      const currentFlatTexId = this.currentTextureId();
-      const tex = this.textureService.textureList().find(t => t.id === currentFlatTexId);
-      const groupId = tex ? tex.groupId : 1;
-      
-      // Create a new default sprite
+      // Create a sprite from the selected entity definition, never from the paint brush.
       // Convert world space to game space.
       // X and Z must be multiples of 8 (which corresponds to 128 world units)
       // because they are stored as a single byte (byte * 8) in the map file.
@@ -386,14 +387,14 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       
       const newSprite: MapSprite = {
           x: byteX * 8,
-          y: Math.round(spawnPos.y / 16.0) + 32, // World Y is Game Height (spr.y). Add 32 to stand on floor.
+          y: Math.max(0, Math.min(255, Math.round(spawnPos.y / 16.0) + 32)),
           z: byteZ * 8, // World Z is Game Depth (spr.z)
-          textureId: groupId,
-          flags: 0,
-          type: 'normal',
-          extraInfo: 0,
+          textureId: template.textureId,
+          flags: template.flags & 0xffff,
+          type: template.type,
+          extraInfo: template.type === 'z' ? Math.max(0, Math.min(255, template.extraInfo)) : 0,
           flatIndex: 0,
-          uuid: crypto.randomUUID()
+          uuid: globalThis.crypto?.randomUUID?.() ?? `entity-${Date.now()}-${this.mapData.sprites.length}`
       };
       
       // Add to map data
