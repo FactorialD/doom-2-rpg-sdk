@@ -6,6 +6,8 @@ export type ReferenceType = 'instruction-relative' | 'instruction-absolute' | 't
   'entity-index' | 'string-index' | 'sound-index' | 'map-index' | 'texture-index' | 'tile-coordinate';
 
 export interface PackedReferenceCodec {
+  readonly min: number;
+  readonly max: number;
   decode(value: number): number;
   encode(reference: number, previousValue: number): number;
   replaceReference(params: number[], argumentIndex: number, reference: number): number[];
@@ -39,6 +41,8 @@ export interface ScriptOpcodeDefinition {
 }
 
 const packed = (mask: number, shift = 0): PackedReferenceCodec => ({
+  min: 0,
+  max: mask,
   decode: value => (value >>> shift) & mask,
   encode: (reference, previous) => (previous & ~(mask << shift)) | ((reference & mask) << shift),
   replaceReference: (params, index, reference) => {
@@ -65,6 +69,7 @@ const rows: Array<[number,string,string,readonly ScriptArgumentDescriptor[]]> = 
   [11,'EV_CHANGE_MAP','Change Map',[primitive('u8','mapAndTransition','map-index',packed(0xf)),primitive('u16be','spawn')]],[12,'EV_CAMERA_STR','Camera String',[primitive('u16be','stringAndFlags','string-index',packed(0x3fff)),primitive('u16be','duration')]],
   [13,'EV_DIALOG','Show Dialog',[primitive('u8','string','string-index'),primitive('u8','styleAndFlags')]],[14,'EV_WAIT','Wait',[primitive('u8','ticks')]],[15,'EV_GOTO','Goto',[primitive('u16be','tile','tile-coordinate')]],
   [16,'EV_ABORT_MOVE','Stop Movement',[]],[17,'EV_ENTITY_FRAME','Set Entity Frame',[primitive('u8','entity','entity-index'),primitive('u8','frame'),primitive('u8','duration')]],[18,'EV_ADV_CAMERAKEY','Camera Keyframe',a('u8')],
+
   [19,'EV_DAMAGEMONSTER','Damage Monster',[primitive('u8','entity','entity-index'),primitive('s8','damage')]],[20,'EV_DAMAGEPLAYER','Damage Player',a('s8','s8','s8')],
   [21,'EV_DOOROP','Door Operation',[primitive('u16be','entityAndOperation','entity-index',packed(0x3ff))]],[22,'EV_MONSTERFLAGOP','Monster Flags',[primitive('u8','entity','entity-index'),primitive('u8','operation')]],
   [23,'EV_EVENTOP','Modify Event',[primitive('u16be','eventAndOperation','tile-event-index',packed(0x7fff))]],[24,'EV_HIDE','Hide/Show Entity',[primitive('u8','entity','entity-index')]],

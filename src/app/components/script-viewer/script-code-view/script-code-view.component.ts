@@ -77,6 +77,7 @@ type InsertMode = 'before' | 'after' | null;
                                         <!-- Insert Before Point -->
                                         @if (insertTargetOffset === inst.offset && insertMode === 'before') {
                                             <app-script-instruction-editor
+                                                [scriptData]="scriptData()"
                                                 [instruction]="null"
                                                 [insertMode]="'before'"
                                                 [mapId]="scriptData()!.mapId"
@@ -125,6 +126,7 @@ type InsertMode = 'before' | 'after' | null;
                                                 @if (editIndex === inst.offset) {
                                                     <!-- IN-PLACE EDIT MODE -->
                                                      <app-script-instruction-editor
+                                                        [scriptData]="scriptData()"
                                                         [instruction]="inst"
                                                         [insertMode]="null"
                                                         [mapId]="scriptData()!.mapId"
@@ -222,6 +224,7 @@ type InsertMode = 'before' | 'after' | null;
                                         <!-- Insert After Point -->
                                         @if (insertTargetOffset === inst.offset && insertMode === 'after') {
                                             <app-script-instruction-editor
+                                                [scriptData]="scriptData()"
                                                 [instruction]="null"
                                                 [insertMode]="'after'"
                                                 [mapId]="scriptData()!.mapId"
