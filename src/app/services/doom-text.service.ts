@@ -192,7 +192,7 @@ export class DoomTextService {
       const encodedStrings: Uint8Array[] = [];
       for (let line = 0; line < newStrings.length; line++) {
           const encoded = this.customEncode(newStrings[line].raw, encoding, line + 1);
-          if (!encoded.ok) return { success: false, error: encoded.error };
+          if (encoded.ok === false) return { success: false, error: encoded.error };
           encodedStrings.push(encoded.bytes);
       }
 
