@@ -20,6 +20,7 @@ import { EntityTemplate } from './entity-picker/entity-picker.component';
 import { MapValidationService } from '../../services/map/map-validation.service';
 import { DoomGeometryService, MapGeometry, MapVertexRecord } from '../../services/doom-geometry.service';
 import { PolyFlag } from '../../core/constants/geometry';
+import { resolveDraftPoint, validateDraftLeaf, wallAxisFromEndpoints } from '../../services/map/map-drawing';
 
 @Component({
   selector: 'app-map-3d',
@@ -166,6 +167,8 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   private mouseDownPos = { x: 0, y: 0 };
   private pendingSelection: EntitySelection | null = null;
+  private drawingPlane: THREE.Plane | null = null;
+  private draftLeafIndex: number | null = null;
 
   selectedEntityDetails = computed<EntityDetails | null>(() => {
       const id = this.selectedEntityId();
@@ -300,6 +303,13 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           }
           
           const geom = this.renderer.pickGeometry(e.clientX, e.clientY, rect);
+          if ((this.editMode() === 'wall' || this.editMode() === 'polygon') && this.mapData) {
+              const fallbackPlane = this.drawingPlane ?? new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+              const planePoint = this.renderer.pickDrawingPosition(e.clientX, e.clientY, rect, fallbackPlane);
+              const point = resolveDraftPoint(geom?.point ?? null, planePoint, this.drawingPlane);
+              if (point) this.addDraftPoint(point, geom);
+              return;
+          }
           if (geom && this.mapData) {
               const groupId = this.mapData.geometry.textureIds[geom.polyIndex];
               const flags = this.mapData.geometry.flags[geom.polyIndex];
@@ -323,8 +333,6 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
               } 
               else if (this.editMode() === 'paint') {
                   this.updateMapTexture(geom.polyIndex, this.currentTextureId());
-              } else {
-                  this.addDraftPoint(geom.point);
               }
           } else if (this.editMode() === 'select' && entityId === -1) {
               this.selectedEntityId.set(-1);
@@ -377,10 +385,23 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       }
   }
 
-  private addDraftPoint(point: THREE.Vector3) {
+  private addDraftPoint(point: THREE.Vector3, geometryPick: { faceNormal: THREE.Vector3; object: THREE.Object3D } | null) {
       const snapped = new THREE.Vector3(Math.round(point.x / 128) * 128, Math.round(point.y / 128) * 128, Math.round(point.z / 128) * 128);
       const limit = this.editMode() === 'wall' ? 2 : 9;
       if (this.draftPoints().length >= limit) return;
+      if (!this.mapData) return;
+      const leaf = validateDraftLeaf(this.geometryService, this.mapData.geometry, snapped, this.draftLeafIndex);
+      if (!leaf.valid) { alert(leaf.message); return; }
+
+      if (!this.drawingPlane) {
+          const normal = geometryPick
+              ? geometryPick.faceNormal.clone().transformDirection(geometryPick.object.matrixWorld)
+              : new THREE.Vector3(0, 1, 0);
+          this.drawingPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, snapped);
+          this.draftLeafIndex = leaf.leafIndex;
+      } else {
+          this.drawingPlane.projectPoint(snapped, snapped);
+      }
       const points = [...this.draftPoints(), snapped];
       this.draftPoints.set(points);
       this.renderer.showGeometryPreview(points, this.editMode() === 'polygon');
@@ -398,7 +419,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       }
       this.pushUndo();
       try {
-          const flags = this.editMode() === 'wall' ? PolyFlag.AxisZ | PolyFlag.WallTexture : 1;
+          const flags = this.editMode() === 'wall' ? wallAxisFromEndpoints(points[0], points[1]) | PolyFlag.WallTexture : 1;
           this.geometryService.addPolygon(this.mapData.geometry, { leafIndex, textureId: this.selectedMaterialGroup(), flags, vertices: raw });
           this.mapData.header.numPolys = this.mapData.geometry.polygons.length;
           this.mapData.header.numVerts = this.mapData.geometry.sourceVertices.length;
@@ -406,7 +427,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       } catch (error) { this.undoGeometry(); alert((error as Error).message); }
   }
 
-  cancelGeometryOperation() { this.draftPoints.set([]); this.renderer.clearGeometryPreview(); }
+  cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.renderer.clearGeometryPreview(); }
   private pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)].slice(-50)); this.redoStack.set([]); }
   undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.undoStack.set(stack); this.mapData.geometry = previous; this.renderer.loadMapData(this.mapData); }
   redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.redoStack.set(stack); this.mapData.geometry = next; this.renderer.loadMapData(this.mapData); }
