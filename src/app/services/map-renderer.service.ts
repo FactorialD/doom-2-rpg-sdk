@@ -266,6 +266,15 @@ export class MapRendererService implements OnDestroy {
       return null;
   }
 
+  /**
+   * Returns the world-space position under the pointer on an explicit drawing
+   * plane. Unlike pickGeometry(), this also works over empty parts of the scene.
+   */
+  pickDrawingPosition(clientX: number, clientY: number, rect: DOMRect, plane: THREE.Plane): THREE.Vector3 | null {
+      this.updateRaycaster(clientX, clientY, rect);
+      return this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+  }
+
   highlightBspNode(node: BspNode | null) {
       if (this.boundsHelper) {
           this.scene.remove(this.boundsHelper);
