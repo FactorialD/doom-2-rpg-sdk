@@ -43,12 +43,18 @@ import { resolveDraftPoint, validateDraftLeaf, wallAxisFromEndpoints } from '../
             [editMode]="editMode()"
             [canUndo]="undoStack().length > 0" [canRedo]="redoStack().length > 0"
             [operationActive]="draftPoints().length > 0"
+            [hasSelection]="selectedEntityId() !== -1 || selectedGeometry() !== null"
             (loadMap)="loadMap($event)"
             (editModeChange)="editMode.set($event)"
             (undo)="undoGeometry()" (redo)="redoGeometry()"
             (confirmOperation)="confirmGeometryOperation()" (cancelOperation)="cancelGeometryOperation()"
             (saveMap)="saveMap()"
             (addEntity)="addEntity($event)"
+            (confirmOperation)="confirmGeometryOperation()"
+            (cancelOperation)="cancelGeometryOperation()"
+            (undo)="undoGeometry()"
+            (redo)="redoGeometry()"
+            (focusSelected)="focusSelected()"
            />
 
           <!-- Canvas -->
