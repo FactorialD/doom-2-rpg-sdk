@@ -7,11 +7,13 @@ import { EntityDetails } from './map-inspector.component';
 import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
 import { EditorService } from '../../../services/editor.service';
 import { MAX_SAFE_ENTITY_ID } from '../../../core/constants/entity-types';
+import { EntityPickerComponent, EntityTemplate } from '../entity-picker/entity-picker.component';
+import { SpriteFlag } from '../../../core/constants/map-flags';
 
 @Component({
   selector: 'app-map-entity-properties',
   standalone: true,
-  imports: [CommonModule, FormsModule, TextureThumbnailComponent],
+  imports: [CommonModule, FormsModule, TextureThumbnailComponent, EntityPickerComponent],
   template: `
     @if (data(); as info) {
         <!-- ENTITY INFO HEADER -->
@@ -50,9 +52,13 @@ import { MAX_SAFE_ENTITY_ID } from '../../../core/constants/entity-types';
                 <span class="text-xs text-green-500">✏️ Editable</span>
              </div>
              
-             <div class="grid grid-cols-2 gap-2">
-                 <div>
-                     <label class="block text-[10px] text-neutral-400 mb-1">Group ID (Texture)</label>
+             <button type="button" (click)="pickerOpen = !pickerOpen" class="w-full bg-blue-900/40 border border-blue-800 text-blue-200 py-1 rounded">Choose entity type…</button>
+             @if (pickerOpen) { <app-entity-picker actionLabel="Change type" (picked)="changeTemplate($event)" /> }
+
+             <label class="flex gap-2 items-center text-[10px] text-neutral-400"><input type="checkbox" [(ngModel)]="advanced" /> Advanced values</label>
+             @if (advanced) {
+               <div class="grid grid-cols-2 gap-2">
+                 <div><label class="block text-[10px] text-neutral-400 mb-1">Numeric Group ID</label>
                      <input 
                         type="number" 
                         [ngModel]="info.raw.textureId" 
@@ -69,7 +75,8 @@ import { MAX_SAFE_ENTITY_ID } from '../../../core/constants/entity-types';
                         class="w-full bg-black border border-neutral-700 text-white px-1 text-xs h-6 focus:border-red-600 outline-none" 
                      />
                  </div>
-             </div>
+               </div>
+             }
 
              <div>
                  <label class="block text-[10px] text-neutral-400 mb-1">Type</label>
@@ -154,6 +161,8 @@ export class MapEntityPropertiesComponent implements OnDestroy {
     
     editorService = inject(EditorService);
     MAX_SAFE_ENTITY_ID = MAX_SAFE_ENTITY_ID;
+    pickerOpen = false;
+    advanced = false;
     
     private snapSubject = new Subject<{prop: string, value: number, info: EntityDetails}>();
     private snapSub: Subscription;
@@ -177,10 +186,30 @@ export class MapEntityPropertiesComponent implements OnDestroy {
     goToTexture(id: number | undefined) {
         if (id !== undefined) this.editorService.selectTexture(id);
     }
+
+    changeTemplate(template: EntityTemplate) {
+        const info = this.data();
+        if (!info) return;
+        let resetFlags = info.raw.flags & ~template.flags;
+        if (template.textureId >= 18 && template.textureId <= 80) resetFlags |= info.raw.flags & (SpriteFlag.Wall | SpriteFlag.Flat);
+        const resetsExtra = info.raw.extraInfo !== 0 && template.type !== 'z';
+        const details = [resetFlags ? `flags 0x${resetFlags.toString(16)}` : '', resetsExtra ? `extra data ${info.raw.extraInfo}` : ''].filter(Boolean);
+        if (details.length && !confirm(`This entity type is incompatible with ${details.join(' and ')}. These values will be reset. Continue?`)) return;
+        info.raw.textureId = template.textureId;
+        info.raw.type = template.type;
+        info.raw.flags = template.flags & 0xffff;
+        info.raw.extraInfo = template.type === 'z' ? Math.max(0, Math.min(255, template.extraInfo)) : 0;
+        this.pickerOpen = false;
+        this.entityUpdated.emit();
+    }
     
     updateProperty(prop: string, value: any) {
         const info = this.data();
         if (!info) return;
+        if (prop === 'type' && value === 'normal' && info.raw.extraInfo !== 0) {
+            if (!confirm(`Changing to a normal sprite will reset extra data ${info.raw.extraInfo}. Continue?`)) return;
+            info.raw.extraInfo = 0;
+        }
         
         // Convert to number where appropriate
         if (['textureId', 'flags', 'x', 'y', 'z', 'extraInfo'].includes(prop)) {

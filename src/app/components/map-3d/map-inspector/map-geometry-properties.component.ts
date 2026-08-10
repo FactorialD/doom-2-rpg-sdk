@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { GeometrySelection } from './map-inspector.component';
 import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
 import { EditorService } from '../../../services/editor.service';
+import { MapTexturePickerComponent } from '../texture-picker/texture-picker.component';
 
 @Component({
   selector: 'app-map-geometry-properties',
   standalone: true,
-  imports: [CommonModule, TextureThumbnailComponent],
+  imports: [CommonModule, TextureThumbnailComponent, MapTexturePickerComponent],
   template: `
     @if (data(); as poly) {
         <!-- GEOMETRY HEADER -->
@@ -37,6 +38,8 @@ import { EditorService } from '../../../services/editor.service';
                         Apply Brush (#{{ activeBrushId() }})
                     </button>
                 </div>
+                <button type="button" (click)="pickerOpen = !pickerOpen" class="mt-2 w-full bg-blue-900/40 border border-blue-800 py-1">Choose {{hasWallTextureFlag(poly.flags) ? 'wall' : 'flat'}} texture…</button>
+                @if (pickerOpen) { <app-map-texture-picker [mode]="hasWallTextureFlag(poly.flags) ? 'wall' : 'flat'" (selected)="pickTexture(poly.polyIndex, $event.id)" /> }
             </div>
             
             <!-- Flags -->
@@ -54,6 +57,7 @@ import { EditorService } from '../../../services/editor.service';
   `
 })
 export class MapGeometryPropertiesComponent {
+    pickerOpen = false;
     data = input<GeometrySelection | null>(null);
     activeBrushId = input<number>(0);
 
@@ -68,4 +72,6 @@ export class MapGeometryPropertiesComponent {
     hasWallTextureFlag(flags: number): boolean {
         return (flags & 32) !== 0;
     }
+
+    pickTexture(polyIndex: number, textureId: number) { this.pickerOpen = false; this.setTexture.emit({polyIndex, texId: textureId}); }
 }
