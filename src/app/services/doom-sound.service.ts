@@ -1,17 +1,19 @@
 import { Injectable, effect, inject, signal } from '@angular/core';
 import { parseResourceFileIndex, ResourceFileIndexEntry } from '../core/resource-file-index';
 import { DoomFileService } from './doom-file.service';
+import { extractIndexedSoundMetadata, extractSoundMetadata, SoundMetadata } from './doom-sound-metadata';
 import { parseMidi } from './midi/midi-parser';
 import { MidiSynthService } from './midi/midi-synth.service';
 import { ParsedMidi } from './midi/midi-types';
 
 export type SoundFormat = 'midi' | 'wav' | 'au' | 'unknown';
-
 @Injectable({ providedIn: 'root' })
 export class DoomSoundService {
   private readonly fileService = inject(DoomFileService);
   readonly synth = inject(MidiSynthService);
   private soundIndex: ResourceFileIndexEntry[] = [];
+  private readonly metadataCache = new Map<number, SoundMetadata>();
+  readonly soundMetadata: ReadonlyMap<number, SoundMetadata> = this.metadataCache;
   private audio: HTMLAudioElement | null = null;
   private objectUrl: string | null = null;
 
@@ -37,13 +39,17 @@ export class DoomSoundService {
   }
 
   loadSoundsIndex() {
-    this.stopSound(); this.clearSelection();
+    this.stopSound(); this.clearSelection(); this.metadataCache.clear();
     const buffer = this.fileService.getFile('sounds.idx');
     if (!buffer) { this.soundIndex = []; this.soundIds.set([]); this.playbackError.set('The loaded JAR does not contain sounds.idx.'); return; }
     try {
       const entries = parseResourceFileIndex(buffer);
-      for (const [id, entry] of entries.entries()) if (entry.fileId < 0 || entry.offset < 0 || entry.length <= 0) throw new RangeError(`Sound #${id} has an invalid index entry`);
-      this.soundIndex = entries; this.soundIds.set(entries.map((_, id) => id)); this.playbackError.set(null);
+      this.soundIndex = entries;
+      for (const [id, entry] of entries.entries()) {
+        const source = entry.fileId >= 0 ? this.fileService.getFile(`sounds${entry.fileId}.bin`) : null;
+        this.metadataCache.set(id, extractIndexedSoundMetadata(entry, source));
+      }
+      this.soundIds.set(entries.map((_, id) => id)); this.playbackError.set(null);
     } catch (error) {
       this.soundIndex = []; this.soundIds.set([]); this.playbackError.set(`Could not read sounds.idx: ${this.message(error)}`);
     }
@@ -92,9 +98,9 @@ export class DoomSoundService {
   setVolume(value: number) { this.synth.setVolume(value); if (this.audio) this.audio.volume = this.volume(); }
   stopSound() { this.synth.stop(); if (this.audio) this.audio.pause(); this.releaseAudio(this.audio, this.objectUrl); this.playingSoundId.set(null); }
 
-  private detectFormat(buffer: ArrayBuffer): SoundFormat { const bytes = new Uint8Array(buffer); if (bytes.length >= 4 && String.fromCharCode(...bytes.subarray(0, 4)) === 'MThd') return 'midi'; if (bytes.length >= 4 && String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF') return 'wav'; if (bytes.length >= 4 && bytes[0] === 0x2e && bytes[1] === 0x73 && bytes[2] === 0x6e && bytes[3] === 0x64) return 'au'; return 'unknown'; }
+  private detectFormat(buffer: ArrayBuffer): SoundFormat { return extractSoundMetadata(buffer).format; }
   private clearSelection() { this.selectedSoundId.set(null); this.format.set(null); this.midiInfo.set(null); this.loading.set(false); this.synth.clear(); }
-  private resetAll() { this.stopSound(); this.clearSelection(); this.soundIndex = []; this.soundIds.set([]); this.playbackError.set(null); }
+  private resetAll() { this.stopSound(); this.clearSelection(); this.soundIndex = []; this.metadataCache.clear(); this.soundIds.set([]); this.playbackError.set(null); }
   private releaseAudio(audio: HTMLAudioElement | null, url: string | null) { if (audio) { audio.onended = null; audio.onerror = null; audio.ontimeupdate = null; audio.removeAttribute('src'); audio.load(); } if (url) URL.revokeObjectURL(url); if (this.audio === audio) this.audio = null; if (this.objectUrl === url) this.objectUrl = null; }
   private message(error: unknown) { return error instanceof Error ? error.message : String(error); }
 }

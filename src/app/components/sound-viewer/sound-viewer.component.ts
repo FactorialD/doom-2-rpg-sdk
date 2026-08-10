@@ -40,8 +40,9 @@ import { EditorService } from '../../services/editor.service';
                 [attr.aria-label]="'Inspect sound ' + id"
                 [class.bg-red-950]="selectedId() === id"
                 [class.text-red-300]="selectedId() === id"
-                class="w-full rounded px-3 py-2 text-left text-sm hover:bg-neutral-800">
-                Sound #{{ id }}
+                class="grid w-full grid-cols-[1fr_auto] gap-3 rounded px-3 py-2 text-left text-sm hover:bg-neutral-800">
+                <span>Sound #{{ id }}</span>
+                <span class="tabular-nums text-neutral-500">{{ metadataDuration(id) }}</span>
               </button>
             } @empty {
               <p class="p-3 text-xs text-neutral-500">No matching sound IDs.</p>
@@ -118,5 +119,6 @@ export class SoundViewerComponent {
   selectSound(id: number) { this.selectedId.set(id); this.soundService.loadSound(id); }
   togglePlayback(id: number) { if (this.soundService.playingSoundId() === id) this.soundService.pauseSound(); else void this.soundService.playSound(id); }
   formatTime(seconds: number) { if (!Number.isFinite(seconds)) return '0:00'; const whole = Math.max(0, Math.floor(seconds)); return `${Math.floor(whole / 60)}:${(whole % 60).toString().padStart(2, '0')}`; }
+  metadataDuration(id: number) { const duration = this.soundService.soundMetadata.get(id)?.durationSeconds; return duration === null || duration === undefined ? '—' : this.formatTime(duration); }
   trackNames(midi: import('../../services/midi/midi-types').ParsedMidi) { return midi.tracks.map(track => track.name).filter((name): name is string => !!name); }
 }
