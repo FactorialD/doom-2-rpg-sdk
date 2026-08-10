@@ -44,6 +44,8 @@ import { PolyFlag } from '../../core/constants/geometry';
             [operationActive]="draftPoints().length > 0"
             (loadMap)="loadMap($event)"
             (editModeChange)="editMode.set($event)"
+            (undo)="undoGeometry()" (redo)="redoGeometry()"
+            (confirmOperation)="confirmGeometryOperation()" (cancelOperation)="cancelGeometryOperation()"
             (saveMap)="saveMap()"
             (addEntity)="addEntity($event)"
            />
@@ -62,6 +64,7 @@ import { PolyFlag } from '../../core/constants/geometry';
             <!-- Quick instructions overlay -->
             <div class="absolute top-2 left-2 pointer-events-none text-[10px] text-white/50 bg-black/50 px-2 py-1 rounded">
                 @if(editMode() === 'select') { Click to select objects/walls. Entity editing is DISABLED. }
+                @if(editMode() === 'vertex') { Select a polygon, then drag one of its cyan vertex handles. }
                 @if(editMode() === 'paint') { Click wall/flat to apply selected texture. }
                 @if(editMode() === 'wall') { Click two snapped points, choose a material, then confirm. }
                 @if(editMode() === 'polygon') { Click 3–9 snapped coplanar points, then confirm. }
@@ -166,6 +169,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   private mouseDownPos = { x: 0, y: 0 };
   private pendingSelection: EntitySelection | null = null;
+  private vertexUndoSession = -1;
 
   selectedEntityDetails = computed<EntityDetails | null>(() => {
       const id = this.selectedEntityId();
@@ -222,6 +226,13 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           // Tabs stay mounted, so explicitly release held movement when Map is hidden.
           if (this.editorService.activeTab() !== 'map') this.renderer.controls.clearInputState();
       });
+
+      effect(() => {
+          const mode = this.editMode();
+          const selection = this.selectedGeometry();
+          this.vertexUndoSession = -1;
+          this.renderer.showVertexHandles(mode === 'vertex' ? this.mapData : null, mode === 'vertex' ? selection?.polyIndex ?? null : null);
+      });
   }
 
   ngAfterViewInit(): void {
@@ -268,6 +279,8 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
         }
     });
 
+    this.renderer.geometryVertexMoved.subscribe(event => this.onGeometryVertexMoved(event));
+
     if (this.fileService.isLoaded()) {
         this.loadMap(this.selectedMapId());
     }
@@ -290,10 +303,11 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       const dist = Math.abs(e.clientX - this.mouseDownPos.x) + Math.abs(e.clientY - this.mouseDownPos.y);
       if (dist < 5) { 
           const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+          if (this.editMode() === 'vertex' && this.renderer.pickVertexHandle(e.clientX, e.clientY, rect)) return;
           
           const entityId = this.renderer.pickObject(e.clientX, e.clientY, rect);
           if (entityId !== -1) {
-              if (this.editMode() === 'select') {
+              if (this.editMode() === 'select' || this.editMode() === 'vertex') {
                   this.selectEntity(entityId, false);
                   return; 
               }
@@ -304,7 +318,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
               const groupId = this.mapData.geometry.textureIds[geom.polyIndex];
               const flags = this.mapData.geometry.flags[geom.polyIndex];
               
-              if (this.editMode() === 'select') {
+              if (this.editMode() === 'select' || this.editMode() === 'vertex') {
                   this.selectedEntityId.set(-1);
                   this.renderer.selectEntity(-1, false);
                   
@@ -320,19 +334,43 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
                   });
                   this.sidebarTab.set('inspector');
                   this.renderer.highlightPolygon(geom.object as any, geom.polyIndex);
+                  if (this.editMode() === 'vertex') this.renderer.showVertexHandles(this.mapData, geom.polyIndex);
               } 
               else if (this.editMode() === 'paint') {
                   this.updateMapTexture(geom.polyIndex, this.currentTextureId());
               } else {
                   this.addDraftPoint(geom.point);
               }
-          } else if (this.editMode() === 'select' && entityId === -1) {
+          } else if ((this.editMode() === 'select' || this.editMode() === 'vertex') && entityId === -1) {
               this.selectedEntityId.set(-1);
               this.selectedGeometry.set(null);
               this.renderer.selectEntity(-1, false);
               this.renderer.clearHighlights();
           }
       }
+  }
+
+
+  private onGeometryVertexMoved(event: { polyIndex: number; vertexIndex: number; position: THREE.Vector3; dragSession: number }) {
+      if (!this.mapData || this.editMode() !== 'vertex' || this.selectedGeometry()?.polyIndex !== event.polyIndex) return;
+      const poly = this.mapData.geometry.polygons[event.polyIndex];
+      const source = poly && this.mapData.geometry.sourceVertices[poly.vertexStart + event.vertexIndex];
+      if (!source) return;
+      const previousWorld = new THREE.Vector3(source.x * 128, source.z * 128, source.y * 128);
+      if (this.vertexUndoSession !== event.dragSession) {
+          this.pushUndo();
+          this.vertexUndoSession = event.dragSession;
+      }
+      const error = this.geometryService.moveVertex(this.mapData.geometry, {
+          polyIndex: event.polyIndex,
+          vertexIndex: event.vertexIndex,
+          vertex: { x: Math.round(event.position.x / 128), y: Math.round(event.position.z / 128), z: Math.round(event.position.y / 128) }
+      });
+      if (error) {
+          this.renderer.restoreSelectedVertex(previousWorld);
+          return;
+      }
+      this.renderer.refreshGeometry(this.mapData);
   }
   
   async saveMap() {
@@ -408,8 +446,9 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   cancelGeometryOperation() { this.draftPoints.set([]); this.renderer.clearGeometryPreview(); }
   private pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)].slice(-50)); this.redoStack.set([]); }
-  undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.undoStack.set(stack); this.mapData.geometry = previous; this.renderer.loadMapData(this.mapData); }
-  redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.redoStack.set(stack); this.mapData.geometry = next; this.renderer.loadMapData(this.mapData); }
+  undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.undoStack.set(stack); this.mapData.geometry = previous; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
+  redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.redoStack.set(stack); this.mapData.geometry = next; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
+  private restoreVertexHandles() { if (this.editMode() === 'vertex') this.renderer.showVertexHandles(this.mapData, this.selectedGeometry()?.polyIndex ?? null); }
 
   @HostListener('window:keydown.delete')
   deleteSelectedPolygon() {
