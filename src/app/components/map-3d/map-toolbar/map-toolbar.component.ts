@@ -69,6 +69,29 @@ export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
       </div>
       
       <div class="flex items-center gap-2">
+          @if (renderer.controls.flyMode()) {
+              <label class="flex items-center gap-1 text-[10px] text-neutral-400" title="Base flight speed; use the mouse wheel over the viewport for a temporary adjustment">
+                  Speed
+                  <input type="range" min="250" max="12000" step="250"
+                      [ngModel]="renderer.controls.flySpeed()"
+                      (ngModelChange)="renderer.controls.setFlySpeed(+$event)"
+                      class="w-20 accent-red-600">
+                  <span class="w-10 text-right">{{ renderer.controls.flySpeed() }}</span>
+              </label>
+          }
+          <button (click)="focusSelected.emit()" [disabled]="!hasSelection()"
+              class="px-2 py-1 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-300 disabled:opacity-40"
+              title="Focus the camera on the selected object">🎯 Focus</button>
+          <button (click)="renderer.controls.resetView()"
+              class="px-2 py-1 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-300"
+              title="Reset camera position">↺ Reset</button>
+          <details class="relative">
+              <summary class="list-none cursor-pointer px-2 py-1 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-300" title="Camera controls">? Help</summary>
+              <div class="absolute right-0 top-8 z-30 w-64 rounded border border-neutral-700 bg-neutral-950 p-3 text-[11px] leading-5 text-neutral-300 shadow-xl">
+                  <b class="text-white">Orbit:</b> left-drag rotate, right-drag pan, wheel zoom.<br>
+                  <b class="text-white">Fly:</b> W/A/S/D move, Q/E descend/ascend, hold right mouse to look, Shift boosts speed. The wheel temporarily changes flight speed.
+              </div>
+          </details>
           <button (click)="undo.emit()" [disabled]="!canUndo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Undo">↶</button>
           <button (click)="redo.emit()" [disabled]="!canRedo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Redo">↷</button>
           @if (operationActive()) {
@@ -114,6 +137,8 @@ export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
 export class MapToolbarComponent {
     selectedMapId = input<number>(1);
     editMode = input<EditMode>('select');
+    hasSelection = input(false);
+
     canUndo = input(false);
     canRedo = input(false);
     operationActive = input(false);
@@ -122,6 +147,7 @@ export class MapToolbarComponent {
     editModeChange = output<EditMode>();
     saveMap = output<void>();
 
+    focusSelected = output<void>();
     addEntity = output<EntityTemplate>();
     showEntityPicker = false;
 

@@ -217,6 +217,11 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
               });
           }
       });
+
+      effect(() => {
+          // Tabs stay mounted, so explicitly release held movement when Map is hidden.
+          if (this.editorService.activeTab() !== 'map') this.renderer.controls.clearInputState();
+      });
   }
 
   ngAfterViewInit(): void {
@@ -427,6 +432,16 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       this.selectedGeometry.set(null); 
       this.sidebarTab.set('inspector');
       this.renderer.selectEntity(id, focusCamera);
+  }
+
+  focusSelected() {
+      const entityId = this.selectedEntityId();
+      if (entityId !== -1) {
+          this.renderer.selectEntity(entityId, true);
+          return;
+      }
+      const geometry = this.selectedGeometry();
+      if (geometry?.point) this.renderer.controls.focusAt(geometry.point);
   }
   
   addEntity(template: EntityTemplate) {
