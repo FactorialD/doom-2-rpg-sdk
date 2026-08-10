@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TextureInfo } from '../../../services/doom-texture.service';
 
-export type Tool = 'pencil' | 'brush' | 'fill';
+export type Tool = 'pencil' | 'brush' | 'fill' | 'select';
 
 export interface ImportState {
     active: boolean;
@@ -53,6 +53,9 @@ export interface ImportState {
                             </button>
                             <button (click)="activeToolChange.emit('fill')" [class.bg-neutral-700]="activeTool === 'fill'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Flood Fill">
                                 🪣
+                            </button>
+                            <button (click)="activeToolChange.emit('select')" [class.bg-neutral-700]="activeTool === 'select'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Select an area, then drag it to move its pixels">
+                                ⬚
                             </button>
                         </div>
                         
@@ -128,8 +131,8 @@ export interface ImportState {
 
         <div class="flex items-center gap-3">
             <div class="flex items-center gap-2 border-r border-neutral-700 pr-3">
-                <span class="text-xs uppercase font-bold text-neutral-500">Bg</span>
-                <input type="color" [ngModel]="bgColor" (ngModelChange)="bgColorChange.emit($event)" class="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0" title="Background Color">
+                <span class="text-xs uppercase font-bold text-neutral-500">Checker</span>
+                <input type="color" [ngModel]="bgColor" (ngModelChange)="bgColorChange.emit($event)" class="w-6 h-6 rounded cursor-pointer bg-transparent border-0 p-0" title="Transparency checker color">
             </div>
             
             <div class="flex items-center gap-2">

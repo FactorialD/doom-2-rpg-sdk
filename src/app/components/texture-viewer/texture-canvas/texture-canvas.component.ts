@@ -36,9 +36,9 @@ import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/t
             ></app-texture-toolbar>
 
             <!-- Canvas Container -->
-            <div class="flex-1 overflow-auto flex items-center justify-center p-8 bg-neutral-950 custom-scrollbar" 
-                 [style.background-color]="bgColor">
-                <div *ngIf="texture" class="border border-white/10 shadow-2xl bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAGElEQVQYlWNgYGCQwoKxgqGgcJA5h3yFAAs8BRWVSegaAAAAAElFTkSuQmCC')] relative cursor-crosshair">
+            <div class="flex-1 overflow-auto flex items-center justify-center p-8 bg-neutral-950 custom-scrollbar">
+                <div *ngIf="texture" class="border border-white/20 shadow-2xl relative cursor-crosshair checkerboard"
+                     [style.--checker-color]="bgColor" [style.--checker-light]="checkerLightColor">
                      <canvas #canvas class="block image-pixelated bg-transparent"
                         [style.width.px]="texture.width * zoom"
                         [style.height.px]="texture.height * zoom"
@@ -57,12 +57,22 @@ import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/t
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; border: 2px solid #111; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
     .image-pixelated { image-rendering: pixelated; }
+    .checkerboard {
+      background-color: var(--checker-color);
+      background-image:
+        linear-gradient(45deg, var(--checker-light) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-light) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-light) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-light) 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
   `]
 })
 export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     @Input() texture: TextureInfo | null = null;
     @Input() zoom: number = 4;
-    @Input() bgColor: string = '#111111';
+    @Input() bgColor: string = '#8a8a8a';
     @Input() canEdit: boolean = false;
     @Input() hasChanges: boolean = false;
     @Input() rawData: Uint8Array | null = null;
@@ -86,6 +96,20 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     brushSize: number = 3;
     isDrawing = false;
     cursorStyle = 'crosshair';
+
+    selection: { x: number; y: number; width: number; height: number } | null = null;
+    private selectionDrag: {
+        mode: 'create' | 'move'; startX: number; startY: number;
+        originX: number; originY: number; snapshot: Uint8Array;
+    } | null = null;
+
+    get checkerLightColor(): string {
+        const hex = this.bgColor.replace('#', '');
+        const value = Number.parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+        if (!Number.isFinite(value)) return '#d8d8d8';
+        const brighten = (channel: number) => Math.min(255, channel + Math.max(48, Math.round((255 - channel) * .42)));
+        return `rgb(${brighten(value >> 16 & 255)}, ${brighten(value >> 8 & 255)}, ${brighten(value & 255)})`;
+    }
     
     // Import State
     importState: ImportState = {
@@ -114,6 +138,8 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     ngOnChanges(changes: SimpleChanges) {
         // If texture changed, reset import state
         if (changes['texture']) {
+            this.selection = null;
+            this.selectionDrag = null;
             if (this.importState.active && (this.texture?.width !== this.importState.img?.width)) {
                  this.cancelImport();
             }
@@ -240,6 +266,15 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
             ctx.fillRect(ix + iw - handleSize, iy + ih - handleSize, handleSize, handleSize);
         }
 
+        if (this.selection) {
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 1]);
+            ctx.strokeRect(this.selection.x + .5, this.selection.y + .5, this.selection.width, this.selection.height);
+            ctx.setLineDash([]);
+        }
+
         // Reset alpha
         ctx.globalAlpha = 1.0;
     }
@@ -253,6 +288,11 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         }
         
         if (!this.canEdit) return;
+
+        if (this.activeTool === 'select') {
+            this.handleSelectionStart(event);
+            return;
+        }
         
         if (this.activeTool === 'fill') {
             this.handleFill(event);
@@ -263,6 +303,11 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     }
     
     stopDrawing() {
+        if (this.selectionDrag) {
+            this.selectionDrag = null;
+            if (this.selection?.width === 0 || this.selection?.height === 0) this.selection = null;
+            this.render();
+        }
         this.isDrawing = false;
         this.dragState.isDragging = false;
         this.dragState.mode = 'none';
@@ -271,6 +316,11 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     draw(event: MouseEvent) {
         if (this.importState.active) {
             this.handleImportDrag(event);
+            return;
+        }
+
+        if (this.activeTool === 'select' && this.selectionDrag) {
+            this.handleSelectionDrag(event);
             return;
         }
 
@@ -286,6 +336,56 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
                 this.paintBrush(x, y);
             }
         }
+    }
+
+    private handleSelectionStart(event: MouseEvent) {
+        if (!this.texture || !this.rawData) return;
+        const point = this.getCanvasCoords(event);
+        const current = this.selection;
+        const inside = !!current && point.x >= current.x && point.x < current.x + current.width
+            && point.y >= current.y && point.y < current.y + current.height;
+        this.selectionDrag = {
+            mode: inside ? 'move' : 'create', startX: point.x, startY: point.y,
+            originX: current?.x ?? point.x, originY: current?.y ?? point.y,
+            snapshot: new Uint8Array(this.rawData)
+        };
+        if (!inside) this.selection = { x: point.x, y: point.y, width: 1, height: 1 };
+        this.cursorStyle = inside ? 'move' : 'crosshair';
+        this.render();
+    }
+
+    private handleSelectionDrag(event: MouseEvent) {
+        if (!this.texture || !this.rawData || !this.selection || !this.selectionDrag) return;
+        const point = this.getCanvasCoords(event);
+        const drag = this.selectionDrag;
+        if (drag.mode === 'create') {
+            const x = Math.max(0, Math.min(drag.startX, point.x));
+            const y = Math.max(0, Math.min(drag.startY, point.y));
+            this.selection = {
+                x, y,
+                width: Math.min(this.texture.width, Math.max(drag.startX, point.x) + 1) - x,
+                height: Math.min(this.texture.height, Math.max(drag.startY, point.y) + 1) - y
+            };
+            this.render();
+            return;
+        }
+
+        const old = { ...this.selection, x: drag.originX, y: drag.originY };
+        const nextX = Math.max(0, Math.min(this.texture.width - old.width, drag.originX + point.x - drag.startX));
+        const nextY = Math.max(0, Math.min(this.texture.height - old.height, drag.originY + point.y - drag.startY));
+        this.rawData.set(drag.snapshot);
+        for (let y = 0; y < old.height; y++) {
+            for (let x = 0; x < old.width; x++) this.rawData[(old.y + y) * this.texture.width + old.x + x] = 0;
+        }
+        for (let y = 0; y < old.height; y++) {
+            for (let x = 0; x < old.width; x++) {
+                this.rawData[(nextY + y) * this.texture.width + nextX + x] = drag.snapshot[(old.y + y) * this.texture.width + old.x + x];
+            }
+        }
+        this.selection = { ...old, x: nextX, y: nextY };
+        this.pixelChanged.emit({ index: 0, colorIndex: this.rawData[0] });
+        this.hasChanges = true;
+        this.render();
     }
     
     // Plots a single pixel
