@@ -3,11 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScriptData, ScriptInstruction } from '../../../services/doom-script.service';
 import { SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
-import { ScriptAssemblerService, AssemblyResult } from '../../../services/scripts/script-assembler.service';
+import { ScriptAssemblerService } from '../../../services/scripts/script-assembler.service';
 import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/opcode-autocomplete.component';
 import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
 import { ScriptArgumentControlComponent, ScriptReferenceOptions } from '../script-argument-control/script-argument-control.component';
-import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString } from '../script-argument-control/script-argument-value';
+import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString, setScriptArgumentValue } from '../script-argument-control/script-argument-value';
 
 @Component({
   selector: 'app-script-instruction-editor',
@@ -15,10 +15,8 @@ import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString }
   imports: [
     CommonModule, 
     FormsModule, 
-    MonsterFlagEditorComponent, 
-    DialogStyleEditorComponent, 
     OpcodeAutocompleteComponent,
-    StringReferencePickerComponent
+    StringReferencePickerComponent,
     ScriptArgumentControlComponent
   ],
   template: `
@@ -242,29 +240,26 @@ export class ScriptInstructionEditorComponent {
         return definition?.arguments.findIndex(argument => argument.reference === 'string-index') ?? -1;
     }
 
-    private argumentValues(): string[] {
-        return this.editArgs.trim() ? this.editArgs.trim().split(/\s+/) : [];
-    }
-
     activeStringId(): number {
-        return Number(this.argumentValues()[this.stringArgumentIndex()]) || 0;
+        return this.argumentValues[this.stringArgumentIndex()]?.value ?? 0;
     }
 
     activeStringChunk(): number {
         // EV_CAMERA_STR has an explicit neighbouring chunk argument in the SDK
         // schema. ScriptThread uses Canvas.loadMapStringID for all implicit refs.
         return this.editOpName === 'EV_CAMERA_STR'
-            ? (Number(this.argumentValues()[0]) || 0)
+            ? (this.argumentValues[0]?.value ?? 0)
             : this.mapId() + 3;
     }
 
     selectString(stringId: number) {
         const index = this.stringArgumentIndex();
         if (index < 0) return;
-        const values = this.argumentValues();
-        while (values.length <= index) values.push('0');
-        values[index] = String(stringId);
-        this.editArgs = values.join(' ');
+        const argument = this.argumentValues[index];
+        if (!argument) return;
+        this.argumentValues = this.argumentValues.map((value, argumentIndex) =>
+            argumentIndex === index ? setScriptArgumentValue(value, stringId) : value
+        );
         this.validateEdit();
     }
 }
