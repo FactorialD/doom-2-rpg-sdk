@@ -3,7 +3,7 @@ import { MidiChannelEvent, ParsedMidi } from './midi-types';
 
 export type MidiPlaybackState = 'idle' | 'ready' | 'playing' | 'paused' | 'ended';
 
-interface Voice { oscillator: OscillatorNode; gain: GainNode; filter: BiquadFilterNode; channel: number; note: number; stopAt: number; }
+interface Voice { oscillator: OscillatorNode; gain: GainNode; filter: BiquadFilterNode; channel: number; note: number; stopAt: number; active: boolean; }
 interface ChannelState { program: number; volume: number; pan: number; bend: number; }
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +19,7 @@ export class MidiSynthService {
   private midi: ParsedMidi | null = null;
   private events: MidiChannelEvent[] = [];
   private voices = new Set<Voice>();
+  private activeVoices = new Map<string, Voice[]>();
   private channels: ChannelState[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
@@ -69,20 +70,28 @@ export class MidiSynthService {
     const channel = this.channels[event.channel] ?? (this.channels[event.channel] = this.defaultChannel());
     if (event.type === 'programChange') channel.program = event.program;
     else if (event.type === 'pitchBend') { channel.bend = (event.value - 8192) / 8192 * 2; for (const voice of this.voices) if (voice.channel === event.channel) voice.oscillator.detune.setValueAtTime(channel.bend * 100, at); }
-    else if (event.type === 'controlChange') { if (event.controller === 7) channel.volume = event.value / 127; else if (event.controller === 10) channel.pan = (event.value - 64) / 64; else if (event.controller === 120 || event.controller === 123) for (const voice of [...this.voices]) if (voice.channel === event.channel) this.release(voice, at); }
+    else if (event.type === 'controlChange') { if (event.controller === 7) channel.volume = event.value / 127; else if (event.controller === 10) channel.pan = (event.value - 64) / 64; else if (event.controller === 120 || event.controller === 123) for (const voice of [...this.voices]) if (voice.channel === event.channel && voice.active) this.release(voice, at); }
   }
   private noteOn(channelIndex: number, note: number, velocity: number, at: number) {
-    if (!this.context || !this.master) return; while (this.voices.size >= this.maxVoices) this.release([...this.voices].sort((a, b) => a.stopAt - b.stopAt)[0], at);
+    if (!this.context || !this.master) return; while (this.voices.size >= this.maxVoices) this.stealVoice(this.voices.values().next().value!, at);
     const channel = this.channels[channelIndex] ?? (this.channels[channelIndex] = this.defaultChannel()); const oscillator = this.context.createOscillator(); const gain = this.context.createGain(); const filter = this.context.createBiquadFilter(); const pan = this.context.createStereoPanner();
     const percussion = channelIndex === 9; const family = channel.program >> 3; oscillator.type = percussion || family === 3 ? 'square' : family === 2 || family === 5 ? 'sawtooth' : family === 1 ? 'triangle' : 'sine'; oscillator.frequency.setValueAtTime(percussion ? 70 + note * 4 : 440 * Math.pow(2, (note - 69) / 12), at); oscillator.detune.setValueAtTime(channel.bend * 100, at);
     filter.type = 'lowpass'; filter.frequency.setValueAtTime(percussion ? 900 : 1200 + (7 - Math.min(7, family)) * 500, at); pan.pan.setValueAtTime(channel.pan, at); const level = velocity / 127 * channel.volume * 0.22;
     gain.gain.setValueAtTime(0.0001, at); gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), at + (percussion ? 0.002 : 0.015)); if (percussion) gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
-    oscillator.connect(filter); filter.connect(gain); gain.connect(pan); pan.connect(this.master); const voice: Voice = { oscillator, gain, filter, channel: channelIndex, note, stopAt: at }; this.voices.add(voice);
-    oscillator.onended = () => { oscillator.disconnect(); filter.disconnect(); gain.disconnect(); pan.disconnect(); this.voices.delete(voice); }; oscillator.start(at); if (percussion) { voice.stopAt = at + 0.2; oscillator.stop(voice.stopAt); }
+    oscillator.connect(filter); filter.connect(gain); gain.connect(pan); pan.connect(this.master); const voice: Voice = { oscillator, gain, filter, channel: channelIndex, note, stopAt: at, active: true }; this.voices.add(voice); this.indexVoice(voice);
+    oscillator.onended = () => { oscillator.disconnect(); filter.disconnect(); gain.disconnect(); pan.disconnect(); this.removeVoice(voice); }; oscillator.start(at); if (percussion) { voice.stopAt = at + 0.2; oscillator.stop(voice.stopAt); }
   }
-  private noteOff(channel: number, note: number, at: number) { const voice = [...this.voices].find(candidate => candidate.channel === channel && candidate.note === note); if (voice) this.release(voice, at); }
-  private release(voice: Voice, at: number) { if (!this.context || voice.stopAt > at) return; voice.stopAt = at + 0.08; voice.gain.gain.cancelScheduledValues(at); voice.gain.gain.setTargetAtTime(0.0001, at, 0.02); try { voice.oscillator.stop(voice.stopAt); } catch { /* already stopped */ } }
-  private stopVoices() { const now = this.context?.currentTime ?? 0; for (const voice of this.voices) { voice.oscillator.onended = null; try { voice.oscillator.stop(now); } catch { /* already stopped */ } voice.oscillator.disconnect(); voice.filter.disconnect(); voice.gain.disconnect(); } this.voices.clear(); }
+  private noteOff(channel: number, note: number, at: number) {
+    const queue = this.activeVoices.get(this.voiceKey(channel, note));
+    while (queue?.length) { const voice = queue[0]; if (voice.active) { this.release(voice, at); return; } queue.shift(); }
+  }
+  private release(voice: Voice, at: number) { if (!this.context || !voice.active) return; voice.active = false; this.unindexVoice(voice); voice.stopAt = at + 0.08; voice.gain.gain.cancelScheduledValues(at); voice.gain.gain.setTargetAtTime(0.0001, at, 0.02); try { voice.oscillator.stop(voice.stopAt); } catch { /* already stopped */ } }
+  private stealVoice(voice: Voice, at: number) { voice.active = false; this.removeVoice(voice); try { voice.oscillator.stop(at); } catch { /* already stopped */ } }
+  private indexVoice(voice: Voice) { const key = this.voiceKey(voice.channel, voice.note); const queue = this.activeVoices.get(key) ?? []; queue.push(voice); this.activeVoices.set(key, queue); }
+  private unindexVoice(voice: Voice) { const key = this.voiceKey(voice.channel, voice.note); const queue = this.activeVoices.get(key); if (!queue) return; const index = queue.indexOf(voice); if (index >= 0) queue.splice(index, 1); if (!queue.length) this.activeVoices.delete(key); }
+  private removeVoice(voice: Voice) { this.unindexVoice(voice); this.voices.delete(voice); }
+  private voiceKey(channel: number, note: number) { return `${channel}:${note}`; }
+  private stopVoices() { const now = this.context?.currentTime ?? 0; for (const voice of this.voices) { voice.active = false; this.unindexVoice(voice); voice.oscillator.onended = null; try { voice.oscillator.stop(now); } catch { /* already stopped */ } voice.oscillator.disconnect(); voice.filter.disconnect(); voice.gain.disconnect(); } this.voices.clear(); this.activeVoices.clear(); }
   private stopScheduler() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   private defaultChannel(): ChannelState { return { program: 0, volume: 1, pan: 0, bend: 0 }; }
   private resetChannels() { this.channels = Array.from({ length: 16 }, () => this.defaultChannel()); }

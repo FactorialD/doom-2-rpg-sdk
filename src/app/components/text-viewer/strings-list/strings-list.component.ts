@@ -197,7 +197,7 @@ export class StringsListComponent implements OnChanges {
         canvases.forEach((canvas: any) => { 
             const text = canvas.getAttribute('data-text');
             if (text !== null) {
-                this.textService.renderTextToCanvas(text, canvas, this.fontImage!);
+                this.textService.renderTextToCanvas(this.textService.getPreviewText(text), canvas, this.fontImage!);
             }
         });
     }
@@ -209,7 +209,7 @@ export class StringsListComponent implements OnChanges {
         if (row) {
             const canvas = row.querySelector('canvas');
             if (canvas) {
-                this.textService.renderTextToCanvas(entry.renderKey, canvas, this.fontImage);
+                this.textService.renderTextToCanvas(this.textService.getPreviewText(entry.renderKey), canvas, this.fontImage);
             }
         }
     }
