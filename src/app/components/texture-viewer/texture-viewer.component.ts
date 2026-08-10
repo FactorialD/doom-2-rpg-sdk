@@ -66,6 +66,9 @@ import { TextureThumbnailComponent } from './texture-thumbnail/texture-thumbnail
                              <app-texture-composite 
                                 [textures]="siblings()" 
                                 [selectedTextureId]="tex.id"
+                                [selectedRawData]="localRawData"
+                                [selectedPalette]="currentPaletteRaw"
+                                [checkerColor]="bgColor()"
                                 [forceRefresh]="saveCounter()" 
                              />
                          </div>
@@ -126,7 +129,7 @@ export class TextureViewerComponent {
     // UI State
     selectedId = signal<number | null>(null);
     zoom = signal(4);
-    bgColor = signal('#111111');
+    bgColor = signal('#8a8a8a');
     currentPalette = signal<string[]>([]);
     currentPaletteRaw: Uint32Array | undefined;
     selectedColorIndex = signal(0);
