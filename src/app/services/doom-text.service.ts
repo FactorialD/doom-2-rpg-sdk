@@ -349,6 +349,17 @@ export class DoomTextService {
       return this.glyphRects[glyphIndex] ?? this.glyphRects[this.MISSING_GLYPH_INDEX];
   }
 
+  /**
+   * Produces the text shown by the font preview without changing the source.
+   *
+   * The game's Text.dehyphenate() treats a single ASCII hyphen as a soft,
+   * syllable-break marker. A doubled hyphen escapes a punctuation hyphen, so
+   * it must be collapsed rather than removed.
+   */
+  getPreviewText(text: string): string {
+      return text.replace(/--|-/g, hyphen => hyphen === '--' ? '-' : '');
+  }
+
   renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement) {
       const lines = text.replace(/\r\n?/g, '\n').split(/[\n|]/);
       const lineWidths = lines.map(line => Array.from(line).reduce((width, char) => {

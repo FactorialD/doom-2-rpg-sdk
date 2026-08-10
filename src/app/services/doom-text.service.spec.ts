@@ -71,3 +71,30 @@ test('selection is represented by an existing entry and cancelling a draft perfo
     // A cancelled inline draft never calls createString/saveStringsChunk.
     assert.deepEqual(new Uint8Array(files.get('strings0.bin')!), before);
 });
+
+test('preview removes ASCII technical syllable-break markers', () => {
+    const service = createService(new Map());
+    assert.equal(service.getPreviewText('de-hy-phen-ate'), 'dehyphenate');
+});
+
+test('preview preserves punctuation hyphens and unescapes the game format', () => {
+    const service = createService(new Map());
+    assert.equal(service.getPreviewText('Doom--RPG'), 'Doom-RPG');
+});
+
+test('preview conversion does not mutate raw during a save and load round trip', async () => {
+    const files = new Map<string, ArrayBuffer>([
+        ['strings.idx', makeIndex()],
+        ['strings0.bin', new Uint8Array(8).buffer]
+    ]);
+    const service = createService(files);
+    const raw = 'de-hy-phen-ate and Doom--RPG';
+    const entry: TextEntry = { id: 0, raw, renderKey: raw };
+
+    assert.equal(service.getPreviewText(entry.renderKey), 'dehyphenate and Doom-RPG');
+    assert.equal(entry.raw, raw);
+    assert.deepEqual(await service.saveStringsChunk(0, 0, [entry], 'windows-1252'), { success: true });
+
+    const reparsed = service.loadStrings(0, 0, service.parseStringsIndex(files.get('strings.idx')!));
+    assert.equal(reparsed[0].raw, raw);
+});
