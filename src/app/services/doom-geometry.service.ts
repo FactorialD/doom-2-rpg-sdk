@@ -32,6 +32,7 @@ export interface MapGeometry {
 
 export interface GeometryValidationIssue { section: string; index: number; message: string; }
 export interface NewPolygon { leafIndex: number; textureId: number; flags: number; vertices: MapVertexRecord[]; }
+export interface GeometryVertexMove { polyIndex: number; vertexIndex: number; vertex: Pick<MapVertexRecord, 'x' | 'y' | 'z'>; }
 
 @Injectable({ providedIn: 'root' })
 export class DoomGeometryService {
@@ -110,6 +111,42 @@ export class DoomGeometryService {
         geometry.textureIds = textureIds; geometry.flags = flagsList; geometry.polyVertexCounts = counts;
     }
 
+    /** Validates and applies one source-vertex edit without changing its UV coordinates. */
+    moveVertex(geometry: MapGeometry, move: GeometryVertexMove): string | null {
+        const poly = geometry.polygons[move.polyIndex];
+        if (!poly || move.vertexIndex < 0 || move.vertexIndex >= poly.vertexCount) return 'The selected polygon vertex no longer exists.';
+        const next = move.vertex;
+        if (![next.x, next.y, next.z].every(value => Number.isInteger(value) && value >= 0 && value <= 0xff)) {
+            return 'Vertex coordinates must be integers in the uint8 range (0…255).';
+        }
+        const leaf = geometry.leaves[poly.leafIndex];
+        const leafNode = leaf && geometry.nodes[leaf.nodeIndex];
+        if (!leafNode || next.x < leafNode.minX || next.x > leafNode.maxX || next.y < leafNode.minY || next.y > leafNode.maxY) {
+            return 'The vertex must remain in the polygon’s BSP leaf.';
+        }
+
+        const vertices = geometry.sourceVertices.slice(poly.vertexStart, poly.vertexStart + poly.vertexCount).map(vertex => ({ ...vertex }));
+        vertices[move.vertexIndex] = { ...vertices[move.vertexIndex], ...next };
+        if (poly.vertexCount === 2) {
+            const [a, b] = vertices;
+            if (a.x === b.x && a.y === b.y && a.z === b.z) return 'Wall endpoints cannot occupy the same position.';
+        } else {
+            const normal = this.newellNormal(vertices);
+            if (normal.x === 0 && normal.y === 0 && normal.z === 0) return 'The polygon cannot be degenerate.';
+            const original = geometry.sourceVertices.slice(poly.vertexStart, poly.vertexStart + poly.vertexCount);
+            const originalNormal = this.newellNormal(original);
+            const origin = original[0];
+            if (originalNormal.x || originalNormal.y || originalNormal.z) {
+                const distance = originalNormal.x * (next.x - origin.x) + originalNormal.y * (next.y - origin.y) + originalNormal.z * (next.z - origin.z);
+                if (distance !== 0) return 'The moved vertex must remain coplanar with the polygon.';
+            }
+        }
+
+        Object.assign(geometry.sourceVertices[poly.vertexStart + move.vertexIndex], next);
+        this.rebuildRenderData(geometry);
+        return null;
+    }
+
     addPolygon(geometry: MapGeometry, input: NewPolygon): number {
         const leaf = geometry.leaves[input.leafIndex];
         if (!leaf) throw new Error(`Leaf ${input.leafIndex} does not exist`);
@@ -174,5 +211,15 @@ export class DoomGeometryService {
     private syncLeafNodes(g: MapGeometry) { g.leaves.forEach((l, i) => { if (l.nodeIndex >= 0) g.nodes[l.nodeIndex].child1 = (l.polygonCount << 9) | i; }); }
     private reindexPolygons(g: MapGeometry) { g.leaves.forEach((l, li) => { let v = l.vertexOffset; for (let p = l.polygonOffset; p < l.polygonOffset + l.polygonCount; p++) { g.polygons[p].leafIndex = li; g.polygons[p].vertexStart = v; v += g.polygons[p].vertexCount; } }); }
     private signedArea(v: MapVertexRecord[]) { let a = 0; for (let i = 0; i < v.length; i++) { const n = v[(i + 1) % v.length]; a += v[i].x * n.y - n.x * v[i].y; } return a; }
+    private newellNormal(vertices: MapVertexRecord[]) {
+        const normal = { x: 0, y: 0, z: 0 };
+        for (let i = 0; i < vertices.length; i++) {
+            const a = vertices[i], b = vertices[(i + 1) % vertices.length];
+            normal.x += (a.y - b.y) * (a.z + b.z);
+            normal.y += (a.z - b.z) * (a.x + b.x);
+            normal.z += (a.x - b.x) * (a.y + b.y);
+        }
+        return normal;
+    }
     private pushVert(out: number[], uv: number[], p: MapVertexRecord, swap: boolean) { out.push(p.x * GeometryScale.GEO, p.z * GeometryScale.GEO, p.y * GeometryScale.GEO); uv.push(swap ? p.v : p.u, swap ? p.u : p.v); }
 }

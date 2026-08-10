@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { MapRendererService } from '../../../services/map-renderer.service';
 import { EntityPickerComponent, EntityTemplate } from '../entity-picker/entity-picker.component';
 
-export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
+export type EditMode = 'select' | 'vertex' | 'paint' | 'wall' | 'polygon';
 
 @Component({
   selector: 'app-map-toolbar',
@@ -40,6 +40,8 @@ export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
                   class="px-3 py-1 text-xs text-white rounded transition-colors" title="Select & Inspect">
                   👆 Select
               </button>
+              <button (click)="editModeChange.emit('vertex')" [class.bg-cyan-800]="editMode() === 'vertex'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Edit vertices of the selected polygon">◆ Vertices</button>
               <button 
                   (click)="editModeChange.emit('paint')" 
                   [class.bg-neutral-700]="editMode() === 'paint'"

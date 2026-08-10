@@ -17,6 +17,13 @@ export interface GeometryPickResult {
     object: THREE.Object3D;
 }
 
+export interface GeometryVertexMovedEvent {
+    polyIndex: number;
+    vertexIndex: number;
+    position: THREE.Vector3;
+    dragSession: number;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -37,6 +44,11 @@ export class MapRendererService implements OnDestroy {
   // Helper for highlighting selected faces/polygons
   private faceHelper: THREE.LineSegments | null = null;
   private geometryPreview: THREE.Line | null = null;
+  private vertexHandles = new THREE.Group();
+  private selectedVertexHandle: THREE.Mesh | null = null;
+  private vertexDragSession = 0;
+  private vertexDragging = false;
+  private restoringVertex = false;
   
   private transformControls!: TransformControls;
   
@@ -46,6 +58,7 @@ export class MapRendererService implements OnDestroy {
   private lastFrameTime = 0;
   
   public entityMoved = new Subject<{id: number, position: THREE.Vector3}>();
+  public geometryVertexMoved = new Subject<GeometryVertexMovedEvent>();
 
   constructor() {}
 
@@ -79,6 +92,8 @@ export class MapRendererService implements OnDestroy {
     this.transformControls.setTranslationSnap(128); // Snap to 8 game units (128 world units)
     this.transformControls.addEventListener('dragging-changed', (event) => {
         this.controls.orbitControls.enabled = !event.value;
+        this.vertexDragging = !!event.value && this.transformControls.object?.userData['vertexIndex'] !== undefined;
+        if (this.vertexDragging) this.vertexDragSession++;
     });
     this.transformControls.addEventListener('change', () => {
         if (this.transformControls.object) {
@@ -88,10 +103,12 @@ export class MapRendererService implements OnDestroy {
             obj.position.x = Math.round(obj.position.x / 128) * 128;
             obj.position.z = Math.round(obj.position.z / 128) * 128;
 
-            const entityId = obj.userData['entityId'];
-            if (entityId !== undefined) {
-                // We emit the new world position. The component will calculate the delta or absolute game units.
-                this.entityMoved.next({ id: entityId, position: obj.position.clone() });
+            const vertexIndex = obj.userData['vertexIndex'];
+            if (vertexIndex !== undefined && this.vertexDragging && !this.restoringVertex) {
+                this.geometryVertexMoved.next({
+                    polyIndex: obj.userData['polyIndex'], vertexIndex,
+                    position: obj.position.clone(), dragSession: this.vertexDragSession
+                });
             }
             
             // Update selection helper box
@@ -101,6 +118,8 @@ export class MapRendererService implements OnDestroy {
         }
     });
     this.scene.add(this.transformControls.getHelper());
+    this.vertexHandles.name = 'geometry-vertex-handles';
+    this.scene.add(this.vertexHandles);
 
     this.animate();
 
@@ -129,6 +148,52 @@ export class MapRendererService implements OnDestroy {
     this.clearScene();
     this.geometry.build(this.scene, data);
     this.entities.build(this.scene, data);
+  }
+
+  refreshGeometry(data: MapData) {
+      this.geometry.clear(this.scene);
+      this.geometry.build(this.scene, data);
+  }
+
+  showVertexHandles(data: MapData | null, polyIndex: number | null) {
+      this.clearVertexHandles();
+      if (!data || polyIndex === null) return;
+      const poly = data.geometry.polygons[polyIndex];
+      if (!poly) return;
+      const handleGeometry = new THREE.SphereGeometry(72, 12, 8);
+      const handleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, depthTest: false });
+      data.geometry.sourceVertices.slice(poly.vertexStart, poly.vertexStart + poly.vertexCount).forEach((vertex, vertexIndex) => {
+          const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+          handle.position.set(vertex.x * 128, vertex.z * 128, vertex.y * 128);
+          handle.renderOrder = 10001;
+          handle.userData = { isVertexHandle: true, polyIndex, vertexIndex };
+          this.vertexHandles.add(handle);
+      });
+  }
+
+  pickVertexHandle(clientX: number, clientY: number, rect: DOMRect): boolean {
+      this.updateRaycaster(clientX, clientY, rect);
+      const hit = this.raycaster.intersectObjects(this.vertexHandles.children, false)[0];
+      if (!hit) return false;
+      this.selectedVertexHandle = hit.object as THREE.Mesh;
+      this.transformControls.attach(this.selectedVertexHandle);
+      return true;
+  }
+
+  restoreSelectedVertex(position: THREE.Vector3) {
+      if (!this.selectedVertexHandle) return;
+      this.restoringVertex = true;
+      this.selectedVertexHandle.position.copy(position);
+      this.restoringVertex = false;
+  }
+
+  clearVertexHandles() {
+      if (this.selectedVertexHandle && this.transformControls?.object === this.selectedVertexHandle) this.transformControls.detach();
+      this.selectedVertexHandle = null;
+      const first = this.vertexHandles.children[0] as THREE.Mesh | undefined;
+      first?.geometry.dispose();
+      (first?.material as THREE.Material | undefined)?.dispose();
+      for (const child of [...this.vertexHandles.children]) this.vertexHandles.remove(child);
   }
 
   showGeometryPreview(points: THREE.Vector3[], closed: boolean) {
@@ -239,8 +304,6 @@ export class MapRendererService implements OnDestroy {
           this.scene.add(helper);
           this.selectionHelper = helper;
           
-          this.transformControls.attach(obj);
-
           if (focus && !this.controls.flyMode()) {
             const center = new THREE.Vector3();
             box.getCenter(center);
@@ -342,6 +405,7 @@ export class MapRendererService implements OnDestroy {
   };
 
   private clearScene() {
+    this.clearVertexHandles();
     this.clearGeometryPreview();
     this.geometry.clear(this.scene);
     this.entities.clear(this.scene);
