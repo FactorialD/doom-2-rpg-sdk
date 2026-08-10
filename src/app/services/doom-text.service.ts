@@ -10,6 +10,10 @@ export type SaveStringsResult =
   | { success: true }
   | { success: false; error?: TextEncodingError };
 
+export type CreateStringResult =
+  | { success: true; entry: TextEntry }
+  | { success: false; error?: TextEncodingError };
+
 export interface TextEntry {
   id: number;
   raw: string;        // Decoded string for display (UTF-8/Unicode)
@@ -172,6 +176,33 @@ export class DoomTextService {
     }
     
     return entries;
+  }
+
+  /** Returns the first ID after the highest existing ID in a chunk. */
+  getNextStringId(entries: readonly TextEntry[]): number {
+      return entries.length ? Math.max(...entries.map(entry => entry.id)) + 1 : 0;
+  }
+
+  validateString(value: string, encoding: string): TextEncodingError | null {
+      if (encoding === 'utf-8') return null;
+      const result = encodeSingleByte(value, encoding as SingleByteEncoding, 1);
+      return result.ok === true ? null : result.error;
+  }
+
+  /**
+   * Appends and persists one string in one explicitly selected language/chunk.
+   * Other language chunks are intentionally left untouched.
+   */
+  async createString(langId: number, chunkId: number, value: string, encoding: string): Promise<CreateStringResult> {
+      const validationError = this.validateString(value, encoding);
+      if (validationError) return { success: false, error: validationError };
+      const idxBuffer = this.fileService.getFile('strings.idx');
+      if (!idxBuffer) return { success: false };
+      const entries = this.loadStrings(langId, chunkId, this.parseStringsIndex(idxBuffer), encoding);
+      const entry: TextEntry = { id: this.getNextStringId(entries), raw: value, renderKey: value };
+      const saved = await this.saveStringsChunk(langId, chunkId, [...entries, entry], encoding);
+      if (saved.success === true) return { success: true, entry };
+      return saved.error ? { success: false, error: saved.error } : { success: false };
   }
   
   // --- SAVING LOGIC (Preserved) ---

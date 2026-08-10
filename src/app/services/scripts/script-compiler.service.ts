@@ -15,6 +15,7 @@ export interface CompilationResult {
   providedIn: 'root'
 })
 export class ScriptCompilerService {
+  static readonly SUPPORTED_TILE_EVENT_FLAGS = 0x7ffff;
 
   compile(
       instructions: ScriptInstruction[], 
@@ -74,9 +75,32 @@ export class ScriptCompilerService {
 
         // 2. Tile Events
         const rebuiltEvents: number[] = [];
+        const eventUids = new Set<string>();
+        const eventKeys = new Set<string>();
         for (const ref of tileEventRefs) {
+            if (!ref.uid || eventUids.has(ref.uid)) {
+                errors.push(`Duplicate or missing tile event UID: ${ref.uid || '(empty)'}.`);
+                continue;
+            }
+            eventUids.add(ref.uid);
+            if (!Number.isInteger(ref.tileIndex) || ref.tileIndex < 0 || ref.tileIndex > 1023) {
+                errors.push(`Invalid tile index ${ref.tileIndex}; expected 0-1023.`);
+                continue;
+            }
+            if (!Number.isInteger(ref.flags) || ref.flags < 0 || (ref.flags & ~ScriptCompilerService.SUPPORTED_TILE_EVENT_FLAGS) !== 0) {
+                errors.push(`Unsupported tile event flags 0x${(ref.flags >>> 0).toString(16)}.`);
+                continue;
+            }
+            const key = `${ref.tileIndex}:${ref.targetUid}:${ref.flags}`;
+            if (eventKeys.has(key)) {
+                errors.push(`Duplicate tile event for tile ${ref.tileIndex}, target ${ref.targetUid}, and flags 0x${ref.flags.toString(16)}.`);
+                continue;
+            }
+            eventKeys.add(key);
             const off = offsetMap.get(ref.targetUid);
-            if (off !== undefined) {
+            if (off === undefined) {
+                errors.push(`Tile event ${ref.uid} points to missing target UID ${ref.targetUid || '(empty)'}.`);
+            } else {
                 if (off > 65535) errors.push(`Script too large! Offset ${off} exceeds limit.`);
                 const packed = ((off & 0xFFFF) << 16) | (ref.tileIndex & 0xFFFF);
                 rebuiltEvents.push(packed);

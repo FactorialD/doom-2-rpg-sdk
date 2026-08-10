@@ -3,13 +3,14 @@ import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MapRendererService } from '../../../services/map-renderer.service';
+import { EntityPickerComponent, EntityTemplate } from '../entity-picker/entity-picker.component';
 
-export type EditMode = 'select' | 'paint';
+export type EditMode = 'select' | 'paint' | 'wall' | 'polygon';
 
 @Component({
   selector: 'app-map-toolbar',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, EntityPickerComponent],
   template: `
     <div class="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center px-4 justify-between shrink-0 z-10 select-none">
       <div class="flex items-center gap-4">
@@ -45,6 +46,10 @@ export type EditMode = 'select' | 'paint';
                   class="px-3 py-1 text-xs text-white rounded transition-colors" title="Paint Textures">
                   🎨 Paint
               </button>
+              <button (click)="editModeChange.emit('wall')" [class.bg-red-800]="editMode() === 'wall'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe wall">🧱 Wall</button>
+              <button (click)="editModeChange.emit('polygon')" [class.bg-red-800]="editMode() === 'polygon'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe flat polygon">⬡ Polygon</button>
            </div>
            
            <div class="h-6 w-px bg-neutral-700"></div>
@@ -87,12 +92,23 @@ export type EditMode = 'select' | 'paint';
                   <b class="text-white">Fly:</b> W/A/S/D move, Q/E descend/ascend, hold right mouse to look, Shift boosts speed. The wheel temporarily changes flight speed.
               </div>
           </details>
+          <button (click)="undo.emit()" [disabled]="!canUndo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Undo">↶</button>
+          <button (click)="redo.emit()" [disabled]="!canRedo()" class="px-2 py-1 text-xs rounded bg-neutral-800 disabled:opacity-30" title="Redo">↷</button>
+          @if (operationActive()) {
+            <button (click)="confirmOperation.emit()" class="px-2 py-1 text-xs font-bold rounded bg-green-700">✓ Confirm</button>
+            <button (click)="cancelOperation.emit()" class="px-2 py-1 text-xs rounded bg-neutral-700">✕ Cancel</button>
+          }
           <button 
-              (click)="addEntity.emit()"
+              (click)="showEntityPicker = !showEntityPicker"
               class="flex items-center gap-2 px-3 py-1 text-xs font-bold text-white bg-blue-700 hover:bg-blue-600 rounded transition-colors"
           >
               <span>➕</span> Add Entity
           </button>
+          @if (showEntityPicker) {
+            <div class="absolute right-4 top-11 z-50 w-[34rem] shadow-2xl">
+              <app-entity-picker actionLabel="Place entity" (picked)="pickEntity($event)" />
+            </div>
+          }
           
           <button 
               (click)="saveMap.emit()"
@@ -122,12 +138,26 @@ export class MapToolbarComponent {
     selectedMapId = input<number>(1);
     editMode = input<EditMode>('select');
     hasSelection = input(false);
+
+    canUndo = input(false);
+    canRedo = input(false);
+    operationActive = input(false);
     
     loadMap = output<number>();
     editModeChange = output<EditMode>();
     saveMap = output<void>();
-    addEntity = output<void>();
+
     focusSelected = output<void>();
+    addEntity = output<EntityTemplate>();
+    showEntityPicker = false;
+
+    pickEntity(template: EntityTemplate) { this.showEntityPicker = false; this.addEntity.emit(template); }
+
+    undo = output<void>();
+    redo = output<void>();
+    confirmOperation = output<void>();
+    cancelOperation = output<void>();
+
 
     constructor(public renderer: MapRendererService) {}
 }

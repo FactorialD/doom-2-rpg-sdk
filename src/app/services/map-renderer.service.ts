@@ -36,6 +36,7 @@ export class MapRendererService implements OnDestroy {
   private selectionHelper: THREE.Box3Helper | null = null;
   // Helper for highlighting selected faces/polygons
   private faceHelper: THREE.LineSegments | null = null;
+  private geometryPreview: THREE.Line | null = null;
   
   private transformControls!: TransformControls;
   
@@ -128,6 +129,24 @@ export class MapRendererService implements OnDestroy {
     this.clearScene();
     this.geometry.build(this.scene, data);
     this.entities.build(this.scene, data);
+  }
+
+  showGeometryPreview(points: THREE.Vector3[], closed: boolean) {
+      this.clearGeometryPreview();
+      if (points.length < 2) return;
+      const previewPoints = closed && points.length > 2 ? [...points, points[0]] : points;
+      const geometry = new THREE.BufferGeometry().setFromPoints(previewPoints);
+      this.geometryPreview = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x00ffff, depthTest: false }));
+      this.geometryPreview.renderOrder = 10000;
+      this.scene.add(this.geometryPreview);
+  }
+
+  clearGeometryPreview() {
+      if (!this.geometryPreview) return;
+      this.scene.remove(this.geometryPreview);
+      this.geometryPreview.geometry.dispose();
+      (this.geometryPreview.material as THREE.Material).dispose();
+      this.geometryPreview = null;
   }
 
   /**
@@ -323,6 +342,7 @@ export class MapRendererService implements OnDestroy {
   };
 
   private clearScene() {
+    this.clearGeometryPreview();
     this.geometry.clear(this.scene);
     this.entities.clear(this.scene);
     this.resources.dispose();
