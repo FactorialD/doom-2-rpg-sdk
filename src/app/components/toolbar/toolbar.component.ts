@@ -23,6 +23,7 @@ import { CommonModule } from '@angular/common';
             <span class="font-medium">Load JAR</span>
             <input type="file" accept=".jar,.zip" class="hidden" (change)="onFileSelected($event)" />
         </label>
+        @if (service.hasUnsavedChanges()) { <span class="text-xs text-amber-400" title="Unsaved changes">● Unsaved</span> }
         
         @if (fileService.isLoaded()) {
              <span class="text-xs text-green-500 flex items-center gap-1">
@@ -43,14 +44,14 @@ import { CommonModule } from '@angular/common';
           [class.bg-neutral-800]="service.activeTab() === 'map'"
           [class.text-white]="service.activeTab() === 'map'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
-          Map
+          Map @if(service.dirtyResources().maps.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
           (click)="service.activeTab.set('textures')"
           [class.bg-neutral-800]="service.activeTab() === 'textures'"
           [class.text-white]="service.activeTab() === 'textures'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
-          Textures
+          Textures @if(service.dirtyResources().textures.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
           (click)="service.activeTab.set('items')"
@@ -64,14 +65,14 @@ import { CommonModule } from '@angular/common';
           [class.bg-neutral-800]="service.activeTab() === 'palettes'"
           [class.text-white]="service.activeTab() === 'palettes'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
-          Palettes
+          Palettes @if(service.dirtyResources().palettes.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
           (click)="service.activeTab.set('text')"
           [class.bg-neutral-800]="service.activeTab() === 'text'"
           [class.text-white]="service.activeTab() === 'text'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
-          Texts
+          Texts @if(service.dirtyResources().strings.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
           (click)="service.activeTab.set('variables')"
@@ -92,7 +93,7 @@ import { CommonModule } from '@angular/common';
           [class.bg-neutral-800]="service.activeTab() === 'scripts'"
           [class.text-white]="service.activeTab() === 'scripts'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
-          Scripts
+          Scripts @if(service.dirtyResources().scripts.dirty) { <span class="text-amber-400">●</span> }
         </button>
       </nav>
     </header>
@@ -105,8 +106,18 @@ export class ToolbarComponent {
   async onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
+        if (this.service.hasUnsavedChanges() && !confirm('Loading another JAR will discard all unsaved editor changes. Continue?')) {
+          input.value = '';
+          return;
+        }
         const file = input.files[0];
-        await this.fileService.loadJar(file);
+        try {
+          await this.fileService.loadJar(file);
+          this.service.clearAllDirty();
+          this.service.notify('success', `Loaded ${file.name}.`);
+        } catch (error) {
+          this.service.notify('error', `Failed to load JAR: ${(error as Error).message}`);
+        }
     }
     input.value = ''; // Reset so we can reload the same file if needed
   }

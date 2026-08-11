@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DoomEntitiesService, EntityDef } from '../../services/doom-entities.service';
+import { DoomEntitiesService, EditableEntityDef } from '../../services/doom-entities.service';
 import { DoomTextService } from '../../services/doom-text.service';
 import { DoomFileService } from '../../services/doom-file.service';
 import { ItemCardComponent } from './item-card/item-card.component';
@@ -101,6 +101,7 @@ import { SidebarPanelComponent } from '../../shared/components/sidebar-panel/sid
                     [loadingReferences]="loadingReferences()"
                     (showOnMap)="showOnMap($event)"
                     (goToScript)="goToScript($event)"
+                    (saveItem)="saveItem(item.def.index, $event)"
                 />
             }
         </div>
@@ -222,6 +223,11 @@ export class ItemViewerComponent {
     showOnMap(loc: MapEntityLocation) {
         // Pass 'true' to indicate we want to isolate/view only this entity (hiding walls)
         this.editorService.selectMapEntity(loc.mapId, loc.spriteIndex, true);
+    }
+
+    saveItem(index: number, edited: EditableEntityDef) {
+        const def = this.entitiesService.saveDefinition(index, edited);
+        this.selectedItem.update(item => item ? { ...item, def, name: this.resolveName(def.nameId) } : null);
     }
 
     private ensureNamesLoaded() {

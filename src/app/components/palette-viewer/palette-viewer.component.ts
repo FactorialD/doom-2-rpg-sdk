@@ -217,7 +217,7 @@ export class PaletteViewerComponent {
     searchQuery = signal('');
     showReferences = signal(false);
     selectedId = signal<number | null>(null);
-    hasChanges = signal(false);
+    hasChanges = computed(() => this.editorService.dirtyResources().palettes.dirty);
     
     targetColorCount = 16; // Default for import
 
@@ -271,7 +271,7 @@ export class PaletteViewerComponent {
         
         if (confirm(`Create new palette at ID #${freeId}?`)) {
             this.paletteService.createPalette(freeId, 16); // Default 16 black colors
-            this.hasChanges.set(true);
+            this.editorService.markDirty('palettes', 'newPalettes.bin');
             this.selectedId.set(freeId);
         }
     }
@@ -286,7 +286,7 @@ export class PaletteViewerComponent {
                 
                 // Update service
                 this.paletteService.replacePaletteData(paletteId, newColors);
-                this.hasChanges.set(true);
+                this.editorService.markDirty('palettes', 'newPalettes.bin');
                 
                 // Reset input
                 input.value = '';
@@ -334,18 +334,18 @@ export class PaletteViewerComponent {
         
         // Update Actual Palette (This updates all references due to shared Uint32Array)
         this.paletteService.updateColor(pal.isReference ? pal.parentId! : pal.id, index, r, g, b);
-        this.hasChanges.set(true);
+        this.editorService.markDirty('palettes', 'newPalettes.bin');
     }
     
     savePalettes() {
         if (this.paletteService.savePalettes()) {
-            this.hasChanges.set(false);
-            alert('Palettes saved to memory!');
+            this.editorService.clearDirty('palettes');
+            this.editorService.notify('success', 'Palettes saved to memory.');
         } else {
-            alert('Failed to save palettes.');
+            this.editorService.notify('error', 'Failed to save palettes.');
         }
     }
-    
+
     getUsageList(palId: number): number[] {
         return this.paletteService.getUsage(palId);
     }

@@ -15,7 +15,7 @@ import { EditorService } from '../../services/editor.service';
         <div class="p-4 border-b border-neutral-800">
           <div class="flex items-center justify-between gap-3 mb-4">
             <h2 class="font-bold text-white">Sound Viewer</h2>
-            <span class="rounded bg-amber-900/30 border border-amber-800/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">Read-only</span>
+            <span class="rounded bg-emerald-900/30 border border-emerald-800/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">Import enabled</span>
           </div>
           <input
             type="search"
@@ -57,7 +57,7 @@ import { EditorService } from '../../services/editor.service';
           <div class="w-full max-w-lg rounded-lg border border-neutral-800 bg-[#1a1a1a] p-6 shadow-xl">
             <p class="text-xs font-bold uppercase tracking-widest text-neutral-500">Selected resource</p>
             <h1 class="mt-2 text-2xl font-bold text-white">Sound #{{ id }}</h1>
-            <p class="mt-2 text-sm text-neutral-500">Read-only playback through the built-in MIDI synthesizer or browser WAV/AU decoder.</p>
+            <p class="mt-2 text-sm text-neutral-500">Playback supports detected MIDI/WAV/AU; replacement import is limited to MIDI because the Java runtime requests audio/midi.</p>
             @if (soundService.loading()) {
               <p class="mt-4 text-sm text-amber-300" role="status">Loading and parsing sound…</p>
             }
@@ -75,6 +75,9 @@ import { EditorService } from '../../services/editor.service';
               <button type="button" aria-label="Play or pause selected sound" (click)="togglePlayback(id)" [disabled]="soundService.loading() || soundService.format() === 'unknown'" class="rounded bg-red-800 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">{{ soundService.playingSoundId() === id ? '⏸ Pause' : '▶ Play' }}</button>
               <button type="button" aria-label="Stop selected sound" (click)="soundService.stopSound()" [disabled]="soundService.playingSoundId() === null && soundService.positionSeconds() === 0" class="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-bold text-neutral-200 hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40">■ Stop</button>
             </div>
+            <label class="mt-4 block rounded border border-neutral-700 bg-neutral-900 p-3 text-sm font-bold text-neutral-300">Replace resource
+              <input type="file" accept=".mid,.midi,audio/midi" (change)="importSound(id, $event)" class="mt-2 block w-full text-xs font-normal text-neutral-500 file:mr-3 file:rounded file:border-0 file:bg-red-800 file:px-3 file:py-2 file:text-white" />
+            </label>
             <div class="mt-5">
               <div class="mb-1 flex justify-between text-xs tabular-nums text-neutral-400"><span>{{ formatTime(soundService.positionSeconds()) }}</span><span>{{ formatTime(soundService.durationSeconds()) }}</span></div>
               <input type="range" aria-label="Playback position" min="0" [max]="soundService.durationSeconds() || 0" step="0.01" [ngModel]="soundService.positionSeconds()" (ngModelChange)="soundService.seek(+$event)" [disabled]="soundService.durationSeconds() <= 0" class="w-full accent-red-700" />
@@ -88,7 +91,7 @@ import { EditorService } from '../../services/editor.service';
           <div class="text-center text-neutral-500">
             <div class="mb-3 text-4xl">🔊</div>
             <p>Select a sound ID to preview it.</p>
-            <p class="mt-2 text-xs uppercase tracking-wider text-amber-500">Read-only viewer</p>
+            <p class="mt-2 text-xs uppercase tracking-wider text-emerald-500">Validated import available</p>
           </div>
         }
       </section>
@@ -121,4 +124,10 @@ export class SoundViewerComponent {
   formatTime(seconds: number) { if (!Number.isFinite(seconds)) return '0:00'; const whole = Math.max(0, Math.floor(seconds)); return `${Math.floor(whole / 60)}:${(whole % 60).toString().padStart(2, '0')}`; }
   metadataDuration(id: number) { const duration = this.soundService.soundMetadata.get(id)?.durationSeconds; return duration === null || duration === undefined ? '—' : this.formatTime(duration); }
   trackNames(midi: import('../../services/midi/midi-types').ParsedMidi) { return midi.tracks.map(track => track.name).filter((name): name is string => !!name); }
+  async importSound(id: number, event: Event) {
+    const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file) return;
+    try { this.soundService.importSound(id, await file.arrayBuffer()); }
+    catch (error) { this.soundService.playbackError.set(error instanceof Error ? error.message : String(error)); }
+    finally { input.value = ''; }
+  }
 }
