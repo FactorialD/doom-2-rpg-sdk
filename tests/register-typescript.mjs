@@ -13,6 +13,10 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === '@angular/core') return { url: 'test:angular-core', shortCircuit: true };
     if (specifier === 'three') return { url: 'test:three', shortCircuit: true };
+    // Service unit tests construct their in-memory file-service doubles and do
+    // not exercise archive I/O. Keep that transitive browser dependency from
+    // making the unified test command depend on an installed JSZip package.
+    if (specifier === 'jszip') return { url: 'test:jszip', shortCircuit: true };
     if ((specifier.startsWith('./') || specifier.startsWith('../')) && !specifier.match(/\.(?:[cm]?js|ts|json)$/i) && context.parentURL?.startsWith('file:')) {
       const candidate = new URL(specifier + '.ts', context.parentURL);
       if (existsSync(fileURLToPath(candidate))) return { url: candidate.href, shortCircuit: true };
@@ -43,6 +47,11 @@ registerHooks({
     if (url === 'test:three') return {
       format: 'module',
       source: 'export class Vector3 { constructor(x = 0, y = 0, z = 0) { this.x=x; this.y=y; this.z=z; } }',
+      shortCircuit: true
+    };
+    if (url === 'test:jszip') return {
+      format: 'module',
+      source: 'export default class JSZip {}',
       shortCircuit: true
     };
     if (!url.endsWith('.ts')) return nextLoad(url, context);
