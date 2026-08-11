@@ -16,7 +16,7 @@ ZIP/JAR bytes remain identical.
 
 | Area | Read | Edit | Write | Round trip | Automated checks |
 |---|---|---|---|---|---|
-| Maps | **Yes:** headers, geometry, polygons, BSP, heightmap, sprites, entities, and embedded scripts | **Limited:** surface textures and script data; entities remain read-only | **Yes:** map serializer writes the supported sections back to `mapXX.bin` | **Limited:** serializer preserves/copied sections, but there is no full fixture-based map comparison | **Limited:** buffer-bound and marker checks only; no complete map fixture |
+| Maps | **Yes:** headers, geometry, polygons, BSP, heightmap, sprites, entities, and embedded scripts | **Yes:** surface textures plus entity creation, type/property changes, movement and deletion; entity reorder/ID and referenced deletion remain experimental | **Yes:** map serializer writes geometry, entities and supported scripts back to `mapXX.bin` | **Limited:** entity-reference relocation is validated, but not yet guaranteed for every operand/JAR variant | **Limited:** focused serializer and editor checks; no complete map corpus |
 | Scripts | **Yes:** disassembly, functions, tile events, operands, and semantic references | **Yes:** edit, insert, delete, and reorder instructions with relocation | **Yes:** assembler replaces bytecode plus function and tile-event tables | **Limited:** opcode schema validates encoding, but no end-to-end script corpus is run automatically | **Limited:** schema self-validation during module initialization; no dedicated automated round-trip suite |
 | Textures | **Yes:** mappings, raw texels, Doom-column sprites, references, bounds, and split `texXX.bin` files | **Limited:** paint/import root textures; referenced textures are not directly editable | **Yes:** recompresses sprites, updates mappings, and rebuilds split texture files | **Limited:** reference resolution has a fixture, but encode/decode and complete-file equivalence are not covered | **Limited:** reference-chain/read behavior fixture exists, but uses a separate Bun test and is not in the npm test script |
 | Palettes | **Yes:** RGB555 root palettes and parent references | **Yes:** colors, image import, creation, and palette-size replacement | **Yes:** rebuilds `newPalettes.bin` and updates `newMappings.bin` | **Limited:** RGB555 is quantized and structural round trip has no automated corpus | **No:** production build compiles the path, but there is no palette-specific automated test |
@@ -33,9 +33,9 @@ ZIP/JAR bytes remain identical.
 - the application completes a production build with zoneless Angular;
 - an original-layout Doom II RPG J2ME JAR can be loaded into the in-memory file
   system and repacked without intentionally dropping file entries;
-- maps, scripts, textures, palettes, and strings each expose both a read path and
-  a save path, while unsupported mutation (map entities, items, variables, and
-  sounds) is clearly treated as read-only;
+- maps, scripts, textures, palettes, strings, and map entities expose read and
+  save paths; entities support creation, type/property edits, movement and
+  deletion, while reference-sensitive reorder/ID operations remain experimental;
 - script size changes relocate jumps, function offsets, and tile-event references
   through the shared opcode schema;
 - texture and palette writers retain reference semantics, RGB555 storage, and the
