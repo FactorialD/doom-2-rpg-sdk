@@ -1,8 +1,8 @@
 
-import { Component, input, output } from '@angular/core';
+import { Component, effect, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
-import { EntityDef } from '../../../services/doom-entities.service';
+import { FormsModule } from '@angular/forms';
+import { EditableEntityDef, EntityDef } from '../../../services/doom-entities.service';
 import { MapEntityLocation } from '../../../services/doom-map.service';
 import { ItemReference } from '../../../services/doom-script.service';
 
@@ -14,7 +14,7 @@ export interface ItemViewData {
 @Component({
   selector: 'app-item-inspector',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <aside class="w-72 bg-neutral-900 border-l border-neutral-800 flex flex-col flex-none overflow-hidden animate-slide-in">
         @if (item(); as i) {
@@ -28,13 +28,21 @@ export interface ItemViewData {
             </div>
 
             <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-                <!-- Entity Def Details -->
+                <!-- EntityDef.startup reads exactly these eight bytes from entities.bin. -->
                 <div>
-                    <div class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">Definition</div>
-                    <div class="bg-black/40 border border-neutral-800 rounded p-2 text-xs font-mono space-y-1">
-                        <div class="flex justify-between"><span>Tile Idx:</span> <span class="text-white">{{ i.def.tileIndex }}</span></div>
-                        <div class="flex justify-between"><span>Name ID:</span> <span class="text-white">{{ i.def.nameId }}</span></div>
-                        <div class="flex justify-between"><span>Type (Main):</span> <span class="text-white">{{ i.def.eType }}</span></div>
+                    <div class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">entities.bin record</div>
+                    <div class="bg-black/40 border border-neutral-800 rounded p-3 text-xs space-y-3">
+                        @for (field of fields; track field.key) {
+                            <label class="block"><span class="mb-1 flex justify-between text-neutral-400"><span>{{ field.label }}</span><span class="font-mono">{{ field.min }}…{{ field.max }}</span></span>
+                                <input type="number" [min]="field.min" [max]="field.max" step="1"
+                                    [ngModel]="draft()[field.key]" (ngModelChange)="setField(field.key, $event)"
+                                    class="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-white outline-none focus:border-red-700" />
+                            </label>
+                        }
+                        @if (validationError(); as error) { <p class="text-red-400" role="alert">{{ error }}</p> }
+                        @if (saved()) { <p class="text-emerald-400" role="status">Saved to entities.bin.</p> }
+                        <button type="button" (click)="save()" [disabled]="!!validationError() || !dirty()"
+                            class="w-full rounded bg-red-800 px-3 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Save item definition</button>
                     </div>
                 </div>
 
@@ -123,4 +131,43 @@ export class ItemInspectorComponent {
     
     showOnMap = output<MapEntityLocation>();
     goToScript = output<ItemReference>();
+    saveItem = output<EditableEntityDef>();
+
+    readonly fields: Array<{ key: keyof EditableEntityDef; label: string; min: number; max: number }> = [
+        { key: 'tileIndex', label: 'Tile index (int16)', min: -32768, max: 32767 },
+        { key: 'eType', label: 'Entity type (int8)', min: -128, max: 127 },
+        { key: 'eSubType', label: 'Subtype (int8)', min: -128, max: 127 },
+        { key: 'parm', label: 'Item parameter (int8)', min: -128, max: 127 },
+        { key: 'nameId', label: 'Name string ID (uint8)', min: 0, max: 255 },
+        { key: 'longNameId', label: 'Long-name string ID (uint8)', min: 0, max: 255 },
+        { key: 'descriptionId', label: 'Description string ID (uint8)', min: 0, max: 255 }
+    ];
+    readonly draft = signal<EditableEntityDef>({ tileIndex: 0, eType: 0, eSubType: 0, parm: 0, nameId: 0, longNameId: 0, descriptionId: 0 });
+    readonly dirty = signal(false);
+    readonly saved = signal(false);
+    readonly validationError = signal<string | null>(null);
+
+    constructor() {
+        effect(() => {
+            const def = this.item()?.def;
+            if (!def) return;
+            const { index: _index, ...editable } = def;
+            this.draft.set(editable); this.dirty.set(false); this.saved.set(false); this.validate();
+        });
+    }
+
+    setField(key: keyof EditableEntityDef, raw: unknown) {
+        this.draft.update(value => ({ ...value, [key]: Number(raw) }));
+        this.dirty.set(true); this.saved.set(false); this.validate();
+    }
+    save() { if (!this.validationError()) { this.saveItem.emit(this.draft()); this.dirty.set(false); this.saved.set(true); } }
+    private validate() {
+        for (const field of this.fields) {
+            const value = this.draft()[field.key];
+            if (!Number.isInteger(value) || value < field.min || value > field.max) {
+                this.validationError.set(`${field.label} must be an integer from ${field.min} to ${field.max}.`); return;
+            }
+        }
+        this.validationError.set(null);
+    }
 }

@@ -5,6 +5,7 @@ import { extractIndexedSoundMetadata, extractSoundMetadata, SoundMetadata } from
 import { parseMidi } from './midi/midi-parser';
 import { MidiSynthService } from './midi/midi-synth.service';
 import { ParsedMidi } from './midi/midi-types';
+import { validateImportableSound, writeSoundResources } from './doom-sound-writer';
 
 export type SoundFormat = 'midi' | 'wav' | 'au' | 'unknown';
 @Injectable({ providedIn: 'root' })
@@ -78,6 +79,19 @@ export class DoomSoundService {
       return true;
     } catch (error) { this.playbackError.set(this.message(error)); this.synth.clear(); return false; }
     finally { this.loading.set(false); }
+  }
+
+  importSound(id: number, buffer: ArrayBuffer): void {
+    if (!Number.isInteger(id) || id < 0 || id >= this.soundIndex.length) throw new RangeError(`Unknown sound ID ${id}`);
+    validateImportableSound(buffer);
+    const sounds = this.soundIndex.map((_, soundId) => soundId === id ? buffer.slice(0) : this.getSoundArrayBuffer(soundId));
+    if (sounds.some(sound => !sound)) throw new Error('Cannot rebuild sounds: at least one current index entry points outside its split file');
+    const written = writeSoundResources(sounds as ArrayBuffer[]);
+    this.fileService.saveBuffer('sounds.idx', written.index);
+    for (const existing of [...this.fileService.files.keys()]) if (/^sounds\d+\.bin$/.test(existing) && !written.files.has(existing)) this.fileService.files.delete(existing);
+    for (const [name, data] of written.files) this.fileService.saveBuffer(name, data);
+    this.loadSoundsIndex();
+    if (!this.loadSound(id)) throw new Error(this.playbackError() ?? 'The imported sound failed decode verification after writing');
   }
 
   async playSound(id: number): Promise<boolean> {
