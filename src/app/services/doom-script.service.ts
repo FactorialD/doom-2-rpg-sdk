@@ -12,6 +12,7 @@ import { ScriptUtils } from './scripts/script-utils';
 import { MapSprite } from './doom-map.service';
 import { DoomSoundService } from './doom-sound.service';
 import { SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
+import { encodeSetStateAssignment } from './doom-variables';
 
 export type { ScriptInstruction, ScriptFunctionTable, TileEventRef };
 
@@ -705,6 +706,15 @@ export class DoomScriptService {
           } catch(e) {}
       }
       return results;
+  }
+
+  /** Writes only the Java-confirmed EV_SETSTATE immediate; SDK variable labels are not resources. */
+  async saveVariableAssignment(mapId: number, instructionUid: string, value: number): Promise<boolean> {
+      const data = await this.ensureScriptLoaded(mapId);
+      const instruction = data?.instructions.find(candidate => candidate.uid === instructionUid);
+      if (!data || !instruction || instruction.opcode !== 6) return false;
+      this.updateInstruction(data, instruction, encodeSetStateAssignment({ variableId: instruction.params[0], value }));
+      return this.saveScriptChanges(data);
   }
 
   getReferencedEntityIds(mapId: number): Promise<Set<number>> {

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ScriptData, ScriptInstruction, DoomScriptService } from '../../../services/doom-script.service';
 import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
 import { ScriptInstructionEditorComponent } from '../script-instruction-editor/script-instruction-editor.component';
+import { EditorService } from '../../../services/editor.service';
 
 export interface ScriptBlock {
     title: string;
@@ -267,6 +268,7 @@ export class ScriptCodeViewComponent {
     dataChanged = output<void>(); 
     
     scriptService = inject(DoomScriptService);
+    editorService = inject(EditorService);
     
     showHex = signal(false);
     hasChanges = signal(false);
@@ -289,7 +291,6 @@ export class ScriptCodeViewComponent {
         
         effect(() => {
              if (this.scriptData()) {
-                 this.hasChanges.set(false);
                  this.cancelEdit();
              }
         });
@@ -372,7 +373,7 @@ export class ScriptCodeViewComponent {
             }
         }
 
-        this.hasChanges.set(true);
+        this.markDirty();
         this.cancelEdit();
         this.dataChanged.emit();
     }
@@ -381,18 +382,24 @@ export class ScriptCodeViewComponent {
         if (inst && confirm(`Delete instruction at 0x${this.padHex(inst.offset, 4)}?`)) {
             if (this.scriptData()) {
                 this.scriptService.deleteInstruction(this.scriptData()!, inst);
-                this.hasChanges.set(true);
+                this.markDirty();
                 this.cancelEdit();
                 this.dataChanged.emit();
             }
         }
     }
     
-    saveScript() {
+    async saveScript() {
         if (!this.scriptData()) return;
-        this.scriptService.saveScriptChanges(this.scriptData()!);
-        this.hasChanges.set(false);
-        alert('Script compiled and updated in memory! Offsets have been smartly relocated.');
+        try {
+            const saved = await this.scriptService.saveScriptChanges(this.scriptData()!);
+            if (!saved) throw new Error('The script service rejected the write.');
+            this.hasChanges.set(false);
+            this.editorService.clearDirty('scripts', this.scriptData()!.mapId);
+            this.editorService.notify('success', 'Script compiled and saved to memory.');
+        } catch (error) {
+            this.editorService.notify('error', `Failed to save script: ${(error as Error).message}`);
+        }
     }
     
     // --- Drag & Drop ---
@@ -443,8 +450,15 @@ export class ScriptCodeViewComponent {
         const data = this.scriptData();
         if (data) {
             this.scriptService.moveInstruction(data, draggedUid, targetInst.uid, dropPos);
-            this.hasChanges.set(true);
+            this.markDirty();
             this.dataChanged.emit();
         }
+    }
+
+    private markDirty() {
+        const data = this.scriptData();
+        if (!data) return;
+        this.hasChanges.set(true);
+        this.editorService.markDirty('scripts', data.mapId);
     }
 }

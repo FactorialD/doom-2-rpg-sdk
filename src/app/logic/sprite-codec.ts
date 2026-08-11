@@ -5,7 +5,7 @@ export class SpriteCodec {
 
   // Decompresses byte indices (not RGBA)
   static decompressIndices(buffer: Uint8Array, output: Uint8Array, info: TextureInfo) {
-      if (!info.bounds) return;
+      if (!info.bounds || buffer.length < 2) return;
       
       const { minX, maxX, minY, maxY } = info.bounds;
       const len = buffer.length;
@@ -14,6 +14,7 @@ export class SpriteCodec {
       const dirSize = (buffer[len - 1] << 8) | buffer[len - 2];
       
       const dirStart = len - dirSize - 2;
+      if (dirStart < 0) return;
       const metaStart = dirStart + ((maxX - minX + 1) >> 1); 
       
       let pixelPtr = 0;
@@ -23,17 +24,20 @@ export class SpriteCodec {
       
       for (let col = 0; col < cols; col++) {
           const nibbleByte = buffer[dirStart + (col >> 1)];
+          if (nibbleByte === undefined) return;
           const numSpans = (col & 1) ? (nibbleByte >> 4) : (nibbleByte & 0x0F);
           
           const targetX = minX + col;
           
           for (let s = 0; s < numSpans; s++) {
+              if (metaPtr + 1 >= len - 2) return;
               const topY = buffer[metaPtr++];
               const height = buffer[metaPtr++];
               
               for (let y = 0; y < height; y++) {
                   const targetY = topY + y;
                   if (targetX < info.width && targetY < info.height) {
+                      if (pixelPtr >= dirStart) return;
                       output[targetY * info.width + targetX] = buffer[pixelPtr++];
                   } else {
                       pixelPtr++;
@@ -78,6 +82,23 @@ export class SpriteCodec {
           let spanCount = 0;
           let currentSpanY = -1;
           let currentSpanPixels: number[] = [];
+
+          const closeSpan = () => {
+              if (currentSpanY === -1 || currentSpanPixels.length === 0) return;
+              // Span metadata stores both coordinates in bytes. Split a tall
+              // run rather than wrapping a length of 256 to zero.
+              let offset = 0;
+              while (offset < currentSpanPixels.length) {
+                  if (spanCount >= 15) {
+                      throw new RangeError(`Column ${x} needs more than 15 sprite spans`);
+                  }
+                  const length = Math.min(0xFF, currentSpanPixels.length - offset);
+                  spanMetaData.push(currentSpanY + offset, length);
+                  pixelData.push(...currentSpanPixels.slice(offset, offset + length));
+                  spanCount++;
+                  offset += length;
+              }
+          };
           
           for (let y = 0; y < height; y++) { 
               const color = pixels[y * width + x];
@@ -90,23 +111,15 @@ export class SpriteCodec {
               } else {
                   if (currentSpanY !== -1) {
                       // End span
-                      if (spanCount < 15) { 
-                          spanMetaData.push(currentSpanY);
-                          spanMetaData.push(currentSpanPixels.length);
-                          pixelData.push(...currentSpanPixels);
-                          spanCount++;
-                      }
+                      closeSpan();
                       currentSpanY = -1;
                       currentSpanPixels = [];
                   }
               }
           }
           // Close trailing span
-          if (currentSpanY !== -1 && spanCount < 15) {
-               spanMetaData.push(currentSpanY);
-               spanMetaData.push(currentSpanPixels.length);
-               pixelData.push(...currentSpanPixels);
-               spanCount++;
+          if (currentSpanY !== -1) {
+               closeSpan();
           }
           
           columnSpanCounts.push(spanCount);

@@ -103,6 +103,7 @@ export class ScriptViewerComponent {
   }
 
   async onMapSelect(id: number) {
+      if (!this.editorService.confirmResourceChange('scripts', id)) return;
       this.selectedMapId.set(id);
       this.isLoading.set(true);
       this.error.set(null);

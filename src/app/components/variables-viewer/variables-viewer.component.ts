@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DoomFileService } from '../../services/doom-file.service';
 import { DoomScriptService, ItemReference } from '../../services/doom-script.service';
 import { EditorService } from '../../services/editor.service';
-import { getVariableName } from '../../services/doom-variables';
+import { getVariableMetadata } from '../../services/doom-variables';
 import { SidebarPanelComponent } from '../../shared/components/sidebar-panel/sidebar-panel.component';
 import { SearchInputComponent } from '../../shared/components/search-input/search-input.component';
 
@@ -12,6 +12,7 @@ interface VariableData {
     id: number;
     name: string;
     isSystem: boolean;
+    storage: string;
 }
 
 @Component({
@@ -78,6 +79,8 @@ interface VariableData {
                                 [class.text-blue-500]="!v.isSystem">
                                 {{ v.isSystem ? 'System Variable' : 'User Variable' }}
                              </span>
+                             <p class="mt-3 max-w-2xl text-xs text-neutral-500">The label is SDK reference metadata and is never written to the JAR. Values live in the 128-entry runtime array; only literal values in Java-confirmed <code>EV_SETSTATE</code> instructions can be saved here.</p>
+                             @if (saveMessage(); as message) { <p class="mt-2 text-xs text-emerald-400" role="status">{{ message }}</p> }
                          </div>
                      </div>
                      
@@ -112,6 +115,14 @@ interface VariableData {
                                                  <td class="p-2 font-mono text-neutral-500">0x{{ ref.instruction.offset.toString(16).toUpperCase().padStart(4,'0') }}</td>
                                                  <td class="p-2 text-white font-mono">{{ ref.instruction.readableDetails }}</td>
                                                  <td class="p-2">
+                                                     @if (ref.instruction.opcode === 6) {
+                                                         <div class="mb-2 flex gap-2">
+                                                             <input type="number" min="-32768" max="32767" step="1" [ngModel]="assignmentDraft(ref)" (ngModelChange)="setAssignmentDraft(ref, $event)" class="w-24 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono text-white" />
+                                                             <button (click)="saveAssignment(ref)" class="rounded bg-red-800 px-2 py-1 text-[10px] font-bold text-white hover:bg-red-700">Save value</button>
+                                                         </div>
+                                                     } @else {
+                                                         <div class="mb-2 text-[9px] text-neutral-600">Runtime read/write; no literal value to serialize</div>
+                                                     }
                                                      <button (click)="goToScript(ref)" class="px-2 py-1 bg-blue-900/30 hover:bg-blue-800 text-blue-400 hover:text-white rounded transition-colors text-[10px]">
                                                          Jump to Code
                                                      </button>
@@ -149,8 +160,8 @@ export class VariablesViewerComponent {
         const list: VariableData[] = [];
         for(let i=0; i<128; i++) {
             const isSystem = i <= 16;
-            const name = getVariableName(i);
-            list.push({ id: i, name, isSystem });
+            const metadata = getVariableMetadata(i);
+            list.push({ id: i, name: metadata.sdkName, isSystem, storage: metadata.storage });
         }
         return list;
     });
@@ -167,6 +178,8 @@ export class VariablesViewerComponent {
     selectedVariable = signal<VariableData | null>(null);
     references = signal<ItemReference[]>([]);
     loadingReferences = signal(false);
+    saveMessage = signal<string | null>(null);
+    private assignmentDrafts = new Map<string, number>();
 
     async selectVariable(v: VariableData) {
         this.selectedVariable.set(v);
@@ -187,5 +200,14 @@ export class VariablesViewerComponent {
     
     goToScript(ref: ItemReference) {
         this.editorService.goToScript(ref.mapId, ref.instruction.offset);
+    }
+
+    assignmentDraft(ref: ItemReference) { return this.assignmentDrafts.get(ref.instruction.uid) ?? Number(ref.instruction.params[1]); }
+    setAssignmentDraft(ref: ItemReference, raw: unknown) { this.assignmentDrafts.set(ref.instruction.uid, Number(raw)); }
+    async saveAssignment(ref: ItemReference) {
+        const value = this.assignmentDraft(ref);
+        if (!Number.isInteger(value) || value < -32768 || value > 32767) { this.saveMessage.set('Value must be an integer from -32768 to 32767.'); return; }
+        const saved = await this.scriptService.saveVariableAssignment(ref.mapId, ref.instruction.uid, value);
+        this.saveMessage.set(saved ? `Saved EV_SETSTATE in map ${ref.mapId}.` : 'This reference is not a writable EV_SETSTATE instruction.');
     }
 }
