@@ -139,7 +139,7 @@ export class TextureViewerComponent {
     siblings = signal<TextureInfo[]>([]);
 
     // Editing State
-    hasChanges = signal(false);
+    hasChanges = computed(() => this.editorService.isDirty('textures', this.selectedId() ?? undefined));
     localRawData: Uint8Array | null = null;
     
     selectedTexture = computed(() => {
@@ -184,11 +184,7 @@ export class TextureViewerComponent {
     }
 
     onTextureSelected(tex: TextureInfo) {
-        if (this.hasChanges()) {
-            if (!confirm('You have unsaved changes. Discard them?')) {
-                return;
-            }
-        }
+        if (!this.editorService.confirmResourceChange('textures', tex.id)) return;
         this.selectedId.set(tex.id);
         this.editorService.currentTextureId.set(tex.id);
         
@@ -196,7 +192,6 @@ export class TextureViewerComponent {
         this.isCompressed.set(this.textureService.isTextureCompressed(tex.id));
 
         // Reset state
-        this.hasChanges.set(false);
         this.localRawData = null;
         
         // Load Data
@@ -239,7 +234,7 @@ export class TextureViewerComponent {
     onPixelChange(event: {index: number, colorIndex: number}) {
         if (!this.localRawData) return;
         this.localRawData[event.index] = event.colorIndex;
-        this.hasChanges.set(true);
+        this.editorService.markDirty('textures', this.selectedId()!);
     }
     
     saveChanges() {
@@ -247,11 +242,11 @@ export class TextureViewerComponent {
         if (tex && this.localRawData && this.hasChanges()) {
             const success = this.textureService.saveTexture(tex.id, this.localRawData);
             if (success) {
-                this.hasChanges.set(false);
+                this.editorService.clearDirty('textures', tex.id);
                 this.saveCounter.update(v => v + 1); // Trigger refresh in list
-                alert('Texture saved successfully to memory!');
+                this.editorService.notify('success', 'Texture saved to memory.');
             } else {
-                alert('Failed to save texture.');
+                this.editorService.notify('error', 'Failed to save texture.');
             }
         }
     }

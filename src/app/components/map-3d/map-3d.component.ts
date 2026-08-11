@@ -286,6 +286,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
             
             // Trigger change detection for the inspector
             this.spritesList.set([...this.mapData.sprites]);
+            this.markMapDirty();
         }
     });
 
@@ -398,13 +399,14 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           const success = this.mapService.saveMap(this.selectedMapId(), this.mapData);
           
           if (success) {
-              alert(`Map ${this.selectedMapId()} saved! You can download the JAR now.`);
+              this.editorService.clearDirty('maps', this.selectedMapId());
+              this.editorService.notify('success', `Map ${this.selectedMapId()} saved to memory.`);
               this.loadMap(this.selectedMapId());
           } else {
-              alert('Failed to save map.');
+              this.editorService.notify('error', 'Failed to save map.');
           }
       } catch (e: any) {
-          alert('Error saving map: ' + e.message);
+          this.editorService.notify('error', 'Error saving map: ' + e.message);
           console.error(e);
       }
   }
@@ -419,6 +421,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       this.mapData.geometry.textureIds[polyIndex] = newGroupId;
       if (this.mapData.geometry.polygons?.[polyIndex]) this.mapData.geometry.polygons[polyIndex].textureId = newGroupId;
       this.renderer.loadMapData(this.mapData);
+      this.markMapDirty();
       
       if (this.selectedGeometry()?.polyIndex === polyIndex) {
           const old = this.selectedGeometry()!;
@@ -473,7 +476,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   }
 
   cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.renderer.clearGeometryPreview(); }
-  private pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)].slice(-50)); this.redoStack.set([]); }
+  private pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)].slice(-50)); this.redoStack.set([]); this.markMapDirty(); }
   undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.undoStack.set(stack); this.mapData.geometry = previous; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
   redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.redoStack.set(stack); this.mapData.geometry = next; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
   private restoreVertexHandles() { if (this.editMode() === 'vertex') this.renderer.showVertexHandles(this.mapData, this.selectedGeometry()?.polyIndex ?? null); }
@@ -555,6 +558,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       
       // Select the new entity
       this.selectEntity(this.mapData.sprites.length - 1, true);
+      this.markMapDirty();
   }
   
   swapSelectedEntity() {
@@ -625,6 +629,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           this.spritesList.set([...this.mapData.sprites]);
           this.renderer.loadMapData(this.mapData);
           this.selectEntity(finalId, true);
+          this.markMapDirty();
       } else {
           alert(`No unused ${targetType} sprite ID < 255 found to swap with.`);
           console.warn(`No unused ${targetType} sprite ID < 255 found to swap with.`);
@@ -642,6 +647,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       
       // Re-select the entity to update the inspector
       this.renderer.selectEntity(this.selectedEntityId(), false);
+      this.markMapDirty();
   }
 
   onTileEventsChanged(tileIndex: number) {
@@ -652,6 +658,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           ? this.mapData.heightMap[tileIndex] | 0x40
           : this.mapData.heightMap[tileIndex] & ~0x40;
       this.editorService.notifyScriptsChanged();
+      this.markMapDirty();
   }
   
   deleteSelectedEntity() {
@@ -677,6 +684,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       this.selectedEntityId.set(-1);
       this.renderer.selectEntity(-1, false);
       this.sidebarTab.set('entities'); // Switch to entities list
+      this.markMapDirty();
   }
   
   private processPendingSelection() {
@@ -697,6 +705,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   async loadMap(id: number) {
       if (this.isLoading() && this.selectedMapId() === id && this.mapData) return;
+      if (!this.editorService.confirmResourceChange('maps', id)) return;
       this.selectedMapId.set(id);
       if (!this.fileService.isLoaded()) return;
 
@@ -738,6 +747,10 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       } finally {
           this.isLoading.set(false);
       }
+  }
+
+  private markMapDirty() {
+      if (this.mapData) this.editorService.markDirty('maps', this.selectedMapId());
   }
 
   private decodeFlags(flags: number): string[] {

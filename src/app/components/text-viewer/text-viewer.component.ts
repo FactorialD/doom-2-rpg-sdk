@@ -49,7 +49,7 @@ import { SidebarPanelComponent } from "../../shared/components/sidebar-panel/sid
                 >
                 <select
                   [ngModel]="selectedLang()"
-                  (ngModelChange)="selectedLang.set(+$event)"
+                  (ngModelChange)="selectLanguage(+$event)"
                   class="w-full bg-neutral-800 text-white text-xs p-2 rounded border border-neutral-700 outline-none focus:border-red-600"
                 >
                   <option [value]="0">English</option>
@@ -66,7 +66,7 @@ import { SidebarPanelComponent } from "../../shared/components/sidebar-panel/sid
                 >
                 <select
                   [ngModel]="selectedEncoding()"
-                  (ngModelChange)="selectedEncoding.set($event)"
+                  (ngModelChange)="selectEncoding($event)"
                   class="w-full bg-neutral-800 text-white text-xs p-2 rounded border border-neutral-700 outline-none focus:border-red-600"
                 >
                   <option value="windows-1252">Western (Windows-1252)</option>
@@ -84,7 +84,7 @@ import { SidebarPanelComponent } from "../../shared/components/sidebar-panel/sid
                 >
                 <select
                   [ngModel]="selectedChunk()"
-                  (ngModelChange)="selectedChunk.set(+$event)"
+                  (ngModelChange)="selectChunk(+$event)"
                   class="w-full bg-neutral-800 text-white text-xs p-2 rounded border border-neutral-700 outline-none focus:border-red-600"
                 >
                   @for (chunk of chunks; track chunk.id) {
@@ -129,6 +129,7 @@ import { SidebarPanelComponent } from "../../shared/components/sidebar-panel/sid
             @if (hasIndex()) {
               <app-strings-list
                 [strings]="currentStrings()"
+                [resourceId]="textResourceId()"
                 [scrollToId]="targetStringId"
                 (onSave)="onSaveCurrentChunk()"
               />
@@ -159,6 +160,7 @@ export class TextViewerComponent {
   selectedLang = signal(0);
   selectedChunk = signal(0);
   selectedEncoding = signal("windows-1252");
+  textResourceId = computed(() => `${this.selectedLang()}:${this.selectedChunk()}`);
 
   // For auto-scrolling
   targetStringId: number = -1;
@@ -208,6 +210,10 @@ export class TextViewerComponent {
     effect(() => {
       const req = this.editorService.requestedTextNavigation();
       if (req) {
+        if (!this.editorService.confirmResourceChange('strings', `${this.selectedLang()}:${req.chunkId}`)) {
+          this.editorService.requestedTextNavigation.set(null);
+          return;
+        }
         this.activeSubTab.set("strings");
         this.selectedChunk.set(req.chunkId);
         // Trigger scroll
@@ -236,14 +242,29 @@ export class TextViewerComponent {
     );
 
     if (result.success === true) {
-      alert("Strings saved to memory! You can now download the modded JAR.");
+      this.editorService.clearDirty('strings', this.textResourceId());
+      this.editorService.notify('success', 'Strings saved to memory.');
     } else if (result.success === false && result.error) {
       const error = result.error;
-      alert(
+      this.editorService.notify('error',
         `Cannot encode line ${error.line}, position ${error.position}: "${error.character}" is not representable in ${error.encoding}.`,
       );
     } else {
-      alert("Failed to save strings. Check console.");
+      this.editorService.notify('error', 'Failed to save strings. Check console.');
     }
+  }
+
+  selectLanguage(id: number) {
+    if (this.editorService.confirmResourceChange('strings', `${id}:${this.selectedChunk()}`)) this.selectedLang.set(id);
+  }
+
+  selectChunk(id: number) {
+    if (this.editorService.confirmResourceChange('strings', `${this.selectedLang()}:${id}`)) this.selectedChunk.set(id);
+  }
+
+  selectEncoding(encoding: string) {
+    if (this.editorService.isDirty('strings') && !confirm('Changing encoding will reload this edited text. Discard unsaved changes?')) return;
+    this.editorService.clearDirty('strings');
+    this.selectedEncoding.set(encoding);
   }
 }

@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomTextService, TextEntry } from '../../../services/doom-text.service';
 import { DoomFileService } from '../../../services/doom-file.service';
+import { EditorService } from '../../../services/editor.service';
 
 @Component({
   selector: 'app-strings-list',
@@ -101,14 +102,16 @@ import { DoomFileService } from '../../../services/doom-file.service';
 export class StringsListComponent implements OnChanges {
     @Input() strings: TextEntry[] = [];
     @Input() scrollToId: number = -1;
+    @Input() resourceId = '';
     onSave = output<void>(); 
     
     textService = inject(DoomTextService);
     fileService = inject(DoomFileService);
+    editorService = inject(EditorService);
     
     fontImage: HTMLImageElement | null = null;
     fontLoaded = false;
-    hasChanges = false;
+    get hasChanges() { return this.editorService.isDirty('strings', this.resourceId); }
     
     // Track newly added IDs to highlight them
     newIds = new Set<number>();
@@ -124,7 +127,6 @@ export class StringsListComponent implements OnChanges {
 
     ngOnChanges(changes: SimpleChanges): void {
         if (changes['strings']) {
-            this.hasChanges = false; 
             this.newIds.clear();
             setTimeout(() => this.renderAll(), 0);
         }
@@ -148,7 +150,7 @@ export class StringsListComponent implements OnChanges {
     }
 
     onTextChange(entry: TextEntry) {
-        this.hasChanges = true;
+        this.editorService.markDirty('strings', this.resourceId);
         entry.renderKey = entry.raw; 
         setTimeout(() => this.renderSingle(entry), 0);
     }
@@ -164,7 +166,7 @@ export class StringsListComponent implements OnChanges {
         
         this.strings.push(newEntry);
         this.newIds.add(newId);
-        this.hasChanges = true;
+        this.editorService.markDirty('strings', this.resourceId);
         
         setTimeout(() => {
             this.renderSingle(newEntry);
@@ -178,8 +180,6 @@ export class StringsListComponent implements OnChanges {
 
     saveChanges() {
         this.onSave.emit();
-        this.hasChanges = false;
-        this.newIds.clear();
     }
 
     loadFont(src: string) {
