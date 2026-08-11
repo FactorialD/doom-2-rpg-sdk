@@ -29,33 +29,39 @@ export class ScriptCompilerService {
         // --- Pass 1: Sizing & Offset Calculation ---
         let currentOffset = 0;
         const offsetMap = new Map<string, number>();
+        const staged = new Map<string, { offset: number; size: number; params: number[] }>();
 
         for (const inst of instructions) {
-            inst.offset = currentOffset;
             offsetMap.set(inst.uid, currentOffset);
-            
-            // Recalculate size based on current params
-            inst.size = calculateInstructionSize(inst);
-            currentOffset += inst.size;
+            try {
+                const params = [...inst.params];
+                const size = calculateInstructionSize({ ...inst, params });
+                staged.set(inst.uid, { offset: currentOffset, size, params });
+                currentOffset += size;
+            } catch (error) {
+                errors.push(error instanceof Error ? error.message : String(error));
+            }
         }
 
         // --- Pass 2: Code Generation using BinaryWriter ---
         const writer = new BinaryWriter(currentOffset);
 
         for (const inst of instructions) {
+            const state = staged.get(inst.uid);
+            if (!state) continue;
             const relocation = SCRIPT_OPCODE_SCHEMA[inst.opcode]?.relocations?.find(r =>
                 r.reference === 'instruction-relative' || r.reference === 'instruction-absolute');
-            if (relocation && inst.jumpTargetUid) {
-                const targetOffset = offsetMap.get(inst.jumpTargetUid);
-                const index = relocation.argumentIndex === 'last' ? inst.params.length - 1 : relocation.argumentIndex;
+            if (relocation) {
+                const targetOffset = inst.jumpTargetUid ? offsetMap.get(inst.jumpTargetUid) : undefined;
+                const index = relocation.argumentIndex === 'last' ? state.params.length - 1 : relocation.argumentIndex;
                 if (targetOffset === undefined) {
-                    if (inst.params[index] !== relocation.allowMissingValue) errors.push(`Broken Link: Instruction at ${inst.offset} points to missing target.`);
+                    if (state.params[index] !== relocation.allowMissingValue) errors.push(`Broken Link: Instruction at ${state.offset} points to missing target.`);
                 } else {
-                    const value = relocation.reference === 'instruction-relative' ? targetOffset - (inst.offset + inst.size) : targetOffset;
-                    inst.params[index] = value;
+                    const value = relocation.reference === 'instruction-relative' ? targetOffset - (state.offset + state.size) : targetOffset;
+                    state.params[index] = value;
                 }
             }
-            try { encodeInstruction(writer, inst, { offset: inst.offset }); }
+            try { encodeInstruction(writer, { ...inst, params: state.params }, { offset: state.offset }); }
             catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
         }
 
@@ -69,7 +75,7 @@ export class ScriptCompilerService {
                 const off = offsetMap.get(targetUid);
                 if (off !== undefined) {
                     newStaticFuncs[i] = off;
-                }
+                } else errors.push(`Static function ${i} points to missing target UID ${targetUid}.`);
             }
         }
 
@@ -108,6 +114,15 @@ export class ScriptCompilerService {
             }
         }
         
+        if (errors.length === 0) {
+            for (const inst of instructions) {
+                const state = staged.get(inst.uid)!;
+                inst.offset = state.offset;
+                inst.size = state.size;
+                inst.params = state.params;
+            }
+        }
+
         return {
             binary: writer.getData(),
             newStaticFuncs,

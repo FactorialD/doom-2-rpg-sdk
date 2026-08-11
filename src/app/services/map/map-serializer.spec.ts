@@ -78,6 +78,8 @@ test('wall add and delete update leaf indices and round trip back without touchi
     assert.equal(geometry.polygons.length, 0);
     assert.equal(geometry.sourceVertices.length, 0);
     assert.deepEqual(unrelated, before);
+});
+
 test('map scripts round trip multiple events on a tile after flag edits and deletion', () => {
     const original = syntheticEmptyMap();
     const serializer = Object.create(MapSerializer.prototype) as MapSerializer;
@@ -89,7 +91,10 @@ test('map scripts round trip multiple events on a tile after flag edits and dele
     const handler = { uid: 'handler', opcode: 2, params: [], offset: 0, size: 1 } as any;
     const map = {
         header: { spawnIndex: 0, spawnDir: 0, numPolys: 0, numVerts: 0, numSprites: 0 },
-        geometry: { textureIds: new Uint16Array(), flags: new Uint8Array() }, sprites: [],
+        geometry: {
+            normals: [], nodes: [], leaves: [], polygons: [], sourceVertices: [], lines: [], heightMap: new Int8Array(1024),
+            vertices: new Float32Array(), uvs: new Float32Array(), indices: [], textureIds: [], flags: [], polyVertexCounts: []
+        }, sprites: [],
         bspTree: { id: 0, isLeaf: true, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 } },
         heightMap: new Int8Array(1024), remainderOffset: original.length - 8,
         scripts: {
