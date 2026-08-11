@@ -39,3 +39,32 @@ test('RGB555 palettes round trip and references continue sharing their parent', 
     assert.deepEqual(reparsed.getPalette(0), service.getPalette(0));
     assert.strictEqual(reparsed.getPalette(1), reparsed.getPalette(0));
 });
+
+test('RGB555 quantization, palette resizing, and a multi-hop reference chain survive Save', async () => {
+    const palColors = new Int16Array(1024);
+    palColors[0] = 1;
+    palColors[1] = 0x8000;
+    palColors[2] = 0x8001;
+    const files = new Map([['newPalettes.bin', new Uint8Array([0, 0]).buffer]]);
+    const service = makeService(files, palColors);
+    await service.loadPalettes(palColors);
+
+    assert.strictEqual(service.getPalette(2), service.getPalette(0));
+    service.replacePaletteData(2, new Uint32Array([
+        0xff_03_07_0f, // B=3, G=7, R=15 quantizes down to 0, 0, 8
+        0xff_ff_80_f8
+    ]));
+    assert.equal(palColors[0], 2);
+    assert.equal(palColors[1] & 0xffff, 0x8000);
+    assert.equal(palColors[2] & 0xffff, 0x8001);
+    assert.deepEqual(service.getUsage(2), [0, 1, 2]);
+    assert.equal(service.savePalettes(), true);
+
+    const reparsed = makeService(files, palColors);
+    await reparsed.loadPalettes(palColors);
+    assert.equal(reparsed.getPalette(0)!.length, 2);
+    assert.deepEqual(Array.from(reparsed.getPalette(0)!), [0xff_00_00_08, 0xff_ff_84_ff]);
+    assert.strictEqual(reparsed.getPalette(1), reparsed.getPalette(0));
+    assert.strictEqual(reparsed.getPalette(2), reparsed.getPalette(0));
+    assert.equal(reparsed.getAllPalettes()[2].parentId, 1, 'the serialized chain is not flattened');
+});

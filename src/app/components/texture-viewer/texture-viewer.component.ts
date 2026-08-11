@@ -31,6 +31,14 @@ import { TextureThumbnailComponent } from './texture-thumbnail/texture-thumbnail
             <div class="flex h-full">
                 <!-- Left: Editor Canvas -->
                 <div class="flex-1 flex flex-col min-w-0 border-r border-neutral-800">
+                    @if (tex.isReference) {
+                        <div class="m-3 mb-0 rounded border border-amber-700/70 bg-amber-950/50 p-3 text-amber-100" role="status">
+                            <strong>Referenced texture:</strong> #{{ tex.id }} has no texels of its own.
+                            It displays the texels owned by root texture #{{ rootTextureId(tex) }} and cannot be saved as an independent texture.
+                            <button type="button" class="ml-2 rounded bg-amber-700 px-2 py-1 font-semibold text-white hover:bg-amber-600"
+                                (click)="goToRootTexture(tex)">Go to root texture</button>
+                        </div>
+                    }
                     <app-texture-canvas
                         [texture]="tex"
                         [zoom]="zoom()"
@@ -232,7 +240,7 @@ export class TextureViewerComponent {
     }
     
     onPixelChange(event: {index: number, colorIndex: number}) {
-        if (!this.localRawData) return;
+        if (!this.localRawData || !this.canEdit()) return;
         this.localRawData[event.index] = event.colorIndex;
         this.editorService.markDirty('textures', this.selectedId()!);
     }
@@ -249,5 +257,23 @@ export class TextureViewerComponent {
                 this.editorService.notify('error', 'Failed to save texture.');
             }
         }
+    }
+
+
+    rootTextureId(texture: TextureInfo): number {
+        const seen = new Set<number>();
+        let current = texture;
+        while (current.isReference && current.parentId !== undefined && !seen.has(current.id)) {
+            seen.add(current.id);
+            const parent = this.textureList().find(candidate => candidate.id === current.parentId);
+            if (!parent) break;
+            current = parent;
+        }
+        return current.id;
+    }
+
+    goToRootTexture(texture: TextureInfo) {
+        const root = this.textureList().find(candidate => candidate.id === this.rootTextureId(texture));
+        if (root) this.onTextureSelected(root);
     }
 }

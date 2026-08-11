@@ -68,7 +68,7 @@ export class TexturePaletteService {
         }
     }
     
-    // Second pass: Resolve references
+    // Second pass: retain the exact chain encoded in mediaPalColors.
     for (let i = 0; i < 1024; i++) {
         const rawVal = palColors[i] & 0xFFFF;
         const isReference = (rawVal & 0x8000) !== 0;
@@ -77,14 +77,29 @@ export class TexturePaletteService {
             const parentId = rawVal & 0x7FFF;
             this.paletteEntries[i].parentId = parentId;
             
-            if (this.uniquePalettes.has(parentId)) {
-                // Point to the SAME Uint32Array object so edits propagate
-                this.paletteEntries[i].colors = this.uniquePalettes.get(parentId)!;
-            } else {
-                console.warn(`Palette ${i} references missing parent ${parentId}`);
-            }
         }
     }
+
+    // Resolve chains without flattening their serialized parent IDs.
+    const states = new Uint8Array(1024);
+    const resolve = (id: number): Uint32Array | undefined => {
+        const entry = this.paletteEntries[id];
+        if (!entry) return undefined;
+        if (!entry.isReference) return entry.colors;
+        if (states[id] === 1 || states[id] === 3) return undefined;
+        if (states[id] === 2) return entry.colors;
+        states[id] = 1;
+        const colors = entry.parentId === undefined ? undefined : resolve(entry.parentId);
+        if (!colors) {
+            states[id] = 3;
+            console.warn(`Palette ${id} references an invalid parent chain`);
+            return undefined;
+        }
+        entry.colors = colors;
+        states[id] = 2;
+        return colors;
+    };
+    for (let i = 0; i < 1024; i++) resolve(i);
     
     this.isLoaded.set(true);
     this.bumpVersion();
@@ -100,18 +115,10 @@ export class TexturePaletteService {
   
   getUsage(paletteId: number): number[] {
       const users: number[] = [];
-      let rootId = paletteId;
-      if (this.paletteEntries[paletteId]?.isReference) {
-          rootId = this.paletteEntries[paletteId].parentId!;
-      }
+      const rootId = this.getRootId(paletteId);
 
       for(let i=0; i<this.paletteEntries.length; i++) {
-          const entry = this.paletteEntries[i];
-          if (!entry.isReference && entry.id === rootId) {
-              users.push(i);
-          } else if (entry.isReference && entry.parentId === rootId) {
-              users.push(i);
-          }
+          if (this.getRootId(i) === rootId) users.push(i);
       }
       return users;
   }
@@ -154,15 +161,12 @@ export class TexturePaletteService {
   }
 
   replacePaletteData(id: number, newColors: Uint32Array) {
-      let rootId = id;
-      if (this.paletteEntries[id].isReference) {
-          rootId = this.paletteEntries[id].parentId!;
-      }
+      const rootId = this.getRootId(id);
 
       this.uniquePalettes.set(rootId, newColors);
       
       for(const entry of this.paletteEntries) {
-          if (entry.id === rootId || (entry.isReference && entry.parentId === rootId)) {
+          if (this.getRootId(entry.id) === rootId) {
               entry.colors = newColors;
           }
       }
@@ -206,5 +210,15 @@ export class TexturePaletteService {
   
   private bumpVersion() {
       this.version.update(v => v + 1);
+  }
+
+  private getRootId(id: number): number {
+      const seen = new Set<number>();
+      let current = id;
+      while (this.paletteEntries[current]?.isReference && !seen.has(current)) {
+          seen.add(current);
+          current = this.paletteEntries[current].parentId!;
+      }
+      return current;
   }
 }
