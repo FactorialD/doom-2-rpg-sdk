@@ -1,5 +1,5 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ToolbarComponent } from './app/components/toolbar/toolbar.component';
 import { Map3DComponent } from './app/components/map-3d/map-3d.component';
@@ -21,6 +21,14 @@ import { EditorService } from './app/services/editor.service';
       
       <!-- Top Toolbar -->
       <app-toolbar class="flex-none z-10" />
+      @if (service.message(); as message) {
+        <div role="status" class="fixed right-4 top-14 z-50 max-w-md rounded border px-4 py-2 text-sm shadow-xl"
+          [class.bg-green-950]="message.type === 'success'" [class.border-green-700]="message.type === 'success'"
+          [class.bg-red-950]="message.type === 'error'" [class.border-red-700]="message.type === 'error'">
+          {{ message.text }}
+          <button class="ml-3 text-neutral-300" (click)="service.message.set(null)" aria-label="Dismiss message">×</button>
+        </div>
+      }
 
       <!-- Main Workspace -->
       <main class="flex-1 min-h-0 overflow-hidden relative">
@@ -65,4 +73,11 @@ import { EditorService } from './app/services/editor.service';
 })
 export class AppComponent {
     service = inject(EditorService);
+
+    @HostListener('window:beforeunload', ['$event'])
+    onBeforeUnload(event: BeforeUnloadEvent) {
+      if (!this.service.hasUnsavedChanges()) return;
+      event.preventDefault();
+      event.returnValue = '';
+    }
 }
