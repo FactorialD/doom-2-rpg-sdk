@@ -70,7 +70,7 @@ export class MapSerializer {
             // Update script indices based on current sprite order
             const success = this.scriptService.updateScriptIndices(this.mapData.scripts, this.sortedSprites);
             if (!success) {
-                console.warn("MapSerializer: Some script entity references were broken.");
+                throw new Error("Map serialization aborted: an entity UUID is missing or its sprite index does not fit the script operand.");
             }
 
             // Compile scripts

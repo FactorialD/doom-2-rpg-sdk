@@ -22,6 +22,8 @@ import { DoomGeometryService, MapGeometry, MapVertexRecord } from '../../service
 import { PolyFlag } from '../../core/constants/geometry';
 import { resolveDraftPoint, validateDraftLeaf, wallAxisFromEndpoints } from '../../services/map/map-drawing';
 
+interface MapEditorSnapshot { geometry: MapGeometry; sprites: MapSprite[]; scripts: ScriptData | null; }
+
 @Component({
   selector: 'app-map-3d',
   standalone: true,
@@ -128,7 +130,7 @@ import { resolveDraftPoint, validateDraftLeaf, wallAxisFromEndpoints } from '../
                     (setTextureForPoly)="setTextureForSelectedPoly($event.texId)"
                     (jumpToScript)="onJumpToScript($event)"
                     (eventsChanged)="onTileEventsChanged($event)"
-                    (entityUpdated)="onEntityUpdated()"
+                    (entityChanging)="pushUndo()" (entityUpdated)="onEntityUpdated()"
                     (deleteEntity)="deleteSelectedEntity()"
                     (swapEntityId)="swapSelectedEntity()"
                   />
@@ -162,8 +164,8 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   sidebarTab = signal<'inspector' | 'bsp' | 'entities'>('inspector');
   editMode = signal<EditMode>('select');
   draftPoints = signal<THREE.Vector3[]>([]);
-  undoStack = signal<MapGeometry[]>([]);
-  redoStack = signal<MapGeometry[]>([]);
+  undoStack = signal<MapEditorSnapshot[]>([]);
+  redoStack = signal<MapEditorSnapshot[]>([]);
   
   selectedEntityId = signal<number>(-1);
   selectedGeometry = signal<GeometrySelection | null>(null);
@@ -196,7 +198,8 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           raw: sprite,
           texture: textureInfo,
           entityDef: def,
-          flagsDecoded: this.decodeFlags(sprite.flags)
+          flagsDecoded: this.decodeFlags(sprite.flags),
+          floorHeight: this.coordinateService.getFloorHeight(this.mapData, sprite.x, sprite.z)
       };
   });
 
@@ -252,6 +255,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
         if (!this.mapData) return;
         const sprite = this.mapData.sprites[id];
         if (sprite) {
+            this.pushUndo();
             // Convert world space back to game space
             // X and Z are multiples of 8 (128 world units)
             const byteX = Math.round(position.x / 128.0);
@@ -476,13 +480,17 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   }
 
   cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.renderer.clearGeometryPreview(); }
-  private pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)].slice(-50)); this.redoStack.set([]); this.markMapDirty(); }
-  undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.undoStack.set(stack); this.mapData.geometry = previous; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
-  redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.geometryService.cloneEditable(this.mapData!.geometry)]); this.redoStack.set(stack); this.mapData.geometry = next; this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
+  private snapshot(): MapEditorSnapshot { return { geometry: this.geometryService.cloneEditable(this.mapData!.geometry), sprites: structuredClone(this.mapData!.sprites), scripts: this.currentScriptData() ? structuredClone(this.currentScriptData()!) : null }; }
+  pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.snapshot()].slice(-50)); this.redoStack.set([]); }
+  private restoreSnapshot(value: MapEditorSnapshot) { if (!this.mapData) return; this.mapData.geometry = value.geometry; this.mapData.sprites = value.sprites; this.mapData.scripts = value.scripts ?? undefined; this.currentScriptData.set(value.scripts); this.spritesList.set([...value.sprites]); this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
+  undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.snapshot()]); this.undoStack.set(stack); this.restoreSnapshot(previous); }
+  redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.snapshot()]); this.redoStack.set(stack); this.restoreSnapshot(next); }
   private restoreVertexHandles() { if (this.editMode() === 'vertex') this.renderer.showVertexHandles(this.mapData, this.selectedGeometry()?.polyIndex ?? null); }
 
-  @HostListener('window:keydown.delete')
-  deleteSelectedPolygon() {
+  @HostListener('window:keydown.delete', ['$event'])
+  deleteSelectedPolygon(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (this.editorService.activeTab() !== 'map' || this.selectedEntityId() !== -1 || !!target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       const index = this.selectedGeometry()?.polyIndex;
       if (!this.mapData || index === undefined) return;
       this.pushUndo();
@@ -548,6 +556,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           uuid: globalThis.crypto?.randomUUID?.() ?? `entity-${Date.now()}-${this.mapData.sprites.length}`
       };
       
+      this.pushUndo();
       // Add to map data
       newSprite.flatIndex = this.mapData.sprites.length;
       this.mapData.sprites.push(newSprite);
@@ -565,6 +574,13 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       if (!this.mapData) return;
       const id = this.selectedEntityId();
       if (id === -1 || id <= 255) return; // Already safe or nothing selected
+      const scripts = this.currentScriptData();
+      const dependencies = scripts ? this.scriptService.getEntityReferences(scripts, this.mapData.sprites[id].uuid) : [];
+      if (dependencies.some(reference => !reference.relocatable)) {
+          alert(`Entity order cannot change because these references cannot be relocated safely:\n${dependencies.map(reference => reference.label).join('\n')}`);
+          return;
+      }
+      this.pushUndo();
       
       // Get the UUID before sorting so we don't lose track of our sprite
       const targetUuid = this.mapData.sprites[id].uuid;
@@ -583,7 +599,6 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       const targetSprite = this.mapData.sprites[newId];
       const targetType = this.coordinateService.analyzeSpriteType(this.mapData, targetSprite).type;
       
-      const scripts = this.currentScriptData();
       const usedIds = new Set<number>();
       
       // Find used IDs
@@ -622,7 +637,11 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           
           // Update scripts with new indices
           if (scripts) {
-              this.scriptService.updateScriptIndices(scripts, this.mapData.sprites);
+              if (!this.scriptService.updateScriptIndices(scripts, this.mapData.sprites)) {
+                  this.undoGeometry();
+                  alert('Entity order was not changed because a script operand cannot represent the new sprite ID.');
+                  return;
+              }
           }
           
           // Update UI
@@ -666,14 +685,21 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       const id = this.selectedEntityId();
       if (id === -1) return;
       
+      const scripts = this.currentScriptData();
+      const dependencies = scripts ? this.scriptService.getEntityReferences(scripts, this.mapData.sprites[id].uuid) : [];
+      if (dependencies.length) { alert(`Entity cannot be deleted while scripts reference it:\n${dependencies.map(d => d.label).join('\n')}`); return; }
+      this.pushUndo();
       // Remove from array
       this.mapData.sprites.splice(id, 1);
       this.mapData.sprites.forEach((s, i) => s.flatIndex = i);
       
       // Update scripts with new indices
-      const scripts = this.currentScriptData();
       if (scripts) {
-          this.scriptService.updateScriptIndices(scripts, this.mapData.sprites);
+          if (!this.scriptService.updateScriptIndices(scripts, this.mapData.sprites)) {
+              this.undoGeometry();
+              alert('Entity was not deleted because the remaining script references could not be relocated.');
+              return;
+          }
       }
       
       // Update UI

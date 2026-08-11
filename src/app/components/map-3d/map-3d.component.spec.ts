@@ -73,3 +73,13 @@ test('Map3D wires toolbar geometry operations, selection, and history', () => {
     assert.equal(component.geometry.length, 1);
     assert.equal(component.undoStack.length, 1);
 });
+
+test('entity edits use atomic history and Delete ignores inspector input', () => {
+    const source = readFileSync(new URL('./map-3d.component.ts', import.meta.url), 'utf8');
+    assert.match(source, /interface MapEditorSnapshot \{ geometry: MapGeometry; sprites: MapSprite\[\]; scripts: ScriptData \| null; \}/);
+    assert.match(source, /this\.pushUndo\(\);\s*\/\/ Add to map data/);
+    assert.match(source, /getEntityReferences\(scripts, this\.mapData\.sprites\[id\]\.uuid\)/);
+    assert.match(source, /target\?\.closest\('input, textarea, select, \[contenteditable="true"\]'\)/);
+    assert.match(source, /this\.editorService\.activeTab\(\) !== 'map'/);
+    assert.match(source, /this\.selectedEntityId\(\) !== -1/);
+});

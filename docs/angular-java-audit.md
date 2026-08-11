@@ -33,9 +33,9 @@ ZIP/JAR bytes remain identical.
 - the application completes a production build with zoneless Angular;
 - an original-layout Doom II RPG J2ME JAR can be loaded into the in-memory file
   system and repacked without intentionally dropping file entries;
-- maps, scripts, textures, palettes, strings, item definitions, and supported
-  sound resources expose read/save paths; map entities remain read-only and
-  variable editing is limited to script-backed literal assignments;
+- maps, scripts, textures, palettes, strings, and map entities expose read and
+  save paths; entities support creation, type/property edits, movement and
+  deletion, while reference-sensitive reorder/ID operations remain experimental;
 - script size changes relocate jumps, function offsets, and tile-event references
   through the shared opcode schema;
 - texture and palette writers retain reference semantics, RGB555 storage, and the

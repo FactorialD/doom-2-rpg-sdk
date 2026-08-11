@@ -104,8 +104,8 @@ import { SpriteFlag } from '../../../core/constants/map-flags';
                      <label class="block text-[10px] text-neutral-400 mb-1">Y (Height)</label>
                      <input 
                         type="number" 
-                        [ngModel]="info.raw.z" 
-                        (ngModelChange)="updateProperty('z', $event)"
+                        [ngModel]="info.raw.y"
+                        (ngModelChange)="updateProperty('y', $event)"
                         class="w-full bg-black border border-neutral-700 text-white px-1 text-xs h-6 focus:border-red-600 outline-none" 
                      />
                  </div>
@@ -113,8 +113,8 @@ import { SpriteFlag } from '../../../core/constants/map-flags';
                      <label class="block text-[10px] text-neutral-400 mb-1">Z (Depth)</label>
                      <input 
                         type="number" 
-                        [ngModel]="info.raw.y" 
-                        (ngModelChange)="updateProperty('y', $event)"
+                        [ngModel]="info.raw.z"
+                        (ngModelChange)="updateProperty('z', $event)"
                         class="w-full bg-black border border-neutral-700 text-white px-1 text-xs h-6 focus:border-red-600 outline-none" 
                      />
                  </div>
@@ -156,6 +156,7 @@ import { SpriteFlag } from '../../../core/constants/map-flags';
 export class MapEntityPropertiesComponent implements OnDestroy {
     data = input<EntityDetails | null>(null);
     entityUpdated = output<void>();
+    entityChanging = output<void>();
     deleteEntity = output<void>();
     swapEntityId = output<void>();
     
@@ -173,6 +174,7 @@ export class MapEntityPropertiesComponent implements OnDestroy {
         ).subscribe(({prop, value, info}) => {
             const snapped = Math.round(value / 8) * 8;
             if ((info.raw as any)[prop] !== snapped) {
+                this.entityChanging.emit();
                 (info.raw as any)[prop] = snapped;
                 this.entityUpdated.emit();
             }
@@ -195,6 +197,7 @@ export class MapEntityPropertiesComponent implements OnDestroy {
         const resetsExtra = info.raw.extraInfo !== 0 && template.type !== 'z';
         const details = [resetFlags ? `flags 0x${resetFlags.toString(16)}` : '', resetsExtra ? `extra data ${info.raw.extraInfo}` : ''].filter(Boolean);
         if (details.length && !confirm(`This entity type is incompatible with ${details.join(' and ')}. These values will be reset. Continue?`)) return;
+        this.entityChanging.emit();
         info.raw.textureId = template.textureId;
         info.raw.type = template.type;
         info.raw.flags = template.flags & 0xffff;
@@ -206,20 +209,39 @@ export class MapEntityPropertiesComponent implements OnDestroy {
     updateProperty(prop: string, value: any) {
         const info = this.data();
         if (!info) return;
+        if (prop === 'type' && value !== 'normal' && value !== 'z') return;
         if (prop === 'type' && value === 'normal' && info.raw.extraInfo !== 0) {
             if (!confirm(`Changing to a normal sprite will reset extra data ${info.raw.extraInfo}. Continue?`)) return;
-            info.raw.extraInfo = 0;
         }
         
         // Convert to number where appropriate
         if (['textureId', 'flags', 'x', 'y', 'z', 'extraInfo'].includes(prop)) {
-            value = Number(value) || 0;
+            value = typeof value === 'number' ? value : Number(value);
+            if (!Number.isInteger(value)) return;
+            const range = this.numericRange(prop, info);
+            if (!range || value < range[0] || value > range[1]) return;
+            if (prop === 'textureId' && value === 256) return;
             if (prop === 'x' || prop === 'z') {
                 this.snapSubject.next({prop, value, info});
+                return;
             }
         }
-        
+        if ((info.raw as any)[prop] === value) return;
+        this.entityChanging.emit();
+        if (prop === 'type' && value === 'normal') info.raw.extraInfo = 0;
         (info.raw as any)[prop] = value;
         this.entityUpdated.emit();
+    }
+
+    numericRange(prop: string, info: EntityDetails): readonly [number, number] | null {
+        if (prop === 'x' || prop === 'z') return [0, 255 * 8];
+        // Texture groups are either a raw byte or WALL_OFFSET (257) plus a byte.
+        if (prop === 'textureId') return [0, 512];
+        if (prop === 'flags') return [0, 0xffff];
+        if (prop === 'extraInfo') return [0, 255];
+        if (prop === 'y') return info.raw.type === 'normal'
+            ? [info.floorHeight + 32, info.floorHeight + 32]
+            : [info.floorHeight - 32, info.floorHeight + 223];
+        return null;
     }
 }

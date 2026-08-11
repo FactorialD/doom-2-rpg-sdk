@@ -17,6 +17,7 @@ export interface EntityDetails {
     texture?: TextureInfo;
     entityDef?: EntityDef;
     flagsDecoded: string[];
+    floorHeight: number;
 }
 
 export interface GeometrySelection {
@@ -64,6 +65,7 @@ export type EditMode = 'select' | 'paint';
             
             <app-map-entity-properties 
                 [data]="info"
+                (entityChanging)="entityChanging.emit()"
                 (entityUpdated)="entityUpdated.emit()"
                 (deleteEntity)="deleteEntity.emit()"
                 (swapEntityId)="swapEntityId.emit()"
@@ -109,6 +111,7 @@ export class MapInspectorComponent {
     // Outputs
     setTextureForPoly = output<{polyIndex: number, texId: number}>();
     entityUpdated = output<void>();
+    entityChanging = output<void>();
     deleteEntity = output<void>();
     swapEntityId = output<void>();
     

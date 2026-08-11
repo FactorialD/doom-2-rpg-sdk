@@ -48,6 +48,8 @@ export interface ItemReference {
     instruction: ScriptInstruction;
 }
 
+export interface EntityScriptReference { label: string; instruction: ScriptInstruction; relocatable: boolean; }
+
 @Injectable({
   providedIn: 'root'
 })
@@ -166,13 +168,27 @@ export class DoomScriptService {
       }
   }
 
+  getEntityReferences(scriptData: ScriptData, uuid: string): EntityScriptReference[] {
+      return scriptData.instructions
+          .filter(instruction => instruction.referencedEntityUuid === uuid)
+          .map(instruction => ({ instruction,
+              relocatable: instruction.entityArgIndex !== undefined && !!SCRIPT_OPCODE_SCHEMA[instruction.opcode],
+              label: `${instruction.name} at 0x${instruction.offset.toString(16).toUpperCase()}` }));
+  }
+
   /**
    * Updates script instructions with new entity indices based on UUIDs.
    * Call this before saving scripts if sprites have been reordered or deleted.
    * Returns true if successful, false if there are broken references.
    */
   updateScriptIndices(scriptData: ScriptData, sprites: MapSprite[]): boolean {
-      let success = true;
+      const indices = new Map(sprites.map((sprite, index) => [sprite.uuid, index]));
+      for (const inst of scriptData.instructions) {
+          if (inst.referencedEntityId !== undefined && inst.referencedEntityUuid === undefined) return false;
+          if (inst.referencedEntityUuid === undefined) continue;
+          const newIndex = indices.get(inst.referencedEntityUuid);
+          if (newIndex === undefined || !this.entityOperandFits(inst, newIndex)) return false;
+      }
       for (const inst of scriptData.instructions) {
           if (inst.referencedEntityUuid !== undefined && inst.entityArgIndex !== undefined) {
               const newIndex = sprites.findIndex(s => s.uuid === inst.referencedEntityUuid);
@@ -198,11 +214,15 @@ export class DoomScriptService {
                       val &= ~(1023 << 22);
                       val |= (newIndex & 1023) << 22;
                       inst.params[0] = val;
-                  } else if (inst.opcode === 83 || inst.opcode === 51) { // EV_ASSIGN_LOOTSET, EV_AIGOAL
-                      // Special case: packed value in u16 (entId in bits 0-11, flags in bits 12-15)
+                  } else if (inst.opcode === 83) { // EV_ASSIGN_LOOTSET (14-bit entity)
                       let val = inst.params[0];
-                      val &= ~4095; // clear entId
-                      val |= (newIndex & 4095);
+                      val &= ~16383;
+                      val |= newIndex & 16383;
+                      inst.params[0] = val;
+                  } else if (inst.opcode === 51) { // EV_AIGOAL (12-bit entity)
+                      let val = inst.params[0];
+                      val &= ~4095;
+                      val |= newIndex & 4095;
                       inst.params[0] = val;
                   } else if (inst.opcode === 4) { // EV_LERPSPRITE
                       // Special case: packed value across b1, b2, b3
@@ -224,13 +244,19 @@ export class DoomScriptService {
                   } else {
                       inst.params[inst.entityArgIndex] = newIndex;
                   }
-              } else {
-                  console.error(`Script references deleted entity UUID: ${inst.referencedEntityUuid}`);
-                  success = false;
               }
           }
       }
-      return success;
+      scriptData.mapSprites = sprites;
+      return true;
+  }
+
+  private entityOperandFits(instruction: ScriptInstruction, index: number): boolean {
+      const argument = SCRIPT_OPCODE_SCHEMA[instruction.opcode]?.arguments.find(item => item.reference === 'entity-index');
+      if (!argument) return false;
+      if (argument.packedReference) return index >= argument.packedReference.min && index <= argument.packedReference.max;
+      const max = argument.kind === 'u8' ? 0xff : argument.kind === 'u16be' ? 0xffff : 0x7fffffff;
+      return Number.isInteger(index) && index >= 0 && index <= max;
   }
 
   async loadMapStrings(mapId: number) {
