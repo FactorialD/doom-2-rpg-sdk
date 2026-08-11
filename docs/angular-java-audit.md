@@ -17,7 +17,7 @@ ZIP/JAR bytes remain identical.
 | Area | Read | Edit | Write | Round trip | Automated checks |
 |---|---|---|---|---|---|
 | Maps | **Yes:** headers, geometry, polygons, BSP, heightmap, sprites, entities, and embedded scripts | **Limited:** surface textures and script data; entities remain read-only | **Yes:** map serializer writes the supported sections back to `mapXX.bin` | **Limited:** serializer preserves/copied sections, but there is no full fixture-based map comparison | **Limited:** buffer-bound and marker checks only; no complete map fixture |
-| Scripts | **Yes:** disassembly, functions, tile events, operands, and semantic references | **Yes:** edit, insert, delete, and reorder instructions with relocation | **Yes:** assembler replaces bytecode plus function and tile-event tables | **Limited:** opcode schema validates encoding, but no end-to-end script corpus is run automatically | **Limited:** schema self-validation during module initialization; no dedicated automated round-trip suite |
+| Scripts | **Yes:** disassembly, functions, tile events, operands, and semantic references | **Yes:** edit, insert, delete, and reorder instructions with relocation | **Yes:** assembler replaces bytecode plus function and tile-event tables | **Yes for the synthetic corpus:** every mutation is compiled and disassembled again, with logical jump, function, and tile-event targets checked | **Yes:** `npm test` includes positive mutation/relocation round trips, variable-length and entity operands, malformed bytecode, invalid targets, reserved opcodes, overflow, and atomic failed-save fixtures |
 | Textures | **Yes:** mappings, raw texels, Doom-column sprites, references, bounds, and split `texXX.bin` files | **Limited:** paint/import root textures; referenced textures are not directly editable | **Yes:** recompresses sprites, updates mappings, and rebuilds split texture files | **Limited:** reference resolution has a fixture, but encode/decode and complete-file equivalence are not covered | **Limited:** reference-chain/read behavior fixture exists, but uses a separate Bun test and is not in the npm test script |
 | Palettes | **Yes:** RGB555 root palettes and parent references | **Yes:** colors, image import, creation, and palette-size replacement | **Yes:** rebuilds `newPalettes.bin` and updates `newMappings.bin` | **Limited:** RGB555 is quantized and structural round trip has no automated corpus | **No:** production build compiles the path, but there is no palette-specific automated test |
 | Strings | **Yes:** indexed chunks in Windows-1251, Windows-1252, and UTF-8 | **Yes:** individual strings in the selected language/chunk | **Yes:** rebuilds the affected `stringsXX.bin` and `strings.idx` data | **Limited:** single-byte codecs are checked; full index/chunk and UTF-8 round trips are not | **Limited:** standalone Windows-1251/1252 codec checks exist, but are not exposed by a package script |
@@ -49,3 +49,22 @@ These criteria establish a testable beta boundary, not production readiness.
 Before a stable release, the **limited** and **no** cells above must be reassessed
 with legally redistributable synthetic fixtures and representative manual runtime
 checks.
+
+## Script-suite coverage snapshot
+
+Coverage was measured with Node's source coverage against the two script suites:
+
+```bash
+node --import ./tests/register-typescript.mjs --experimental-test-coverage --test \
+  src/app/services/scripts/script-compiler.service.spec.ts \
+  src/app/services/scripts/script-roundtrip.spec.ts
+```
+
+The 2026-08-10 run passed all 5 tests. For the script pipeline files exercised by
+the corpus, line coverage was **92.00%** for the assembler, **87.31%** for the
+compiler, **40.00%** for the disassembler, and **79.21%** for the instruction
+codec. Branch coverage was **55.00%**, **65.22%**, **21.05%**, and **68.25%**,
+respectively. The aggregate process figure (**35.23% lines**) includes transitively
+loaded Angular services and is therefore not presented as script-pipeline
+coverage. These are measured values, not a configured threshold; update this
+snapshot when the fixture corpus or Node coverage behavior changes.
