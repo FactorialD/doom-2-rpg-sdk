@@ -1,8 +1,9 @@
-import { Component, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScriptData } from '../../../services/doom-script.service';
 import { SidebarPanelComponent } from '../../../shared/components/sidebar-panel/sidebar-panel.component';
+import { ScriptEntryNameService } from '../../../services/scripts/script-entry-name.service';
 
 @Component({
   selector: 'app-script-sidebar',
@@ -45,17 +46,21 @@ import { SidebarPanelComponent } from '../../../shared/components/sidebar-panel/
               </div>
               
               <div class="mt-2 flex-1 flex flex-col min-h-0">
+                  <input [ngModel]="query()" (ngModelChange)="query.set($event)" placeholder="Name, Func #, offset or event"
+                    class="mb-2 w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs">
                   <div class="flex flex-col gap-1 overflow-y-auto custom-scrollbar flex-1">
                       @if (scriptData(); as data) {
                           @if (activeTab() === 'funcs') {
-                              @for (funcOffset of data.staticFuncOffsets; track $index) {
+                              @for (entry of functionEntries(); track entry.index) {
                                   <button 
-                                      (click)="scrollToOffset.emit(funcOffset)"
+                                      (click)="scrollToOffset.emit(entry.offset)"
                                       class="text-left px-2 py-1 text-xs hover:bg-neutral-800 rounded border border-transparent hover:border-neutral-700 font-mono transition-colors"
-                                      [class.text-amber-500]="funcOffset !== 65535"
-                                      [class.opacity-50]="funcOffset === 65535"
-                                      [disabled]="funcOffset === 65535">
-                                      Func #{{$index}}: {{ funcOffset === 65535 ? 'Unused' : '0x' + funcOffset.toString(16).toUpperCase() }}
+                                      [class.text-amber-500]="entry.offset !== 65535"
+                                      [class.opacity-50]="entry.offset === 65535"
+                                      [disabled]="entry.offset === 65535">
+                                      <span>{{ entry.name || 'Unnamed function' }}</span>
+                                      <span class="block text-[9px] text-neutral-500">Func #{{entry.index}} · {{ entry.offset === 65535 ? 'Unused' : '0x' + entry.offset.toString(16).toUpperCase() }}</span>
+                                      @if (entry.uid) { <input [ngModel]="entry.name" (click)="$event.stopPropagation()" (ngModelChange)="functionRenamed.emit({uid: entry.uid!, name: $event})" placeholder="Rename…" class="mt-1 w-full bg-neutral-950 border border-neutral-700 px-1 rounded"> }
                                   </button>
                               }
                           } @else {
@@ -100,9 +105,25 @@ export class ScriptSidebarComponent {
     scrollToOffset = output<number>();
     expandAll = output<void>();
     collapseAll = output<void>();
+    functionRenamed = output<{ uid: string; name: string }>();
     
     activeTab = signal<'funcs' | 'events'>('funcs');
+    query = signal('');
+    private names = inject(ScriptEntryNameService);
     Math = Math; // Template access
+
+    functionEntries = computed(() => {
+        this.names.revision();
+        const data = this.scriptData();
+        if (!data) return [];
+        const q = this.query().trim().toLocaleLowerCase();
+        return data.staticFuncOffsets.map((offset, index) => {
+            const uid = data.staticFuncs[index];
+            const name = uid ? this.names.get(data.mapId, uid) ?? '' : '';
+            const events = uid ? data.tileEventRefs.filter(event => event.targetUid === uid).map(event => `${event.tileIndex & 31},${event.tileIndex >> 5 & 31}`).join(' ') : '';
+            return { index, offset, uid, name, search: `${name} func #${index} ${index} 0x${offset.toString(16)} ${events}`.toLocaleLowerCase() };
+        }).filter(entry => !q || entry.search.includes(q));
+    });
 
     jumpToTileEvent(uid: string, data: ScriptData) {
         const inst = data.instructions.find(i => i.uid === uid);

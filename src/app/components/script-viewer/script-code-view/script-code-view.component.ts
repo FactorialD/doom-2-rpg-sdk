@@ -115,7 +115,7 @@ type InsertMode = 'before' | 'after' | null;
                                                 {{ padHex(inst.offset, 4) }}
                                                 
                                                 <!-- Action Buttons (Hover) -->
-                                                <div class="absolute inset-0 bg-neutral-800 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                                <div class="absolute inset-0 bg-neutral-800/95 flex items-center justify-center gap-1 opacity-70 hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
                                                     <button (click)="startInsert(inst.offset, 'before')" class="text-green-400 hover:text-white px-0.5" title="Insert Before">⬆</button>
                                                     <button (click)="startEdit(inst)" class="text-blue-400 hover:text-white px-0.5" title="Edit">✎</button>
                                                     <button (click)="startInsert(inst.offset, 'after')" class="text-green-400 hover:text-white px-0.5" title="Insert After">⬇</button>

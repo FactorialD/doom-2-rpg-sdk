@@ -7,6 +7,7 @@ import { DoomSoundService } from '../../services/doom-sound.service';
 import { EditorService } from '../../services/editor.service';
 import { ScriptSidebarComponent } from './script-sidebar/script-sidebar.component';
 import { ScriptCodeViewComponent, ScriptBlock } from './script-code-view/script-code-view.component';
+import { ScriptEntryNameService } from '../../services/scripts/script-entry-name.service';
 
 @Component({
   selector: 'app-script-viewer',
@@ -22,6 +23,7 @@ import { ScriptCodeViewComponent, ScriptBlock } from './script-code-view/script-
         [scriptData]="scriptData()"
         (mapSelected)="onMapSelect($event)"
         (scrollToOffset)="onScrollToOffset($event)"
+        (functionRenamed)="renameFunction($event)"
         (expandAll)="expandAll()"
         (collapseAll)="collapseAll()"
       />
@@ -49,6 +51,7 @@ export class ScriptViewerComponent {
   fileService = inject(DoomFileService);
   editorService = inject(EditorService);
   soundService = inject(DoomSoundService);
+  entryNames = inject(ScriptEntryNameService);
 
   fileLoaded = this.fileService.isLoaded;
   selectedMapId = signal(1);
@@ -148,37 +151,8 @@ export class ScriptViewerComponent {
           entryPointMap.get(offset)!.push(label);
       };
 
-      // 1. Map Static Functions using UIDs
-      for (const [key, uid] of Object.entries(data.staticFuncs)) {
-          const funcIdx = parseInt(key, 10);
-          const inst = data.instructions.find(i => i.uid === uid);
-          if (inst) {
-              addLabel(inst.offset, `Static Func ${funcIdx}`);
-          }
-      }
-
-      // 2. Map Tile Events
-      for (const ref of data.tileEventRefs) {
-          const inst = data.instructions.find(i => i.uid === ref.targetUid);
-          if (inst) {
-              const x = ref.tileIndex % 32;
-              const y = Math.floor(ref.tileIndex / 32);
-              
-              let triggerType = 'Exec';
-              if (ref.flags & 1) triggerType = 'Enter';
-              else if (ref.flags & 2) triggerType = 'Exit';
-              else if (ref.flags & 4) triggerType = 'Trigger';
-              else if (ref.flags & 8) triggerType = 'Sight';
-              
-              addLabel(inst.offset, `Tile (${x},${y}) ${triggerType}`);
-          }
-      }
-
-      // 3. Mark Init/Main
-      if (!entryPointMap.has(0)) {
-          addLabel(0, 'Init / Main');
-      } else {
-          addLabel(0, '(Init)');
+      for (const instruction of data.instructions) {
+          for (const label of this.entryNames.labels(data, instruction)) addLabel(instruction.offset, label);
       }
 
       let currentBlock: ScriptBlock | null = null;
@@ -206,6 +180,13 @@ export class ScriptViewerComponent {
       
       if (currentBlock) blocks.push(currentBlock);
       return blocks;
+  }
+
+  renameFunction(event: { uid: string; name: string }) {
+      const data = this.scriptData();
+      if (!data) return;
+      this.entryNames.rename(data.mapId, event.uid, event.name);
+      this.refreshBlocks();
   }
   
   onScrollToOffset(offset: number) {

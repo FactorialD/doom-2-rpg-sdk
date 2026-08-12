@@ -3,6 +3,7 @@ import { Component, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DoomScriptService, ScriptData, TileEventRef } from '../../../services/doom-script.service';
 import { EntityDetails } from './map-inspector.component';
+import { ScriptEntryNameService } from '../../../services/scripts/script-entry-name.service';
 
 @Component({
   selector: 'app-map-script-linker',
@@ -42,12 +43,12 @@ import { EntityDetails } from './map-inspector.component';
                     [ngModel]="ref.targetUid" (ngModelChange)="updateTarget(ref, $event)">
               <optgroup label="Static functions">
                 @for (entry of staticTargets(); track entry.index) {
-                  <option [ngValue]="entry.uid">Function {{ entry.index }} · 0x{{ entry.offset }}</option>
+                  <option [ngValue]="entry.uid">{{ entry.label }}</option>
                 }
               </optgroup>
               <optgroup label="Instructions">
                 @for (inst of scriptData()?.instructions ?? []; track inst.uid) {
-                  <option [ngValue]="inst.uid">0x{{ hex(inst.offset) }} · {{ inst.name }}</option>
+                  <option [ngValue]="inst.uid">{{ targetLabel(inst.uid) }}</option>
                 }
               </optgroup>
             </select>
@@ -72,6 +73,7 @@ import { EntityDetails } from './map-inspector.component';
 })
 export class MapScriptLinkerComponent {
   private scriptService = inject(DoomScriptService);
+  private entryNames = inject(ScriptEntryNameService);
 
   data = input<EntityDetails | null>(null);
   scriptData = input<ScriptData | null>(null);
@@ -96,12 +98,12 @@ export class MapScriptLinkerComponent {
     return this.scriptData()?.tileEventRefs.filter(ref => ref.tileIndex === tileIndex) ?? [];
   }
 
-  staticTargets(): Array<{ index: number; uid: string; offset: string }> {
+  staticTargets(): Array<{ index: number; uid: string; offset: string; label: string }> {
     const data = this.scriptData();
     if (!data) return [];
     return Object.entries(data.staticFuncs).flatMap(([index, uid]) => {
       const inst = data.instructions.find(candidate => candidate.uid === uid);
-      return inst ? [{ index: Number(index), uid, offset: this.hex(inst.offset) }] : [];
+      return inst ? [{ index: Number(index), uid, offset: this.hex(inst.offset), label: this.entryNames.display(data, inst) }] : [];
     });
   }
 
@@ -146,6 +148,12 @@ export class MapScriptLinkerComponent {
   getScriptOffsetHex(ref: TileEventRef): string {
     const inst = this.scriptData()?.instructions.find(candidate => candidate.uid === ref.targetUid);
     return inst ? this.hex(inst.offset) : '????';
+  }
+
+  targetLabel(uid: string): string {
+    const data = this.scriptData();
+    const instruction = data?.instructions.find(item => item.uid === uid);
+    return data && instruction ? this.entryNames.display(data, instruction) : 'Missing target';
   }
 
   hex(value: number): string { return value.toString(16).toUpperCase().padStart(4, '0'); }

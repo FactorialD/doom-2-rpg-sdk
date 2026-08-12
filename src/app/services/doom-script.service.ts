@@ -13,6 +13,7 @@ import { MapSprite } from './doom-map.service';
 import { DoomSoundService } from './doom-sound.service';
 import { SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
 import { encodeSetStateAssignment } from './doom-variables';
+import { ScriptEntryNameService } from './scripts/script-entry-name.service';
 
 export type { ScriptInstruction, ScriptFunctionTable, TileEventRef };
 
@@ -61,6 +62,7 @@ export class DoomScriptService {
   private soundService = inject(DoomSoundService);
   private disassembler = inject(ScriptDisassemblerService);
   private compiler = inject(ScriptCompilerService);
+  private entryNames = inject(ScriptEntryNameService);
 
   // Cache by Map ID
   private scriptCache = new Map<number, ScriptData>();
@@ -142,8 +144,7 @@ export class DoomScriptService {
               const targetOffset = descriptor.reference === 'instruction-relative' ? instruction.offset + instruction.size + value : value;
               const target = data.instructions.find(candidate => candidate.offset === targetOffset);
               if (!target) return { ...base, label: `0x${targetOffset.toString(16).toUpperCase()}`, status: 'invalid', warning: `No instruction starts at 0x${targetOffset.toString(16).toUpperCase()}`, targetOffset };
-              const staticFunction = Object.entries(data.staticFuncs).find(([, uid]) => uid === target.uid)?.[0];
-              return { ...base, label: staticFunction === undefined ? `${target.name} @ 0x${targetOffset.toString(16).toUpperCase()}` : `Static Func ${staticFunction} · ${target.name}`, status: 'valid', targetOffset };
+              return { ...base, label: this.entryNames.display(data, target), status: 'valid', targetOffset };
           }
           case 'texture-index':
               return { ...base, label: `Texture #${value}`, status: 'valid', textureId: value };
@@ -809,6 +810,7 @@ export class DoomScriptService {
   deleteInstruction(data: ScriptData, inst: ScriptInstruction) {
       const idx = data.instructions.indexOf(inst);
       if (idx !== -1) {
+          const replacementUid = data.instructions[idx + 1]?.uid;
           for (const [key, uid] of Object.entries(data.staticFuncs)) {
               if (uid === inst.uid) {
                   const funcIdx = parseInt(key, 10);
@@ -830,6 +832,7 @@ export class DoomScriptService {
 
           data.instructions.splice(idx, 1);
           this.recalculateOffsets(data);
+          this.entryNames.reconcile(data, replacementUid ? new Map([[inst.uid, replacementUid]]) : new Map());
       }
   }
 
