@@ -8,6 +8,7 @@ import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/
 import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
 import { ScriptArgumentControlComponent, ScriptReferenceOptions } from '../script-argument-control/script-argument-control.component';
 import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString, setScriptArgumentValue } from '../script-argument-control/script-argument-value';
+import { ScriptEntryNameService } from '../../../services/scripts/script-entry-name.service';
 
 @Component({
   selector: 'app-script-instruction-editor',
@@ -20,7 +21,7 @@ import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString, 
     ScriptArgumentControlComponent
   ],
   template: `
-    <div class="p-2 bg-neutral-800 border-l-4" [class.border-green-500]="isInsertMode()" [class.border-blue-500]="!isInsertMode()">
+    <div class="p-2 bg-neutral-800 border-l-4" tabindex="0" (keydown)="onEditorKeydown($event)" [class.border-green-500]="isInsertMode()" [class.border-blue-500]="!isInsertMode()">
         <div class="text-[10px] font-bold mb-2 uppercase" [class.text-green-400]="isInsertMode()" [class.text-blue-400]="!isInsertMode()">
             {{ isInsertMode() ? 'Insert ' + (insertMode() === 'before' ? 'Before' : 'After') : 'Edit Instruction' }}
         </div>
@@ -94,6 +95,7 @@ export class ScriptInstructionEditorComponent {
     delete = output<void>();
     
     assembler = inject(ScriptAssemblerService);
+    entryNames = inject(ScriptEntryNameService);
     
     editOpName = '';
     argumentValues: ScriptArgumentValue[] = [];
@@ -182,16 +184,26 @@ export class ScriptInstructionEditorComponent {
         const instruction = this.instruction();
         const instructions = data?.instructions ?? [];
         const end = instruction ? instruction.offset + instruction.size : 0;
-        const absolute = instructions.map(item => ({ value: item.offset, label: `${item.name} @ 0x${item.offset.toString(16)}` }));
+        const absolute = data ? this.entryNames.buildInstructionOptions(data) : [];
         this.referenceOptions = {
             'instruction-absolute': absolute,
-            'instruction-relative': instructions.map(item => ({ value: item.offset - end, label: `${item.name} @ 0x${item.offset.toString(16)}` })),
-            'tile-event-index': Array.from({ length: (data?.tileEvents.length ?? 0) / 2 }, (_, value) => ({ value, label: `Tile event ${value}` })),
-            'entity-index': this.numericOptions(256, 'Entity'),
+            'instruction-relative': data ? this.entryNames.buildInstructionOptions(data, end) : [],
+            'tile-event-index': (data?.tileEventRefs ?? []).map((event, value) => ({ value, label: `Tile event ${value} · (${event.tileIndex & 31}, ${event.tileIndex >> 5 & 31})` })),
+            'entity-index': data?.mapSprites?.map((sprite, value) => ({ value, label: `Entity ${value} · texture #${sprite.textureId}` })) ?? this.numericOptions(256, 'Entity'),
             'string-index': this.numericOptions(256, 'String'),
             'sound-index': this.numericOptions(256, 'Sound'),
             'map-index': this.numericOptions(10, 'Map', 1)
         };
+    }
+
+    onEditorKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') { event.preventDefault(); this.cancel.emit(); }
+        else if (event.key === 'Enter' && !event.shiftKey) {
+            if (!this.showAutocomplete()) { event.preventDefault(); this.commitChange(); }
+        } else if (event.key === 'Delete' && !this.isInsertMode() && event.target instanceof HTMLElement && event.target.tagName !== 'INPUT') {
+            event.preventDefault();
+            if (confirm('Delete this instruction? This action relocates script references.')) this.delete.emit();
+        }
     }
 
     private numericOptions(count: number, label: string, start = 0) {

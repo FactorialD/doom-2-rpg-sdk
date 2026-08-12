@@ -22,8 +22,8 @@ export interface OpcodeItem {
                     [class.bg-blue-600]="i === selectedIndex()"
                     [class.text-white]="i === selectedIndex()"
                     [class.text-neutral-400]="i !== selectedIndex()">
-                    <span>{{ op.name }}</span>
-                    <span class="opacity-50">({{ op.id }})</span>
+                    <span class="font-sans">{{ op.desc }}</span>
+                    <span class="opacity-50">{{ op.name }} · #{{ op.id }}</span>
                 </li>
             }
         </ul>
@@ -41,7 +41,7 @@ export class OpcodeAutocompleteComponent {
     
     filteredItems = computed(() => {
         const q = this.query().toUpperCase();
-        return this.items().filter(op => op.name.includes(q) || op.id.toString().includes(q));
+        return this.items().filter(op => op.name.includes(q) || op.desc.toUpperCase().includes(q) || op.id.toString().includes(q));
     });
 
     constructor() {
