@@ -56,6 +56,7 @@ export class EditorService {
   
   // Notification signal when scripts are modified (e.g. by Map Editor)
   scriptsUpdated = signal<number>(0);
+  textResourcesUpdated = signal<number>(0);
   readonly dirtyResources = signal(cleanState());
   readonly hasUnsavedChanges = computed(() => Object.values(this.dirtyResources()).some(value => value.dirty));
   readonly message = signal<EditorMessage | null>(null);
@@ -120,5 +121,9 @@ export class EditorService {
   
   notifyScriptsChanged() {
       this.scriptsUpdated.update(n => n + 1);
+  }
+
+  notifyTextResourceChanged() {
+      this.textResourcesUpdated.update(n => n + 1);
   }
 }

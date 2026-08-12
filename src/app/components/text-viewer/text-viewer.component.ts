@@ -10,6 +10,7 @@ import { StringsListComponent } from "./strings-list/strings-list.component";
 import { FontAtlasComponent } from "./font-atlas/font-atlas.component";
 import { EditorService } from "../../services/editor.service";
 import { SidebarPanelComponent } from "../../shared/components/sidebar-panel/sidebar-panel.component";
+import { TextResourceSettingsService } from "../../services/text-resource-settings.service";
 
 @Component({
   selector: "app-text-viewer",
@@ -152,14 +153,15 @@ export class TextViewerComponent {
   fileService = inject(DoomFileService);
   textService = inject(DoomTextService);
   editorService = inject(EditorService);
+  textSettings = inject(TextResourceSettingsService);
 
   activeSubTab = signal<"strings" | "languages" | "atlases">("strings");
 
   hasIndex = this.fileService.stringsIndexLoaded;
 
-  selectedLang = signal(0);
+  selectedLang = this.textSettings.langId;
   selectedChunk = signal(0);
-  selectedEncoding = signal("windows-1252");
+  selectedEncoding = this.textSettings.encoding;
   textResourceId = computed(() => `${this.selectedLang()}:${this.selectedChunk()}`);
 
   // For auto-scrolling
@@ -242,6 +244,7 @@ export class TextViewerComponent {
     );
 
     if (result.success === true) {
+      this.editorService.notifyTextResourceChanged();
       this.editorService.clearDirty('strings', this.textResourceId());
       this.editorService.notify('success', 'Strings saved to memory.');
     } else if (result.success === false && result.error) {
@@ -265,6 +268,6 @@ export class TextViewerComponent {
   selectEncoding(encoding: string) {
     if (this.editorService.isDirty('strings') && !confirm('Changing encoding will reload this edited text. Discard unsaved changes?')) return;
     this.editorService.clearDirty('strings');
-    this.selectedEncoding.set(encoding);
+    this.selectedEncoding.set(encoding as 'windows-1251' | 'windows-1252' | 'utf-8');
   }
 }

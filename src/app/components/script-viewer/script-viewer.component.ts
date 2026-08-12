@@ -90,6 +90,13 @@ export class ScriptViewerComponent {
       });
 
       effect(() => {
+          this.editorService.textResourcesUpdated();
+          untracked(() => {
+              if (this.fileLoaded() && !this.isLoading()) this.onMapSelect(this.selectedMapId());
+          });
+      });
+
+      effect(() => {
           const req = this.editorService.requestedScriptNavigation();
           if (req) {
               untracked(() => {

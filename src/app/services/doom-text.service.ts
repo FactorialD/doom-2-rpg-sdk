@@ -5,6 +5,7 @@ import { ByteStream } from '../utils/byte-stream';
 import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
 import { encodeSingleByte } from './single-byte-codec';
 import type { SingleByteEncoding, TextEncodingError } from './single-byte-codec';
+import { TextResourceSettingsService } from './text-resource-settings.service';
 
 export type SaveStringsResult =
   | { success: true }
@@ -36,6 +37,7 @@ interface IndexEntry {
 })
 export class DoomTextService {
   private fileService = inject(DoomFileService);
+  private textSettings = inject(TextResourceSettingsService);
 
   private FONT_WIDTH = 12;
   private FONT_HEIGHT = 16;
@@ -55,7 +57,7 @@ export class DoomTextService {
    * Helper to synchronously get a string value if the file is available.
    * Useful for disassemblers/inspectors.
    */
-  getStringValue(chunkId: number, stringId: number, langId: number = 0): string {
+  getStringValue(chunkId: number, stringId: number, langId = this.textSettings?.langId() ?? 0, encoding = this.textSettings?.encoding() ?? 'windows-1252'): string {
       const idxBuffer = this.fileService.getFile('strings.idx');
       if (!idxBuffer) return `STR_${stringId}`;
 
@@ -90,7 +92,7 @@ export class DoomTextService {
                 if (currentStringIdx === stringId) {
                     // Found it
                     const strBytes = new Uint8Array(binBuffer.slice(startPos, cursor));
-                    return new TextDecoder('windows-1252').decode(strBytes);
+                    return new TextDecoder(encoding).decode(strBytes);
                 }
                 currentStringIdx++;
                 startPos = cursor + 1;
@@ -112,7 +114,7 @@ export class DoomTextService {
       
       try {
           const idxData = this.parseStringsIndex(idxBuffer);
-          return this.loadStrings(0, chunkId, idxData);
+          return this.loadStrings(this.textSettings?.langId() ?? 0, chunkId, idxData, this.textSettings?.encoding() ?? 'windows-1252');
       } catch(e) {
           return [];
       }
@@ -263,9 +265,11 @@ export class DoomTextService {
           writePos += part.length;
       }
 
-      this.fileService.saveBuffer(`strings${targetFileId}.bin`, newFileBuffer.buffer);
       const newIdxBuffer = this.rebuildIndexBuffer(fullIndex);
-      this.fileService.saveBuffer('strings.idx', newIdxBuffer);
+      this.fileService.saveBuffersAtomically(new Map([
+          [`strings${targetFileId}.bin`, newFileBuffer.buffer],
+          ['strings.idx', newIdxBuffer]
+      ]));
       return { success: true };
   }
   

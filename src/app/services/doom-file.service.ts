@@ -135,6 +135,18 @@ export class DoomFileService {
     }
   }
 
+  /** Resolves every destination before committing a group of related files. */
+  saveBuffersAtomically(buffers: ReadonlyMap<string, ArrayBuffer>): void {
+    const resolved = [...buffers].map(([path, buffer]) => {
+      const normalized = this.normalizePath(path);
+      const target = normalized.includes('/') ? normalized : this.resolveResourcePath(normalized) ?? normalized;
+      return [target, buffer] as const;
+    });
+    for (const [path, buffer] of resolved) this.files.set(path, buffer);
+    this.rebuildResourceIndex();
+    this.updateStringsIndexLoaded();
+  }
+
   getFile(name: string): ArrayBuffer | undefined {
     const key = this.normalizePath(name);
     const resourcePath = key.includes('/') ? key : this.resolveResourcePath(key);

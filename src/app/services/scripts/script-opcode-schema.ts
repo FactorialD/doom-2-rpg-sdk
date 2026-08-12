@@ -38,6 +38,8 @@ export interface ScriptOpcodeDefinition {
   readonly relocations?: readonly RelocationDescriptor[];
   readonly ui?: { readonly category?: string; readonly logic?: boolean; readonly detail?: string };
   readonly status?: 'supported' | 'reserved' | 'unsupported';
+  /** Resolves the strings chunk used by this opcode; map chunks follow Canvas.beginLoadMap. */
+  readonly stringChunk?: (mapId: number, params: readonly number[]) => number;
 }
 
 const packed = (mask: number, shift = 0): PackedReferenceCodec => ({
@@ -112,7 +114,8 @@ const relocationByOpcode: Record<number, readonly RelocationDescriptor[]> = {
 };
 
 export const SCRIPT_OPCODE_SCHEMA: Readonly<Record<number, ScriptOpcodeDefinition>> = Object.freeze(Object.fromEntries([
-  ...rows.map(([opcode,name,description,args]) => [opcode, { opcode,name,description,arguments: args, relocations: relocationByOpcode[opcode], ui: { logic: !!relocationByOpcode[opcode] }, status: 'supported' as const }]),
+  ...rows.map(([opcode,name,description,args]) => [opcode, { opcode,name,description,arguments: args, relocations: relocationByOpcode[opcode], ui: { logic: !!relocationByOpcode[opcode] }, status: 'supported' as const,
+    stringChunk: args.some(argument => argument.reference === 'string-index') ? (mapId: number) => mapId + 3 : undefined }]),
   [63, { opcode: 63, name: 'EV_RESERVED_63', description: 'Reserved Java opcode', arguments: [], status: 'reserved' as const }],
   [64, { opcode: 64, name: 'EV_RESERVED_64', description: 'Reserved Java opcode', arguments: [], status: 'reserved' as const }]
 ]));
@@ -131,3 +134,7 @@ export function assertScriptOpcodeSchema(): void {
   }
 }
 assertScriptOpcodeSchema();
+
+export function resolveStringChunk(definition: ScriptOpcodeDefinition | undefined, mapId: number, params: readonly number[] = []): number | undefined {
+  return definition?.stringChunk?.(mapId, params);
+}

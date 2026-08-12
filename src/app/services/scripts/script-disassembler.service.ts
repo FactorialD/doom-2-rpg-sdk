@@ -93,9 +93,9 @@ export class ScriptDisassemblerService {
 
           case 12: // EV_CAMERA_STR
              if (p.length >= 2) {
-                 inst.referencedChunkId = p[0];
-                 inst.referencedStringId = p[1];
-                 const camText = this.textService.getStringValue(p[0], p[1]);
+                 inst.referencedChunkId = mapStringChunkId;
+                 inst.referencedStringId = p[0] & 0x3fff;
+                 const camText = this.textService.getStringValue(mapStringChunkId, inst.referencedStringId);
                  inst.readableDetails = `"${camText}"`;
              }
              break;
