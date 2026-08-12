@@ -29,8 +29,6 @@
     "@types/node": "^22.14.0",
     "@types/three": "^0.183.1",
     "typescript": "~5.9.3",
-    "vite": "^6.2.0",
-    "webpack": "^5.x.x",
-    "webpack-cli": "^5.x.x"
+    "vite": "^6.2.0"
   }
 }
