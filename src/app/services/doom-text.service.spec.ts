@@ -17,7 +17,10 @@ function createService(files: Map<string, ArrayBuffer>) {
     Object.assign(service, {
         fileService: {
             getFile: (name: string) => files.get(name),
-            saveBuffer: (name: string, data: ArrayBuffer) => files.set(name, data)
+            saveBuffer: (name: string, data: ArrayBuffer) => files.set(name, data),
+            saveBuffersAtomically: (buffers: ReadonlyMap<string, ArrayBuffer>) => {
+                for (const [name, data] of buffers) files.set(name, data);
+            }
         }
     });
     return service;
@@ -59,6 +62,52 @@ test('createString allocates the next ID, persists it, and preserves sibling dat
     const index = service.parseStringsIndex(files.get('strings.idx')!);
     assert.deepEqual(service.loadStrings(0, 0, index).map(entry => entry.raw), ['A', 'B', 'Created']);
     assert.deepEqual(new Uint8Array(files.get('strings0.bin')!).slice(index[4], index[4] + index[5]), sibling);
+});
+
+for (const [encoding, value] of [
+    ['windows-1251', 'Змінено'],
+    ['windows-1252', 'Changed €'],
+    ['utf-8', 'Змінено 😀']
+] as const) {
+test(`${encoding} edit preserves IDs, neighbours, and rebuilt strings.idx offsets`, async () => {
+    const sibling = new Uint8Array([90, 0, 0, 0]);
+    const files = new Map<string, ArrayBuffer>([
+        ['strings.idx', makeIndex()],
+        ['strings0.bin', new Uint8Array([65, 0, 66, 0, ...sibling]).buffer]
+    ]);
+    const service = createService(files);
+    const before = service.loadStrings(0, 0, service.parseStringsIndex(files.get('strings.idx')!), 'windows-1252');
+    const edited = before.map(entry => entry.id === 1 ? { ...entry, raw: value } : entry);
+    assert.deepEqual(await service.saveStringsChunk(0, 0, edited, encoding), { success: true });
+
+    const index = service.parseStringsIndex(files.get('strings.idx')!);
+    const after = service.loadStrings(0, 0, index, encoding);
+    assert.deepEqual(after.map(entry => entry.id), [0, 1]);
+    assert.deepEqual(after.map(entry => entry.raw), ['A', value]);
+    assert.equal(index[4], index[2]);
+    assert.deepEqual(new Uint8Array(files.get('strings0.bin')!).slice(index[4], index[4] + index[5]), sibling);
+});
+}
+
+test('an unrepresentable edit performs no partial writes', async () => {
+    const files = new Map<string, ArrayBuffer>([
+        ['strings.idx', makeIndex()],
+        ['strings0.bin', new Uint8Array([65, 0, 66, 0, 90, 0, 0, 0]).buffer]
+    ]);
+    const service = createService(files);
+    const indexBefore = files.get('strings.idx')!.slice(0);
+    const dataBefore = files.get('strings0.bin')!.slice(0);
+    const entries = service.loadStrings(0, 0, service.parseStringsIndex(indexBefore));
+    entries[1] = { ...entries[1], raw: 'Ж' };
+    const result = await service.saveStringsChunk(0, 0, entries, 'windows-1252');
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error?.line, 2);
+    assert.equal(result.error?.position, 1);
+    assert.equal(result.error?.character, 'Ж');
+    assert.equal(result.error?.encoding, 'windows-1252');
+    assert.deepEqual(files.get('strings.idx'), indexBefore);
+    assert.deepEqual(files.get('strings0.bin'), dataBefore);
 });
 
 test('selection is represented by an existing entry and cancelling a draft performs no writes', () => {

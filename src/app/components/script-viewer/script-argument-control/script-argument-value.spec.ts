@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from '../../../services/scripts/script-opcode-schema';
+import { resolveStringChunk, SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from '../../../services/scripts/script-opcode-schema';
 import { createScriptArgumentValues, scriptArgumentParams, scriptArgumentString, setScriptArgumentValue } from './script-argument-value';
 
 describe('structured script argument values', () => {
@@ -44,5 +44,13 @@ describe('structured script argument values', () => {
     const descriptor: ScriptArgumentDescriptor = SCRIPT_OPCODE_SCHEMA[38].arguments[0];
     const controls = createScriptArgumentValues([descriptor], [0xc123]);
     assert.deepEqual(scriptArgumentParams([setScriptArgumentValue(controls[0], 5)]), [0xc005]);
+  });
+
+  it('resolves every string opcode through the map chunk declared by the schema', () => {
+    for (const definition of Object.values(SCRIPT_OPCODE_SCHEMA)) {
+      if (!definition.arguments.some(argument => argument.reference === 'string-index')) continue;
+      assert.equal(resolveStringChunk(definition, 6), 9);
+    }
+    assert.equal(resolveStringChunk(SCRIPT_OPCODE_SCHEMA[12], 1, [0xc005, 100]), 4);
   });
 });

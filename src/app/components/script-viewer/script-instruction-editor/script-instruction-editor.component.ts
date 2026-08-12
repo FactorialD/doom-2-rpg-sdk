@@ -2,13 +2,14 @@ import { Component, input, output, signal, inject, ViewChild, ElementRef, effect
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScriptData, ScriptInstruction } from '../../../services/doom-script.service';
-import { SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
+import { resolveStringChunk, SCRIPT_OPCODE_SCHEMA } from '../../../services/scripts/script-opcode-schema';
 import { ScriptAssemblerService } from '../../../services/scripts/script-assembler.service';
 import { OpcodeAutocompleteComponent, OpcodeItem } from '../opcode-autocomplete/opcode-autocomplete.component';
 import { StringReferencePickerComponent } from '../string-reference-picker/string-reference-picker.component';
 import { ScriptArgumentControlComponent, ScriptReferenceOptions } from '../script-argument-control/script-argument-control.component';
 import { ScriptArgumentValue, createScriptArgumentValues, scriptArgumentString, setScriptArgumentValue } from '../script-argument-control/script-argument-value';
 import { ScriptEntryNameService } from '../../../services/scripts/script-entry-name.service';
+import { TextResourceSettingsService } from '../../../services/text-resource-settings.service';
 
 @Component({
   selector: 'app-script-instruction-editor',
@@ -65,6 +66,7 @@ import { ScriptEntryNameService } from '../../../services/scripts/script-entry-n
         @if (stringArgumentIndex() !== -1) {
           <app-string-reference-picker
             [mapId]="mapId()" [chunkId]="activeStringChunk()" [stringId]="activeStringId()"
+            [langId]="textSettings.langId()" [encoding]="textSettings.encoding()"
             (selected)="selectString($event)" />
         }
 
@@ -96,6 +98,7 @@ export class ScriptInstructionEditorComponent {
     
     assembler = inject(ScriptAssemblerService);
     entryNames = inject(ScriptEntryNameService);
+    textSettings = inject(TextResourceSettingsService);
     
     editOpName = '';
     argumentValues: ScriptArgumentValue[] = [];
@@ -257,11 +260,8 @@ export class ScriptInstructionEditorComponent {
     }
 
     activeStringChunk(): number {
-        // EV_CAMERA_STR has an explicit neighbouring chunk argument in the SDK
-        // schema. ScriptThread uses Canvas.loadMapStringID for all implicit refs.
-        return this.editOpName === 'EV_CAMERA_STR'
-            ? (this.argumentValues[0]?.value ?? 0)
-            : this.mapId() + 3;
+        const definition = Object.values(SCRIPT_OPCODE_SCHEMA).find(item => item.name === this.editOpName);
+        return resolveStringChunk(definition, this.mapId(), this.argumentValues.map(value => value.value)) ?? this.mapId() + 3;
     }
 
     selectString(stringId: number) {

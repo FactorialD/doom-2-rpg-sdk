@@ -11,7 +11,7 @@ import { ScriptUtils } from './scripts/script-utils';
 
 import { MapSprite } from './doom-map.service';
 import { DoomSoundService } from './doom-sound.service';
-import { SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
+import { resolveStringChunk, SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
 import { encodeSetStateAssignment } from './doom-variables';
 import { ScriptEntryNameService } from './scripts/script-entry-name.service';
 
@@ -107,7 +107,7 @@ export class DoomScriptService {
       if (!Number.isInteger(value) || value < 0) return invalid(`Invalid ${descriptor.reference} reference: ${value}`);
       switch (descriptor.reference) {
           case 'string-index': {
-              const chunk = data.mapId + 3;
+              const chunk = resolveStringChunk(SCRIPT_OPCODE_SCHEMA[instruction.opcode], data.mapId, instruction.params) ?? data.mapId + 3;
               const text = this.textService.getStringValue(chunk, value);
               if (text.startsWith(`STR_${value}`)) return { ...base, label: `String #${value}`, status: 'missing', warning: `String #${value} is missing from chunk ${chunk}`, stringChunk: chunk };
               const excerpt = text.replace(/\s+/g, ' ').trim();
