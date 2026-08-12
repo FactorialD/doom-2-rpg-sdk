@@ -50,6 +50,10 @@ export function writeSoundResources(sounds: readonly ArrayBuffer[], splitLimit =
   const reparsed = parseResourceFileIndex(index);
   if (JSON.stringify(reparsed) !== JSON.stringify(entries)) throw new Error('Internal sounds.idx verification failed after writing');
   const files = new Map<string, ArrayBuffer>();
-  chunks.forEach((chunk, id) => files.set(`sounds${id}.bin`, chunk.buffer));
+  chunks.forEach((chunk, id) => {
+    const buffer = new ArrayBuffer(chunk.byteLength);
+    new Uint8Array(buffer).set(chunk);
+    files.set(`sounds${id}.bin`, buffer);
+  });
   return { index, files, entries };
 }

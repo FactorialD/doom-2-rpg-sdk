@@ -115,7 +115,7 @@ export class StringReferencePickerComponent {
       : [...current, { id: targetId, raw: this.draft, renderKey: this.draft }];
     try {
       const result = await this.textService.saveStringsChunk(this.langId(), this.chunkId(), next, this.encoding());
-      if (!result.success) {
+      if (result.success === false) {
         const error = result.error;
         this.saveError.set(error
           ? `Символ “${error.character}” у позиції ${error.position} не підтримується ${error.encoding}.`
