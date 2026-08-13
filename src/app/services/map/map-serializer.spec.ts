@@ -6,6 +6,8 @@ import { MAP_FIRST_MARKER, MAP_MARKER } from '../../utils/byte-stream.ts';
 import type { MapData } from '../doom-map.service.ts';
 import { DoomGeometryService } from '../doom-geometry.service.ts';
 import { PolyFlag } from '../../core/constants/geometry.ts';
+import { SpriteFlag } from '../../core/constants/map-flags.ts';
+import { DoomMapService } from '../doom-map.service.ts';
 
 function syntheticEmptyMap(): Uint8Array {
     const bytes = new Uint8Array(46 + 6 + 4 * 16 + 1024 + 24 + 8);
@@ -50,6 +52,37 @@ test('synthetic map parse/serialize shape preserves every untouched section and 
     assert.deepEqual(serialized, original);
     // A second parse/serialize-shaped pass must remain byte exact as well.
     assert.deepEqual(serializer.serialize(map, serialized.buffer, 'synthetic-map-2.bin'), original);
+});
+
+test('combined stored sprite flags survive serialize/parse unchanged', async () => {
+    const original = syntheticEmptyMap();
+    const serializer = Object.create(MapSerializer.prototype) as MapSerializer;
+    Object.assign(serializer, {
+        coordinateService: { analyzeSpriteType: () => ({ type: 'normal', fileZ: 32 }) },
+        scriptService: {}, scriptCompiler: {}
+    });
+    const flags = SpriteFlag.OrientationNorthBit | SpriteFlag.OrientationSouthBit |
+        SpriteFlag.OrientationEastBit | SpriteFlag.OrientationWestBit;
+    const map = {
+        header: { spawnIndex: 0, spawnDir: 0, numPolys: 0, numVerts: 0, numSprites: 1 },
+        geometry: {
+            normals: [], nodes: [], leaves: [], polygons: [], sourceVertices: [], lines: [], heightMap: new Int8Array(1024),
+            vertices: new Float32Array(), uvs: new Float32Array(), indices: [], textureIds: [], flags: [], polyVertexCounts: []
+        },
+        sprites: [{ uuid: 'sprite', x: 64, y: 0, z: 128, textureId: 1, flatIndex: 0, flags, type: 'normal', extraInfo: 0 }],
+        bspTree: { id: 0, isLeaf: true, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 } },
+        heightMap: new Int8Array(1024), remainderOffset: original.length - 8
+    } as unknown as MapData;
+    const serialized = serializer.serialize(map, original.buffer, 'sprite-flags.bin');
+    const parser = Object.create(DoomMapService.prototype) as DoomMapService;
+    Object.assign(parser, {
+        fileService: { getFile: () => serialized.buffer },
+        geometryService: new DoomGeometryService(),
+        scriptService: { loadAndDisassemble: async () => null }
+    });
+
+    const parsed = await parser.loadMap(1);
+    assert.equal(parsed?.sprites[0].flags, flags);
 });
 
 test('wall add and delete update leaf indices and round trip back without touching unrelated state', () => {

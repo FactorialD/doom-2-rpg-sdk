@@ -1,9 +1,12 @@
 export enum SpriteFlag {
   Wall = 64,         // 1 << 6 (WALL_TEX)
-  North = 1 << 8,    // 256
-  South = 1 << 9,    // 512
-  East = 1 << 10,    // 1024
-  West = 1 << 11,    // 2048
+  // Independent bits in the uint16 stored in the map. Render shifts that
+  // complete field into mapSpriteInfo[31:16] and tests these bits in priority
+  // order; it does not validate them as a mutually exclusive direction enum.
+  OrientationNorthBit = 1 << 8, // mapSpriteInfo bit 24 after loading
+  OrientationSouthBit = 1 << 9, // mapSpriteInfo bit 25 after loading
+  OrientationEastBit = 1 << 10, // mapSpriteInfo bit 26 after loading
+  OrientationWestBit = 1 << 11, // mapSpriteInfo bit 27 after loading
   Flat = 1 << 13,    // 8192 (Oriented flat)
   
   // Context-dependent flags
