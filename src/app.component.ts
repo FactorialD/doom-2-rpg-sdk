@@ -10,12 +10,13 @@ import { PaletteViewerComponent } from './app/components/palette-viewer/palette-
 import { ItemViewerComponent } from './app/components/item-viewer/item-viewer.component';
 import { VariablesViewerComponent } from './app/components/variables-viewer/variables-viewer.component';
 import { SoundViewerComponent } from './app/components/sound-viewer/sound-viewer.component';
+import { ImageViewerComponent } from './app/components/image-viewer/image-viewer.component';
 import { EditorService } from './app/services/editor.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ToolbarComponent, Map3DComponent, TextureViewerComponent, TextViewerComponent, ScriptViewerComponent, PaletteViewerComponent, ItemViewerComponent, VariablesViewerComponent, SoundViewerComponent],
+  imports: [CommonModule, ToolbarComponent, Map3DComponent, TextureViewerComponent, ImageViewerComponent, TextViewerComponent, ScriptViewerComponent, PaletteViewerComponent, ItemViewerComponent, VariablesViewerComponent, SoundViewerComponent],
   template: `
     <div class="flex flex-col h-screen w-screen overflow-hidden bg-neutral-950 text-white font-sans">
       
@@ -41,6 +42,10 @@ import { EditorService } from './app/services/editor.service';
 
            <div class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'textures'">
                 <app-texture-viewer />
+           </div>
+
+           <div data-testid="image-workspace-wrapper" class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'images'">
+                <app-image-viewer />
            </div>
 
            <div class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'palettes'">
