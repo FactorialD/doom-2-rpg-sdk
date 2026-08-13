@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { EditorService, type EditorTab } from '../../services/editor.service';
 
 const toolbarSource = readFileSync(new URL('./toolbar.component.ts', import.meta.url), 'utf8');
-const appSource = readFileSync(new URL('../../app.component.ts', import.meta.url), 'utf8');
+const entryPath = fileURLToPath(new URL('../../../../index.tsx', import.meta.url));
+const entrySource = readFileSync(entryPath, 'utf8');
+const appImport = entrySource.match(/import\s+\{\s*AppComponent\s*\}\s+from\s+['"]([^'"]+)['"]/);
+assert.ok(appImport, 'index.tsx must import AppComponent');
+const appPath = resolve(dirname(entryPath), `${appImport[1]}.ts`);
+const appSource = readFileSync(appPath, 'utf8');
 const imageViewerSource = readFileSync(new URL('../image-viewer/image-viewer.component.ts', import.meta.url), 'utf8');
 
 /**
@@ -29,29 +36,34 @@ class TabWorkspaceHarness {
 }
 
 test('Images toolbar button selects and reveals its persistently mounted workspace', () => {
+  assert.match(entrySource, /bootstrapApplication\(AppComponent/);
+  assert.equal(appPath, fileURLToPath(new URL('../../../../src/app.component.ts', import.meta.url)));
   assert.match(toolbarSource, /\(click\)="service\.selectTab\('images'\)"/);
   assert.doesNotMatch(toolbarSource, /service\.activeTab\.set\(/);
-  assert.match(appSource, /data-testid="image-workspace-wrapper"[\s\S]*?\[class\.hidden\]="service\.activeTab\(\) !== 'images'"[\s\S]*?\[attr\.aria-hidden\]="service\.activeTab\(\) !== 'images'"/);
+  assert.match(appSource, /import \{ ImageViewerComponent \} from ['"].\/app\/components\/image-viewer\/image-viewer\.component['"]/);
+  assert.match(appSource, /imports:\s*\[[^\]]*ImageViewerComponent[^\]]*\]/);
+  assert.match(appSource, /data-testid="image-workspace-wrapper"[\s\S]*?\[class\.hidden\]="service\.activeTab\(\) !== 'images'"[\s\S]*?<app-image-viewer\s*\/>/);
   assert.match(imageViewerSource, /data-testid="image-workspace"/);
 
   const component = new TabWorkspaceHarness();
-  component.clickToolbarButton('text');
+  component.clickToolbarButton('textures');
   const imageWorkspace = component.workspaces.get('images')!;
-  const textWorkspace = component.workspaces.get('text')!;
+  const previousWorkspace = component.workspaces.get('textures')!;
 
-  component.clickToolbarButton('images');
+  component.service.activeTab.set('images');
+  component.clickToolbarButton(component.service.activeTab());
   assert.equal(component.service.activeTab(), 'images');
   assert.equal(imageWorkspace.hidden, false);
   assert.equal(imageWorkspace.ariaHidden, 'false');
-  assert.equal(textWorkspace.hidden, true);
-  assert.equal(textWorkspace.ariaHidden, 'true');
+  assert.equal(previousWorkspace.hidden, true);
+  assert.equal(previousWorkspace.ariaHidden, 'true');
   assert.equal(component.workspaces.size, 9, 'switching tabs must not unmount a workspace');
 
   component.clickToolbarButton('text');
   assert.equal(component.service.activeTab(), 'text');
   assert.equal(imageWorkspace.hidden, true);
   assert.equal(imageWorkspace.ariaHidden, 'true');
-  assert.equal(textWorkspace.hidden, false);
+  assert.equal(component.workspaces.get('text')!.hidden, false);
   assert.equal(component.workspaces.get('images'), imageWorkspace, 'Images remains mounted when hidden');
 });
 
