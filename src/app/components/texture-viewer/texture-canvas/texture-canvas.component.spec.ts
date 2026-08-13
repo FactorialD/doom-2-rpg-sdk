@@ -81,3 +81,61 @@ test('selects the first clipboard image for the shared import pipeline', () => {
   ];
   assert.equal(firstClipboardImage(items), image);
 });
+
+test('scaling mode changes rebuild preview immediately and Apply uses its palette indices', () => {
+  const originalImageData = globalThis.ImageData;
+  const originalDocument = globalThis.document;
+  globalThis.ImageData = class {
+    data: Uint8ClampedArray;
+    constructor(public width: number, public height: number) { this.data = new Uint8ClampedArray(width * height * 4); }
+  } as unknown as typeof ImageData;
+
+  const tempContexts: any[] = [];
+  globalThis.document = {
+    createElement: () => {
+      const context = { putImageData: (data: ImageData) => { context.preview = data; }, preview: null as ImageData | null };
+      tempContexts.push(context);
+      return { width: 0, height: 0, getContext: () => context };
+    }
+  } as unknown as Document;
+
+  try {
+    const modes: string[] = [];
+    const component = Object.create(TextureCanvasComponent.prototype) as any;
+    const mainContext = {
+      globalAlpha: 1, fillStyle: '', strokeStyle: '', lineWidth: 1, imageSmoothingEnabled: true,
+      clearRect() {}, putImageData() {}, drawImage() {}, strokeRect() {}, setLineDash() {}, fillRect() {}
+    };
+    Object.assign(component, {
+      texture: { id: 7, width: 2, height: 1 }, rawData: Uint8Array.from([0, 0]),
+      paletteRaw: Uint32Array.from([0xff000000, 0xff0000ff, 0xff00ff00]),
+      importState: { active: true, img: {}, x: 0, y: 0, width: 2, height: 1, bgOpacity: .5, imgOpacity: .8, scalingMode: 'nearest' },
+      canvasRef: { nativeElement: { width: 2, height: 1, getContext: () => mainContext } },
+      imgProcessor: {
+        scaleImage: (_img: unknown, width: number, height: number, mode: string) => {
+          modes.push(mode);
+          const result = new ImageData(width, height);
+          result.data[0] = mode === 'nearest' ? 1 : 2;
+          return result;
+        },
+        mapImageToPalette: (data: ImageData) => Uint8Array.from([data.data[0], data.data[0]])
+      },
+      textureService: { isIndex0Transparent: () => false },
+      pixelChanged: { emit() {} }, dragState: { isDragging: false }, selection: null
+    });
+
+    component.render();
+    component.importState.scalingMode = 'bilinear';
+    component.render(); // the toolbar's stateChange binding calls render directly
+    assert.deepEqual(modes, ['nearest', 'bilinear']);
+    const previewPixels = new Uint32Array(tempContexts.at(-1).preview.data.buffer);
+    assert.deepEqual([...previewPixels], [component.paletteRaw[2], component.paletteRaw[2]]);
+
+    component.applyImport();
+    assert.deepEqual([...component.rawData], [2, 2]);
+    assert.equal(modes.at(-1), 'bilinear');
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.ImageData = originalImageData;
+  }
+});

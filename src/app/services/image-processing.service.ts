@@ -1,6 +1,8 @@
 
 import { Injectable } from '@angular/core';
 
+export type ImageScalingMode = 'nearest' | 'bilinear' | 'high-quality';
+
 interface RGB {
     r: number;
     g: number;
@@ -12,7 +14,31 @@ interface RGB {
 })
 export class ImageProcessingService {
 
+  static readonly MAX_SCALE_DIMENSION = 4096;
+
   constructor() { }
+
+  /** Resizes a canvas-compatible image source and returns its RGBA pixels. */
+  scaleImage(source: CanvasImageSource, width: number, height: number, filter: ImageScalingMode): ImageData {
+      const targetWidth = this.normalizeScaleDimension(width);
+      const targetHeight = this.normalizeScaleDimension(height);
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not get canvas context');
+
+      ctx.imageSmoothingEnabled = filter !== 'nearest';
+      if (filter === 'high-quality') ctx.imageSmoothingQuality = 'high';
+      else if (filter === 'bilinear') ctx.imageSmoothingQuality = 'medium';
+      ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
+      return ctx.getImageData(0, 0, targetWidth, targetHeight);
+  }
+
+  normalizeScaleDimension(value: number): number {
+      if (!Number.isFinite(value)) return 1;
+      return Math.min(ImageProcessingService.MAX_SCALE_DIMENSION, Math.max(1, Math.round(value)));
+  }
 
   /**
    * Reads an image file, resizes it to target dimensions, and converts colors

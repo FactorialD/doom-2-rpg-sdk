@@ -130,7 +130,8 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         width: 0,
         height: 0,
         bgOpacity: 0.5,
-        imgOpacity: 0.8
+        imgOpacity: 0.8,
+        scalingMode: 'nearest'
     };
 
     // Dragging state for Import Move/Scale
@@ -210,21 +211,14 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         if (this.importState.active && this.importState.img && this.paletteRaw) {
             ctx.globalAlpha = this.importState.imgOpacity;
             
-            // Generate Preview based on Palette Matching
-            // 1. Draw scaled image to temp canvas
+            // Generate the palette-matched preview through the same pipeline as Apply.
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = this.importState.width;
-            tempCanvas.height = this.importState.height;
+            const { imageData: sourceData, indices } = this.createImportIndices();
+            tempCanvas.width = sourceData.width;
+            tempCanvas.height = sourceData.height;
             const tempCtx = tempCanvas.getContext('2d');
             if (tempCtx) {
-                tempCtx.drawImage(this.importState.img, 0, 0, this.importState.width, this.importState.height);
-                const sourceData = tempCtx.getImageData(0, 0, this.importState.width, this.importState.height);
-                
-                // 2. Map pixels to indices
-                const indices = this.imgProcessor.mapImageToPalette(sourceData, this.paletteRaw);
-                
-                // 3. Create visual preview from indices
-                const previewImg = new ImageData(this.importState.width, this.importState.height);
+                const previewImg = new ImageData(sourceData.width, sourceData.height);
                 const previewPixels = new Uint32Array(previewImg.data.buffer);
                 const palette = this.paletteRaw;
                 const index0Trans = this.textureService.isIndex0Transparent(this.texture.id);
@@ -656,7 +650,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
             this.importState = {
                 active: true, img, x: 0, y: 0,
                 width: this.texture.width, height: this.texture.height,
-                bgOpacity: 0.5, imgOpacity: 0.8
+                bgOpacity: 0.5, imgOpacity: 0.8, scalingMode: 'nearest'
             };
             if (img.width < this.texture.width) {
                 this.importState.width = img.width;
@@ -704,27 +698,30 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     applyImport() {
         if (!this.texture || !this.importState.img || !this.rawData || !this.paletteRaw) return;
         
-        // 1. Draw the resized import image to a temp canvas to get pixel data
-        const canvas = document.createElement('canvas');
-        canvas.width = this.texture.width;
-        canvas.height = this.texture.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        ctx.clearRect(0,0, canvas.width, canvas.height);
-        ctx.drawImage(this.importState.img, this.importState.x, this.importState.y, this.importState.width, this.importState.height);
-        
-        // 2. Map colors to palette
-        const finalImgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // Use true color matching (Euclidean distance) instead of Luminance map
-        const newIndices = this.imgProcessor.mapImageToPalette(finalImgData, this.paletteRaw);
-        
-        // 3. Update Raw Data
-        this.rawData.set(newIndices);
-        this.pixelChanged.emit({index: 0, colorIndex: newIndices[0]});
+        const { imageData, indices } = this.createImportIndices();
+        const index0IsTransparent = this.textureService.isIndex0Transparent(this.texture.id);
+        for (let sourceY = 0; sourceY < imageData.height; sourceY++) {
+            const targetY = this.importState.y + sourceY;
+            if (targetY < 0 || targetY >= this.texture.height) continue;
+            for (let sourceX = 0; sourceX < imageData.width; sourceX++) {
+                const targetX = this.importState.x + sourceX;
+                if (targetX < 0 || targetX >= this.texture.width) continue;
+                const index = indices[sourceY * imageData.width + sourceX];
+                if (index === 0 && index0IsTransparent) continue;
+                this.rawData[targetY * this.texture.width + targetX] = index;
+            }
+        }
+        this.pixelChanged.emit({index: 0, colorIndex: this.rawData[0]});
         this.hasChanges = true;
         
         this.cancelImport(); // Exit mode
+    }
+
+    private createImportIndices(): { imageData: ImageData; indices: Uint8Array } {
+        const imageData = this.imgProcessor.scaleImage(
+            this.importState.img!, this.importState.width, this.importState.height, this.importState.scalingMode
+        );
+        return { imageData, indices: this.imgProcessor.mapImageToPalette(imageData, this.paletteRaw!) };
     }
 
     exportColor() {

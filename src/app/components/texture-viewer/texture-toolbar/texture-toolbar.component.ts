@@ -3,9 +3,9 @@ import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TextureInfo } from '../../../services/doom-texture.service';
+import type { ImageScalingMode } from '../../../services/image-processing.service';
 
 export type Tool = 'pencil' | 'brush' | 'fill' | 'select';
-
 export interface ImportState {
     active: boolean;
     img: HTMLImageElement | null;
@@ -15,6 +15,7 @@ export interface ImportState {
     height: number;
     bgOpacity: number;
     imgOpacity: number;
+    scalingMode: ImageScalingMode;
 }
 
 @Component({
@@ -107,6 +108,15 @@ export interface ImportState {
                              <div class="flex justify-between text-[10px] text-green-200 mt-1"><span>New</span> <span>{{ (importState.imgOpacity * 100).toFixed(0) }}%</span></div>
                              <input type="range" min="0" max="1" step="0.1" [(ngModel)]="importState.imgOpacity" (ngModelChange)="stateChange.emit()" class="h-1 accent-green-500">
                         </div>
+
+                        <label class="flex flex-col gap-1 border-l border-blue-900/50 pl-2 text-[10px] text-blue-200">
+                            Scaling
+                            <select [(ngModel)]="importState.scalingMode" (ngModelChange)="stateChange.emit()" class="bg-black border border-blue-800 text-white text-xs px-1 py-0.5">
+                                <option value="nearest">Nearest neighbor</option>
+                                <option value="bilinear">Bilinear</option>
+                                <option value="high-quality">High quality</option>
+                            </select>
+                        </label>
 
                         <div class="flex flex-col gap-1">
                             <button (click)="applyImport.emit()" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs rounded font-bold">Apply</button>
