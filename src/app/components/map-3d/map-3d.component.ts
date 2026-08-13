@@ -213,7 +213,6 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
               } else if (!this.isLoading() && this.mapData) {
                    this.processPendingSelection();
               }
-              this.editorService.requestedEntitySelection.set(null);
           }
       });
       
@@ -723,6 +722,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
                       this.renderer.geometry.showFlats.set(false);
                   }
                   this.selectEntity(req.entityId, true);
+                  this.sidebarTab.set('entities');
                   this.pendingSelection = null;
               }
           }, 100);

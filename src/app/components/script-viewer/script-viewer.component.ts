@@ -106,7 +106,6 @@ export class ScriptViewerComponent {
                   } else if (!this.isLoading() && this.scriptData()) {
                        setTimeout(() => this.processPendingJump(), 150);
                   }
-                  this.editorService.requestedScriptNavigation.set(null);
               });
           }
       });

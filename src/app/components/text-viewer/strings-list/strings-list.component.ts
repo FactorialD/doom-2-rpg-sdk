@@ -6,6 +6,7 @@ import { DoomTextService, TextEntry } from '../../../services/doom-text.service'
 import { DoomFileService } from '../../../services/doom-file.service';
 import { EditorService } from '../../../services/editor.service';
 import { TypewriterTimer } from '../../../services/typewriter-timer';
+import { NavigationHighlightService } from '../../../shared/services/navigation-highlight.service';
 
 export interface TextSelectionEvent { id: number; selectionStart: number; selectionEnd: number; text: string; }
 
@@ -47,7 +48,7 @@ export interface TextSelectionEvent { id: number; selectionStart: number; select
             @for (entry of strings; track entry.id) {
                 <div [id]="'string-' + entry.id" 
                      class="grid grid-cols-[60px_1fr_1fr] gap-4 p-2 border-b border-neutral-800 hover:bg-neutral-800/50 transition-colors items-start text-sm group"
-                     [class.bg-neutral-800]="scrollToId === entry.id">
+                     >
                     <!-- ID -->
                     <div class="text-neutral-500 font-mono mt-2">#{{ entry.id }}</div>
                     
@@ -121,6 +122,8 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     textService = inject(DoomTextService);
     fileService = inject(DoomFileService);
     editorService = inject(EditorService);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly navigationHighlight = inject(NavigationHighlightService);
     
     fontImage: HTMLImageElement | null = null;
     fontLoaded = false;
@@ -142,6 +145,12 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
                 this.loadFont(src);
             }
         });
+        effect(() => {
+            const request = this.editorService.requestedTextNavigation();
+            const chunk = Number(this.resourceId.split(':')[1]);
+            if (!request || request.chunkId !== chunk || !this.strings.some(entry => entry.id === request.stringId)) return;
+            void this.revealExternal(request.requestId, request.stringId);
+        });
     }
 
     ngOnChanges(changes: SimpleChanges): void {
@@ -151,13 +160,6 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
             setTimeout(() => this.renderAll(), 0);
         }
 
-        if (changes['scrollToId'] || changes['strings']) {
-            if (this.scrollToId !== -1) {
-                setTimeout(() => {
-                    this.scrollToItem(this.scrollToId);
-                }, 100);
-            }
-        }
     }
 
     ngAfterViewInit(): void {
@@ -173,11 +175,16 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     }
 
     scrollToItem(id: number) {
-        const el = document.getElementById(`string-${id}`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('bg-neutral-800');
-            setTimeout(() => el.classList.remove('bg-neutral-800'), 1000);
+        this.host.nativeElement.querySelector<HTMLElement>(`#string-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    private async revealExternal(requestId: number, id: number) {
+        const found = await this.navigationHighlight.reveal({
+            find: () => this.host.nativeElement.querySelector<HTMLElement>(`#string-${id}`),
+        });
+        if (found) this.editorService.acknowledgeNavigation(this.editorService.requestedTextNavigation, requestId);
+        else if (this.editorService.requestedTextNavigation()?.requestId === requestId) {
+            this.editorService.notify('error', `String #${id} was not found.`);
         }
     }
 

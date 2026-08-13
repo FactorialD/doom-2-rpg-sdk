@@ -270,13 +270,6 @@ export class TextViewerComponent {
         this.selectedChunk.set(req.chunkId);
         // Trigger scroll
         this.targetStringId = req.stringId;
-
-        // Clear the target ID after a moment so it doesn't re-scroll on other changes
-        setTimeout(() => {
-          this.targetStringId = -1;
-        }, 500);
-
-        this.editorService.requestedTextNavigation.set(null);
       }
     });
   }

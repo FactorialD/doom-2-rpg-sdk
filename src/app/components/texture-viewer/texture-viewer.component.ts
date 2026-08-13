@@ -172,13 +172,12 @@ export class TextureViewerComponent {
 
         // Listen for external selection request
         effect(() => {
-            const reqId = this.editorService.requestedTextureSelection();
-            if (reqId !== null && this.texturesLoaded()) {
-                const tex = this.textureList().find(t => t.id === reqId);
+            const request = this.editorService.requestedTextureSelection();
+            if (request !== null && this.texturesLoaded()) {
+                const tex = this.textureList().find(t => t.id === request.textureId);
                 if (tex) {
                     this.onTextureSelected(tex);
                 }
-                this.editorService.requestedTextureSelection.set(null); // Clear request
             }
         });
         

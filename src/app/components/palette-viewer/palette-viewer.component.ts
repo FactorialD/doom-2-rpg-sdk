@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, effect } from '@angular/core';
+import { Component, ElementRef, inject, computed, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomFileService } from '../../services/doom-file.service';
@@ -9,6 +9,7 @@ import { EditorService } from '../../services/editor.service';
 import { ImageProcessingService } from '../../services/image-processing.service';
 import { SidebarPanelComponent } from '../../shared/components/sidebar-panel/sidebar-panel.component';
 import { SearchInputComponent } from '../../shared/components/search-input/search-input.component';
+import { NavigationHighlightService } from '../../shared/services/navigation-highlight.service';
 
 @Component({
   selector: 'app-palette-viewer',
@@ -50,6 +51,7 @@ import { SearchInputComponent } from '../../shared/components/search-input/searc
         <div class="flex-1 overflow-y-auto custom-scrollbar">
             @for (pal of filteredList(); track pal.id) {
                 <div 
+                    [id]="'palette-' + pal.id"
                     class="w-full text-left px-3 py-2 hover:bg-neutral-800 flex items-center gap-3 cursor-pointer transition-colors border-l-4"
                     [class.border-l-red-600]="selectedId() === pal.id"
                     [class.bg-red-900_20]="selectedId() === pal.id"
@@ -213,6 +215,8 @@ export class PaletteViewerComponent {
     textureService = inject(DoomTextureService);
     editorService = inject(EditorService);
     imageProcessor = inject(ImageProcessingService);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly navigationHighlight = inject(NavigationHighlightService);
 
     searchQuery = signal('');
     showReferences = signal(false);
@@ -256,10 +260,23 @@ export class PaletteViewerComponent {
         effect(() => {
             const req = this.editorService.requestedPaletteSelection();
             if (req !== null) {
-                this.selectedId.set(req);
-                this.editorService.requestedPaletteSelection.set(null);
+                this.selectedId.set(req.paletteId);
+                this.searchQuery.set('');
+                const palette = this.paletteService.getAllPalettes()[req.paletteId];
+                if (palette?.isReference) this.showReferences.set(true);
+                if (this.paletteService.isLoaded()) void this.revealPalette(req.requestId, req.paletteId);
             }
         });
+    }
+
+    private async revealPalette(requestId: number, id: number) {
+        const found = await this.navigationHighlight.reveal({
+            find: () => this.host.nativeElement.querySelector<HTMLElement>(`#palette-${id}`),
+        });
+        if (found) this.editorService.acknowledgeNavigation(this.editorService.requestedPaletteSelection, requestId);
+        else if (this.editorService.requestedPaletteSelection()?.requestId === requestId) {
+            this.editorService.notify('error', `Palette #${id} was not found.`);
+        }
     }
     
     createNewPalette() {

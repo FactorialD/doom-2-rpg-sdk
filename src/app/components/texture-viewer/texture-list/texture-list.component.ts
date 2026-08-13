@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, output, input, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, ElementRef, inject, computed, signal, output, input, OnChanges, SimpleChanges, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomTextureService, TextureInfo } from '../../../services/doom-texture.service';
@@ -7,6 +7,7 @@ import { TextureThumbnailComponent } from '../texture-thumbnail/texture-thumbnai
 import { EditorService } from '../../../services/editor.service';
 import { SidebarPanelComponent } from '../../../shared/components/sidebar-panel/sidebar-panel.component';
 import { SearchInputComponent } from '../../../shared/components/search-input/search-input.component';
+import { NavigationHighlightService } from '../../../shared/services/navigation-highlight.service';
 
 interface TextureGroup {
     parent: TextureInfo;
@@ -107,6 +108,9 @@ interface TextureGroup {
                                     </div>
                                     <span class="text-[9px] text-neutral-500 whitespace-nowrap">{{ group.parent.width }}x{{ group.parent.height }}</span>
                                 </div>
+                                @if (requestedChildFor(group.parent.id); as requestedId) {
+                                    <span class="mt-1 text-[10px] font-bold text-amber-300">Requested texture #{{ requestedId }}</span>
+                                }
                             </div>
                         </div>
 
@@ -157,6 +161,8 @@ export class TextureListComponent implements OnChanges {
     textureService = inject(DoomTextureService);
     fileService = inject(DoomFileService);
     editorService = inject(EditorService);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly navigationHighlight = inject(NavigationHighlightService);
 
     selectTexture = output<TextureInfo>();
     
@@ -171,8 +177,10 @@ export class TextureListComponent implements OnChanges {
     
     // Maintain expansion state via a map of ParentID -> Boolean
     expandedGroups = new Map<number, boolean>();
+    private expansionVersion = signal(0);
 
     groupedList = computed(() => {
+        this.expansionVersion();
         const allTextures = this.textureList();
         const q = this.searchQuery().toLowerCase();
         const cat = this.selectedCategory();
@@ -227,6 +235,14 @@ export class TextureListComponent implements OnChanges {
         return result;
     });
 
+    constructor() {
+        effect(() => {
+            const request = this.editorService.requestedTextureSelection();
+            if (!request || !this.textureList().some(texture => texture.id === request.textureId)) return;
+            void this.revealExternal(request.requestId, request.textureId);
+        });
+    }
+
     ngOnChanges(changes: SimpleChanges) {
         if (changes['selectedId'] && this.selectedId() !== null) {
             this.scrollToSelection(this.selectedId()!);
@@ -238,6 +254,7 @@ export class TextureListComponent implements OnChanges {
         const tex = this.textureList().find(t => t.id === id);
         if (tex && tex.isReference && tex.parentId !== undefined) {
             this.expandedGroups.set(tex.parentId, true);
+            this.expansionVersion.update(value => value + 1);
         }
 
         setTimeout(() => {
@@ -259,5 +276,33 @@ export class TextureListComponent implements OnChanges {
     toggleGroup(group: TextureGroup) {
         group.isExpanded = !group.isExpanded;
         this.expandedGroups.set(group.parent.id, group.isExpanded);
+        this.expansionVersion.update(value => value + 1);
+    }
+
+    requestedChildFor(parentId: number): number | null {
+        const id = this.editorService.requestedTextureSelection()?.textureId;
+        if (id === undefined) return null;
+        const texture = this.textureList().find(item => item.id === id);
+        return texture?.isReference && texture.parentId === parentId ? id : null;
+    }
+
+    private async revealExternal(requestId: number, id: number) {
+        const texture = this.textureList().find(item => item.id === id);
+        if (!texture) return;
+        const parentId = texture.isReference ? texture.parentId : texture.id;
+        const found = await this.navigationHighlight.reveal({
+            expand: () => {
+                if (texture.isReference && parentId !== undefined) {
+                    this.expandedGroups.set(parentId, true);
+                    this.expansionVersion.update(value => value + 1);
+                }
+            },
+            find: () => this.host.nativeElement.querySelector<HTMLElement>(texture.isReference ? `#tex-child-${id}` : `#tex-group-${id}`)
+                ?? (parentId === undefined ? null : this.host.nativeElement.querySelector<HTMLElement>(`#tex-group-${parentId}`)),
+        });
+        if (found) this.editorService.acknowledgeNavigation(this.editorService.requestedTextureSelection, requestId);
+        else if (this.editorService.requestedTextureSelection()?.requestId === requestId) {
+            this.editorService.notify('error', `Texture #${id} was not found.`);
+        }
     }
 }
