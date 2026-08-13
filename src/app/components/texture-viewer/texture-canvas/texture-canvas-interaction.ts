@@ -2,6 +2,35 @@ export function isPointerButtonPressed(event: Pick<PointerEvent, 'buttons'>, but
     return (event.buttons & (1 << button)) !== 0;
 }
 
+export interface CanvasPoint { x: number; y: number }
+
+/** Returns every integer pixel touched by the inclusive line from start to end. */
+export function rasterizeLine(start: CanvasPoint, end: CanvasPoint): CanvasPoint[] {
+    const points: CanvasPoint[] = [];
+    let x = start.x;
+    let y = start.y;
+    const dx = Math.abs(end.x - start.x);
+    const dy = Math.abs(end.y - start.y);
+    const stepX = start.x < end.x ? 1 : -1;
+    const stepY = start.y < end.y ? 1 : -1;
+    let error = dx - dy;
+
+    while (true) {
+        points.push({ x, y });
+        if (x === end.x && y === end.y) break;
+        const doubledError = error * 2;
+        if (doubledError > -dy) {
+            error -= dy;
+            x += stepX;
+        }
+        if (doubledError < dx) {
+            error += dx;
+            y += stepY;
+        }
+    }
+    return points;
+}
+
 export function moveSelectionPixels(data: Uint8Array, width: number, height: number, selection: { x: number; y: number; width: number; height: number }, nextX: number, nextY: number, clearIndex = 0): Uint8Array {
     const snapshot = new Uint8Array(data);
     const result = new Uint8Array(snapshot);
