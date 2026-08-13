@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges, SimpleChanges, inject, ViewChild, ElementRef, ChangeDetectionStrategy, effect } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, inject, ViewChild, ElementRef, ChangeDetectionStrategy, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DoomTextureService, TextureInfo } from '../../../services/doom-texture.service';
 import { TexturePaletteService } from '../../../services/textures/texture-palette.service';
@@ -16,6 +16,10 @@ import { SpriteCompositorService } from '../../../services/textures/sprite-compo
              <canvas #canvas class="image-pixelated" style="transform: scale(2);"></canvas>
         </div>
         <div class="text-[10px] text-neutral-500 mt-1">Composite Preview</div>
+        <div class="flex gap-1 mt-2" aria-label="Preview data source">
+            <button type="button" class="px-2 py-0.5 rounded text-[9px] border" [class.bg-red-800]="previewMode === 'edited'" (click)="setPreviewMode('edited')">Edited</button>
+            <button type="button" class="px-2 py-0.5 rounded text-[9px] border" [class.bg-red-800]="previewMode === 'original'" (click)="setPreviewMode('original')">Original</button>
+        </div>
         @if (previewOptions.length > 1) {
             <div class="flex flex-wrap justify-center gap-1 mt-2">
                 @for (option of previewOptions; track option.frame) {
@@ -46,8 +50,8 @@ export class TextureCompositeComponent implements OnChanges {
     @Input() textures: TextureInfo[] = []; 
     @Input() forceRefresh: number = 0;
     @Input() selectedTextureId: number | null = null;
-    @Input() selectedRawData: Uint8Array | null = null;
-    @Input() selectedPalette: Uint32Array | undefined;
+    @Input() previewMode: 'edited' | 'original' = 'edited';
+    @Output() previewModeChange = new EventEmitter<'edited' | 'original'>();
     @Input() checkerColor = '#8a8a8a';
 
     previewFrame = 0;
@@ -88,6 +92,12 @@ export class TextureCompositeComponent implements OnChanges {
         this.render();
     }
 
+    setPreviewMode(mode: 'edited' | 'original') {
+        this.previewMode = mode;
+        this.previewModeChange.emit(mode);
+        this.render();
+    }
+
     selectPreview(frame: number) {
         this.previewFrame = frame;
         this.render();
@@ -119,9 +129,7 @@ export class TextureCompositeComponent implements OnChanges {
             // Find texture info for this frame index (bounds checking handled by array access mostly)
             if (layer.frameIndex < this.textures.length) {
                 const texInfo = this.textures[layer.frameIndex];
-                const imgData = texInfo.id === this.selectedTextureId
-                    ? this.getEditedImageData(texInfo)
-                    : this.textureService.getTextureImageData(texInfo.id);
+                const imgData = this.textureService.getPreviewTextureImageData(texInfo.id, this.previewMode);
                 if (imgData) {
                     imagesToDraw.push({ img: imgData, order: layer.renderOrder });
                     maxWidth = Math.max(maxWidth, imgData.width);
@@ -164,15 +172,4 @@ export class TextureCompositeComponent implements OnChanges {
         }
     }
 
-    private getEditedImageData(texture: TextureInfo): ImageData | null {
-        if (!this.selectedRawData || !this.selectedPalette) return this.textureService.getTextureImageData(texture.id);
-        const image = new ImageData(texture.width, texture.height);
-        const pixels = new Uint32Array(image.data.buffer);
-        const transparentZero = this.textureService.isIndex0Transparent(texture.id);
-        for (let i = 0; i < pixels.length; i++) {
-            const index = this.selectedRawData[i] ?? 0;
-            pixels[i] = index === 0 && transparentZero ? 0 : (this.selectedPalette[index] ?? 0xff000000);
-        }
-        return image;
-    }
 }

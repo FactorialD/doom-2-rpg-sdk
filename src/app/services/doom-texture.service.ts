@@ -20,6 +20,8 @@ export class DoomTextureService {
 
   // Custom cache for runtime generated textures (Skybox)
   private customCache = new Map<number, ImageData>();
+  private originalRawIndices = new Map<number, Uint8Array>();
+  private editedRawIndices = new Map<number, Uint8Array>();
 
   texturesLoaded = signal(false);
   textureList = signal<TextureInfo[]>([]);
@@ -41,6 +43,14 @@ export class DoomTextureService {
         }
         
         this.textureList.set(this.mappingService.getAllTextures());
+        this.originalRawIndices.clear();
+        this.editedRawIndices.clear();
+        for (const texture of this.textureList()) {
+            if (texture.fileIndex === -1 || texture.isReference) continue;
+            const indices = this.getTextureRawIndices(texture.id);
+            if (indices) this.originalRawIndices.set(texture.id, new Uint8Array(indices));
+        }
+        this.textureVersion.update(v => v + 1);
         this.texturesLoaded.set(true);
     } catch (e) {
         console.error("Failed to parse textures", e);
@@ -183,6 +193,36 @@ export class DoomTextureService {
     return uncompressed;
   }
 
+  setEditedTexture(id: number, indices: Uint8Array | null) {
+    if (indices) this.editedRawIndices.set(id, indices);
+    else this.editedRawIndices.delete(id);
+    this.textureVersion.update(v => v + 1);
+  }
+
+  notifyTexturePixelsChanged() {
+    this.textureVersion.update(v => v + 1);
+  }
+
+  getPreviewTextureImageData(id: number, mode: 'edited' | 'original'): ImageData | null {
+    const raw = mode === 'original' ? this.originalRawIndices.get(id) : this.editedRawIndices.get(id) ?? this.getTextureRawIndices(id);
+    return raw ? this.createTextureImageData(id, raw) : null;
+  }
+
+  private createTextureImageData(id: number, rawIndices: Uint8Array): ImageData | null {
+    const info = this.mappingService.getTextureById(id);
+    if (!info) return null;
+    const palette = this.paletteService.getPalette(id);
+    const image = new ImageData(info.width, info.height);
+    const pixels = new Uint32Array(image.data.buffer);
+    const transparentZero = this.isIndex0Transparent(id);
+    for (let i = 0; i < pixels.length; i++) {
+      const index = rawIndices[i] ?? 0;
+      if (index === 0 && transparentZero) pixels[i] = 0;
+      else pixels[i] = palette?.[index] ?? (0xff000000 | index << 16 | index << 8 | index);
+    }
+    return image;
+  }
+
   getTextureImageData(id: number): ImageData | null {
     if (this.customCache.has(id)) {
         return this.customCache.get(id)!;
@@ -263,6 +303,7 @@ export class DoomTextureService {
     this.textureList.set(this.mappingService.getAllTextures());
 
     // 5. Notify all listeners (Thumbnails)
+    (this.editedRawIndices ??= new Map()).set(id, new Uint8Array(newUncompressedData));
     this.textureVersion.update(v => v + 1);
 
     return true;

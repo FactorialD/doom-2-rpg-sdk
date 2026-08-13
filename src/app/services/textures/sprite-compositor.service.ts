@@ -78,15 +78,27 @@ export class SpriteCompositorService {
           return layers;
       }
 
-      // Attack Animations (Frames 8-11)
-      // Attacks typically replace the Torso AND include the Head in the sprite.
-      // We keep the legs (0) but remove the separate head layer.
-      // 8: Idle->Atk1, 9: Atk1, 10: Idle->Atk2, 11: Atk2
+      // Render.renderSpriteAnim case 64/80: NPC attacks are full sprites. Pinkies
+      // retain their torso, zombies omit the separate head, and other monsters
+      // draw legs, attack torso, then the independently stored front head.
       if (selectedFrameIndex >= 8 && selectedFrameIndex <= 11) {
-          return [
-              { frameIndex: 0, renderOrder: 0 }, // Legs
-              { frameIndex: selectedFrameIndex, renderOrder: 1 } // Attack Body (Torso+Head)
+          if (groupId >= TextureGroupIds.NPC_START) {
+              return [{ frameIndex: selectedFrameIndex, renderOrder: 0 }];
+          }
+          if (groupId >= 32 && groupId <= 34) {
+              return [
+                  { frameIndex: 0, renderOrder: 0 },
+                  { frameIndex: 2, renderOrder: 1 },
+                  { frameIndex: selectedFrameIndex, renderOrder: 2 }
+              ];
+          }
+          const layers: CompositeLayer[] = [
+              { frameIndex: 0, renderOrder: 0 },
+              { frameIndex: selectedFrameIndex, renderOrder: 1 }
           ];
+          const isZombie = groupId >= 20 && groupId <= 22;
+          if (!isZombie) layers.push({ frameIndex: 3, renderOrder: 2 });
+          return layers;
       }
 
       // Pain/Death/Special (Frames 12+)
