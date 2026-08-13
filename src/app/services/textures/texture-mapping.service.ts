@@ -43,16 +43,42 @@ export class TextureMappingService {
       return this.groupToTextureMap.get(groupId);
   }
 
+  /** Mapping-table membership is independent of whether a frame can be previewed. */
+  getGroupRange(groupId: number): { start: number; end: number } | undefined {
+      if (!this.mediaMappings || !Number.isInteger(groupId) || groupId < 0 || groupId >= this.mediaMappings.length - 1) return undefined;
+      const start = this.mediaMappings[groupId];
+      const end = this.mediaMappings[groupId + 1];
+      if (start < 0 || end < start || end > 1024) return undefined;
+      return { start, end };
+  }
+
+  validateGroupReferences(groupId: number): string | null {
+      const range = this.getGroupRange(groupId);
+      if (!range) return 'mapping group does not exist';
+      if (!this.mediaTexelSizes) return 'mapping metadata is not loaded';
+      for (let frame = range.start; frame < range.end; frame++) {
+          const visited = new Set<number>();
+          let id = frame;
+          while ((this.mediaTexelSizes[id] & 0x8000) !== 0) {
+              if (visited.has(id)) return `frame ${frame} has a cyclic texture reference at parent ${id}`;
+              visited.add(id);
+              const parent = this.mediaTexelSizes[id] & 0x7fff;
+              if (parent >= this.mediaTexelSizes.length) return `frame ${frame} references parent ${parent} outside the mapping range`;
+              id = parent;
+          }
+      }
+      return null;
+  }
+
   getTextureById(id: number): TextureInfo | undefined {
       return this.textureLocations[id];
   }
 
   getTextureFrame(groupId: number, frameIndex: number): TextureInfo | undefined {
-      if (!this.mediaMappings) return undefined;
-      if (groupId < 0 || groupId >= this.mediaMappings.length - 1) return undefined;
-
-      const startIndex = this.mediaMappings[groupId];
-      const endIndex = this.mediaMappings[groupId + 1];
+      const range = this.getGroupRange(groupId);
+      if (!range) return undefined;
+      const startIndex = range.start;
+      const endIndex = range.end;
       const targetIndex = startIndex + frameIndex;
 
       if (targetIndex >= endIndex) return undefined;
