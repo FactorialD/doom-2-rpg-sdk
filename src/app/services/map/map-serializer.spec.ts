@@ -151,3 +151,34 @@ test('map scripts round trip multiple events on a tile after flag edits and dele
     const eventFlagsOffset = second.byteLength - 8 - 1 - 4 - 4;
     assert.equal(view.getInt32(eventFlagsOffset, true), 0xff2);
 });
+
+test('map serialization preserves a loaded tile event with the disable flag', () => {
+    const original = syntheticEmptyMap();
+    const serializer = Object.create(MapSerializer.prototype) as MapSerializer;
+    Object.assign(serializer, {
+        coordinateService: { analyzeSpriteType: () => ({ type: 'normal', fileZ: 0 }) },
+        scriptService: { updateScriptIndices: () => true },
+        scriptCompiler: new ScriptCompilerService()
+    });
+    const flags = 0x80000;
+    const handler = { uid: 'handler', opcode: 2, params: [], offset: 0, size: 1 } as any;
+    const map = {
+        header: { spawnIndex: 0, spawnDir: 0, numPolys: 0, numVerts: 0, numSprites: 0 },
+        geometry: {
+            normals: [], nodes: [], leaves: [], polygons: [], sourceVertices: [], lines: [], heightMap: new Int8Array(1024),
+            vertices: new Float32Array(), uvs: new Float32Array(), indices: [], textureIds: [], flags: [], polyVertexCounts: []
+        }, sprites: [],
+        bspTree: { id: 0, isLeaf: true, bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 } },
+        heightMap: new Int8Array(1024), remainderOffset: original.length - 8,
+        scripts: {
+            mapId: 1, instructions: [handler], staticFuncs: {}, staticFuncOffsets: [], rawSize: 1,
+            tileEvents: new Int32Array([42, flags]),
+            tileEventRefs: [{ uid: 'disabled', tileIndex: 42, targetUid: 'handler', flags }]
+        }
+    } as unknown as MapData;
+
+    const serialized = serializer.serialize(map, original.buffer, 'disabled-event.bin');
+    const view = new DataView(serialized.buffer, serialized.byteOffset, serialized.byteLength);
+    const eventFlagsOffset = serialized.byteLength - 8 - 1 - 4 - 4;
+    assert.equal(view.getUint32(eventFlagsOffset, true), flags >>> 0);
+});

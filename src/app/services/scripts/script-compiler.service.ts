@@ -15,7 +15,7 @@ export interface CompilationResult {
   providedIn: 'root'
 })
 export class ScriptCompilerService {
-  static readonly SUPPORTED_TILE_EVENT_FLAGS = 0x7ffff;
+  static readonly SUPPORTED_TILE_EVENT_FLAGS = 0xfffff;
 
   compile(
       instructions: ScriptInstruction[], 
