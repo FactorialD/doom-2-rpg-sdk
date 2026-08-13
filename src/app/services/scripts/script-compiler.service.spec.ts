@@ -54,9 +54,21 @@ test('compiles multiple events for one tile and rejects invalid or duplicate ref
     assert.equal(valid.newTileEvents.length, 4);
 
     const invalid = compiler.compile([ret], {}, [
-        { uid: 'a', tileIndex: 1024, targetUid: 'missing', flags: 0x80000 },
-        { uid: 'a', tileIndex: 12, targetUid: 'return', flags: 0xff4 }
+        { uid: 'a', tileIndex: 1024, targetUid: 'missing', flags: 0xff1 },
+        { uid: 'a', tileIndex: 12, targetUid: 'return', flags: 0xff4 },
+        { uid: 'unknown-flag', tileIndex: 13, targetUid: 'return', flags: 0x100000 }
     ], new Int32Array());
     assert.ok(invalid.errors.some(error => error.includes('Invalid tile index')));
+    assert.ok(invalid.errors.some(error => error.includes('Unsupported tile event flags 0x100000')));
     assert.ok(invalid.errors.some(error => error.includes('Duplicate')));
+});
+
+test('preserves tile event flags containing the disable bit', () => {
+    const compiler = new ScriptCompilerService();
+    const result = compiler.compile([instruction('return', 2, [])], {}, [
+        { uid: 'disabled', tileIndex: 42, targetUid: 'return', flags: 0x80ff2 }
+    ], new Int32Array());
+
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.newTileEvents[1], 0x80ff2);
 });
