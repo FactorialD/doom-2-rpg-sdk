@@ -1,28 +1,226 @@
-import { CommonModule } from '@angular/common';import { Component, computed, inject, signal } from '@angular/core';import { FormsModule } from '@angular/forms';
-import { DoomImageService,type DoomImageResource } from '../../services/doom-image.service';import { EditorService } from '../../services/editor.service';import { ImageProcessingService,type ImageScalingMode } from '../../services/image-processing.service';import { readClipboardImage } from '../../shared/image-clipboard';import { decodePng,encodeIndexedPng,encodeRgbaPng,type DecodedPng } from '../../core/png-codec';import { ImageCanvasComponent,type ImageTool } from './image-canvas/image-canvas.component';
-@Component({selector:'app-image-viewer',standalone:true,imports:[CommonModule,FormsModule,ImageCanvasComponent],host:{'(document:paste)':'onPaste($event)'},template:`
-<div class="flex h-full bg-neutral-950 text-neutral-300"><aside class="w-64 border-r border-neutral-800 overflow-auto p-2"><b class="block p-2 text-white">Images</b>@for(image of imageService.images();track image.id){<button class="w-full text-left p-2 hover:bg-neutral-800" [class.bg-red-950]="selected()?.id===image.id" (click)="select(image)"><span class="block truncate">{{image.source==='index'?'Image #'+image.id:image.path}}</span><small>{{image.width}}×{{image.height}} · {{image.kind}}</small></button>}</aside>
-<section class="flex-1 flex flex-col min-w-0">@if(model();as m){<header class="p-2 border-b border-neutral-800 flex flex-wrap gap-2 items-center">
-@for(t of tools;track t){<button class="button" [class.active]="tool()===t" (click)="tool.set(t)">{{t}}</button>}<label>Brush <input class="w-16" type="number" min="1" max="32" [(ngModel)]="brushSize"></label>
-@if(m.indexed){<label>Index <input class="w-16" type="number" min="0" [max]="(m.palette?.length??3)/3-1" [(ngModel)]="paletteIndex"></label>}@else{<input aria-label="Drawing color" type="color" [(ngModel)]="color"><label>Alpha <input class="w-20" type="range" min="0" max="255" [(ngModel)]="alpha"></label>}
-<label class="button">Import<input hidden type="file" accept="image/*" (change)="importFile($event)"></label><button class="button" (click)="pasteFromClipboard()">Paste</button><button class="button" (click)="exportImage()">Export</button><button class="button" (click)="save()" [disabled]="!dirty()">Save</button><label>Zoom <input type="range" min="1" max="32" [(ngModel)]="zoom"></label>
-@if(selected()?.source==='file'){<button class="button" (click)="resizeOpen.set(!resizeOpen())">Resize</button>}
-</header>
-@if(importModel()){<div class="p-2 bg-neutral-900 flex gap-2 items-center"><label>X <input class="num" type="number" [(ngModel)]="importX"></label><label>Y <input class="num" type="number" [(ngModel)]="importY"></label><label>W <input class="num" type="number" [(ngModel)]="importWidth"></label><label>H <input class="num" type="number" [(ngModel)]="importHeight"></label><select [(ngModel)]="scaling"><option value="nearest">nearest</option><option value="bilinear">bilinear</option><option value="high-quality">high quality</option></select><label>Import opacity <input type="range" min="0" max="1" step=".05" [(ngModel)]="importOpacity"></label><button class="button" (click)="applyImport()">Apply</button><button class="button" (click)="cancelImport()">Cancel</button></div>}
-@if(resizeOpen()){<div class="p-2 bg-neutral-900 flex gap-2"><input class="num" type="number" [(ngModel)]="resizeWidth"><input class="num" type="number" [(ngModel)]="resizeHeight"><select [(ngModel)]="resizeMode"><option value="scale">Scale</option><option value="canvas">Canvas resize</option></select><select [(ngModel)]="anchor"><option>top-left</option><option>center</option><option>bottom-right</option></select><button class="button" (click)="resize()">Apply</button><button class="button" (click)="resizeOpen.set(false)">Cancel</button></div>}
-<div class="flex-1 overflow-auto grid place-items-center checker p-8"><app-image-canvas [model]="m" [tool]="tool()" [zoom]="zoom" [brushSize]="brushSize" [paletteIndex]="paletteIndex" [rgba]="rgba()" (changed)="pixelsChanged($event)"/></div>
-@if(m.indexed){<div class="p-2 flex flex-wrap gap-1">@for(_ of paletteEntries();track $index){<button [title]="'Index '+$index" (click)="paletteIndex=$index" class="w-6 h-6 border" [style.background]="paletteCss($index)"></button>}</div>}}@else{<div class="flex-1 grid place-items-center">Select an image.</div>}</section></div>`,styles:[`.button{border:1px solid #555;padding:.3rem .6rem;border-radius:.25rem;font-size:.75rem}.active{background:#991b1b}.num{width:4rem;background:#111;border:1px solid #555}.checker{background:#777;background-image:linear-gradient(45deg,#999 25%,transparent 25%),linear-gradient(-45deg,#999 25%,transparent 25%);background-size:16px 16px}`]})
-export class ImageViewerComponent{
- readonly imageService=inject(DoomImageService);private editor=inject(EditorService);private processing=inject(ImageProcessingService);readonly selected=signal<DoomImageResource|null>(null);readonly model=signal<DecodedPng|null>(null);readonly importModel=signal<DecodedPng|null>(null);readonly dirty=signal(false);readonly tool=signal<ImageTool>('pencil');readonly tools:ImageTool[]=['pencil','brush','fill','select'];zoom=8;brushSize=1;paletteIndex=0;color='#ffffff';alpha=255;importX=0;importY=0;importWidth=1;importHeight=1;importOpacity=1;scaling:ImageScalingMode='nearest';readonly resizeOpen=signal(false);resizeWidth=1;resizeHeight=1;resizeMode:'scale'|'canvas'='scale';anchor='center';readonly paletteEntries=computed(()=>Array((this.model()?.palette?.length??0)/3));readonly rgba=computed<[number,number,number,number]>(()=>[parseInt(this.color.slice(1,3),16),parseInt(this.color.slice(3,5),16),parseInt(this.color.slice(5,7),16),Number(this.alpha)]);
- async select(image:DoomImageResource){if(!this.editor.confirmResourceChange('images',image.id))return;this.selected.set(image);this.model.set(await decodePng(image.bytes));this.dirty.set(false);this.cancelImport();this.resizeWidth=image.width;this.resizeHeight=image.height;}
- pixelsChanged(pixels:Uint8Array|Uint8ClampedArray){const m=this.model();if(!m)return;this.model.set({...m,pixels});this.markDirty();}
- private markDirty(){const image=this.selected();if(image){this.dirty.set(true);this.editor.markDirty('images',image.id);}}
- async beginImport(blob:Blob){try{const imported=await decodePng(await blob.arrayBuffer());this.importModel.set(imported);this.importWidth=imported.width;this.importHeight=imported.height;this.importX=this.importY=0;}catch(e){this.editor.notify('error',`Cannot import image: ${(e as Error).message}`)}}
- importFile(e:Event){const input=e.target as HTMLInputElement,file=input.files?.[0];if(file)void this.beginImport(file);input.value='';}async pasteFromClipboard(){try{await this.beginImport(await readClipboardImage())}catch(e){this.editor.notify('error',(e as Error).message)}}onPaste(e:ClipboardEvent){const f=[...(e.clipboardData?.files??[])].find(x=>x.type.startsWith('image/'));if(f){e.preventDefault();void this.beginImport(f)}}cancelImport(){this.importModel.set(null)}
- async applyImport(){const target=this.model(),source=this.importModel();if(!target||!source)return;const rgba=source.indexed?(await import('../../core/png-codec')).indexedToRgba(source):source.pixels as Uint8ClampedArray,canvas=document.createElement('canvas');canvas.width=source.width;canvas.height=source.height;canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(rgba),source.width),0,0);const scaled=this.processing.scaleImage(canvas,this.importWidth,this.importHeight,this.scaling).data,out=target.pixels.slice();for(let y=0;y<this.importHeight;y++)for(let x=0;x<this.importWidth;x++){const dx=this.importX+x,dy=this.importY+y;if(dx<0||dy<0||dx>=target.width||dy>=target.height)continue;const s=(y*this.importWidth+x)*4;if(target.indexed){let best=0,dist=Infinity;for(let i=0;i<(target.palette!.length/3);i++){const d=(scaled[s]-target.palette![i*3])**2+(scaled[s+1]-target.palette![i*3+1])**2+(scaled[s+2]-target.palette![i*3+2])**2+(scaled[s+3]-(target.transparency?.[i]??255))**2;if(d<dist){dist=d;best=i;}}out[dy*target.width+dx]=best;}else{const d=(dy*target.width+dx)*4;for(let c=0;c<4;c++)out[d+c]=Math.round(out[d+c]*(1-this.importOpacity)+scaled[s+c]*this.importOpacity);}}this.model.set({...target,pixels:out});this.cancelImport();this.markDirty();}
- async serialize(){const m=this.model()!;return m.indexed?encodeIndexedPng(m):encodeRgbaPng(m.width,m.height,new Uint8Array(m.pixels));}
- async save(){const image=this.selected();if(!image||!this.dirty())return;try{const bytes=await this.serialize();if(image.source==='file')this.imageService.saveFileImage(image,bytes);else this.imageService.saveIndexedImage(Number(image.id),bytes);this.editor.clearDirty('images',image.id);this.dirty.set(false);const updated=this.imageService.images().find(x=>x.id===image.id&&x.source===image.source);if(updated){this.selected.set(updated);this.model.set(await decodePng(updated.bytes));}this.editor.notify('success','Image saved to the browser VFS.');}catch(e){this.editor.notify('error',`Could not save image: ${(e as Error).message}`)}}
- async exportImage(){const image=this.selected();if(!image)return;const bytes=this.dirty()?await this.serialize():image.bytes,url=URL.createObjectURL(new Blob([bytes],{type:'image/png'})),a=document.createElement('a');a.href=url;a.download=image.path.split('/').at(-1)??'image.png';a.click();URL.revokeObjectURL(url)}
- paletteCss(i:number){const m=this.model()!,p=m.palette!;return `rgba(${p[i*3]},${p[i*3+1]},${p[i*3+2]},${(m.transparency?.[i]??255)/255})`}
- async resize(){const image=this.selected(),m=this.model();if(!image||image.source!=='file'||!m)return;const w=Math.max(1,Math.min(4096,Math.round(this.resizeWidth))),h=Math.max(1,Math.min(4096,Math.round(this.resizeHeight)));if(this.resizeMode==='scale'){const rgba=m.indexed?(await import('../../core/png-codec')).indexedToRgba(m):m.pixels as Uint8ClampedArray,c=document.createElement('canvas');c.width=m.width;c.height=m.height;c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(rgba),m.width),0,0);const scaled=this.processing.scaleImage(c,w,h,this.scaling).data;if(m.indexed){const indices=new Uint8Array(w*h);for(let pixel=0;pixel<w*h;pixel++){let best=0,dist=Infinity;for(let i=0;i<m.palette!.length/3;i++){const d=(scaled[pixel*4]-m.palette![i*3])**2+(scaled[pixel*4+1]-m.palette![i*3+1])**2+(scaled[pixel*4+2]-m.palette![i*3+2])**2+(scaled[pixel*4+3]-(m.transparency?.[i]??255))**2;if(d<dist){dist=d;best=i;}}indices[pixel]=best;}this.model.set({...m,width:w,height:h,pixels:indices});}else this.model.set({...m,width:w,height:h,pixels:scaled});}else{const channels=m.indexed?1:4,out=m.indexed?new Uint8Array(w*h):new Uint8ClampedArray(w*h*4),ox=this.anchor==='top-left'?0:this.anchor==='bottom-right'?w-m.width:Math.floor((w-m.width)/2),oy=this.anchor==='top-left'?0:this.anchor==='bottom-right'?h-m.height:Math.floor((h-m.height)/2);for(let y=0;y<m.height;y++)for(let x=0;x<m.width;x++)if(x+ox>=0&&y+oy>=0&&x+ox<w&&y+oy<h)for(let c=0;c<channels;c++)out[((y+oy)*w+x+ox)*channels+c]=m.pixels[(y*m.width+x)*channels+c];this.model.set({...m,width:w,height:h,pixels:out});}this.resizeOpen.set(false);this.markDirty();}
+import { CommonModule } from '@angular/common';
+import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
+import {
+  decodePng,
+  encodeIndexedPng,
+  encodeRgbaPng,
+  indexedToRgba,
+  type DecodedPng
+} from '../../core/png-codec';
+import { DoomImageService, type DoomImageResource } from '../../services/doom-image.service';
+import { EditorService } from '../../services/editor.service';
+import {
+  compositeRgba,
+  quantizeRgba,
+  resizeCanvas,
+  ImageProcessingService,
+  type CanvasAnchor,
+  type ImageScalingMode
+} from '../../services/image-processing.service';
+import { readClipboardImage } from '../../shared/image-clipboard';
+import { ImageCanvasComponent, type ImageSelection, type ImageTool } from './image-canvas/image-canvas.component';
+import { ImageListComponent } from './image-list/image-list.component';
+import { clearImageThumbnailCache } from './image-thumbnail/image-thumbnail.component';
+
+interface HistoryEntry { model: DecodedPng; bytes: number }
+const HISTORY_LIMIT = 40;
+const HISTORY_BYTES = 64 * 1024 * 1024;
+
+@Component({
+  selector: 'app-image-viewer',
+  standalone: true,
+  imports: [CommonModule, FormsModule, ImageCanvasComponent, ImageListComponent],
+  host: { '(document:paste)': 'onPaste($event)' },
+  template: `
+    <div data-testid="image-workspace" class="flex h-full bg-neutral-950 text-neutral-300">
+      <app-image-list [images]="imageService.images()" [active]="selected()" (selected)="select($event)" />
+      <section class="flex min-w-0 flex-1 flex-col">
+        @if (model(); as current) {
+          <header class="flex flex-wrap items-center gap-2 border-b border-neutral-800 p-2">
+            @for (item of tools; track item) { <button class="button" [class.active]="tool() === item" (click)="tool.set(item)">{{ item }}</button> }
+            <button class="button" [disabled]="!canUndo()" (click)="undo()">Undo</button>
+            <button class="button" [disabled]="!canRedo()" (click)="redo()">Redo</button>
+            <label>Brush <input class="num" type="number" [(ngModel)]="brushSize"></label>
+            @if (current.indexed) { <label>Index <input class="num" type="number" [(ngModel)]="paletteIndex"></label> }
+            @else { <input aria-label="Drawing color" type="color" [(ngModel)]="color"><label>Alpha <input type="range" min="0" max="255" [(ngModel)]="alpha"></label> }
+            <label class="button">Import<input hidden type="file" accept="image/*" (change)="importFile($event)"></label>
+            <button class="button" (click)="pasteFromClipboard()">Paste</button>
+            <button class="button" (click)="exportImage()">Export</button>
+            <button class="button" [disabled]="!dirty()" (click)="save()">Save</button>
+            <label>Zoom <input type="range" min="1" max="32" [(ngModel)]="zoom"></label>
+            @if (selected()?.source === 'file') { <button class="button" (click)="resizeOpen.set(!resizeOpen())">Resize</button> }
+          </header>
+          @if (importModel()) {
+            <div class="flex flex-wrap items-center gap-2 bg-neutral-900 p-2">
+              <label>X <input class="num" type="number" [(ngModel)]="importX"></label><label>Y <input class="num" type="number" [(ngModel)]="importY"></label>
+              <label>W <input class="num" type="number" [(ngModel)]="importWidth"></label><label>H <input class="num" type="number" [(ngModel)]="importHeight"></label>
+              <select [(ngModel)]="scaling"><option value="nearest">nearest</option><option value="bilinear">bilinear</option><option value="high-quality">high quality</option></select>
+              <label>Import opacity <input type="range" min="0" max="1" step=".05" [(ngModel)]="importOpacity"></label>
+              <button class="button" (click)="applyImport()">Apply</button><button class="button" (click)="cancelImport()">Cancel</button>
+            </div>
+          }
+          @if (resizeOpen()) {
+            <div class="flex gap-2 bg-neutral-900 p-2">
+              <input class="num" type="number" [(ngModel)]="resizeWidth"><input class="num" type="number" [(ngModel)]="resizeHeight">
+              <select [(ngModel)]="resizeMode"><option value="scale">Scale</option><option value="canvas">Canvas resize</option></select>
+              <select [(ngModel)]="anchor"><option>top-left</option><option>center</option><option>bottom-right</option></select>
+              <button class="button" (click)="resize()">Apply</button><button class="button" (click)="resizeOpen.set(false)">Cancel</button>
+            </div>
+          }
+          <div class="checker grid flex-1 place-items-center overflow-auto p-8">
+            <app-image-canvas [model]="current" [tool]="tool()" [zoom]="normalizedZoom()" [brushSize]="normalizedBrush()" [paletteIndex]="normalizedPaletteIndex()" [rgba]="rgba()" [indexedClearIndex]="transparentIndex()" (changed)="pixelsChanged($event)" (cursor)="cursor.set($event)" (selectionChanged)="selection.set($event)" />
+          </div>
+          <footer class="border-t border-neutral-800 px-3 py-1 text-xs">{{ cursorLabel() }} · {{ selectionLabel() }}</footer>
+          @if (current.indexed) { <div class="flex flex-wrap gap-1 p-2">@for (_ of paletteEntries(); track $index) { <button class="h-6 w-6 border" [title]="'Index ' + $index" [style.background]="paletteCss($index)" (click)="paletteIndex = $index"></button> }</div> }
+        } @else { <div class="grid flex-1 place-items-center">Select an image.</div> }
+      </section>
+    </div>
+  `,
+  styles: `
+    .button { border: 1px solid #555; border-radius: .25rem; padding: .3rem .6rem; font-size: .75rem; }
+    .button:disabled { cursor: not-allowed; opacity: .4; }
+    .active { background: #991b1b; }
+    .num { width: 4rem; border: 1px solid #555; background: #111; }
+    .checker { background-color: #777; background-image: linear-gradient(45deg,#999 25%,transparent 25%),linear-gradient(-45deg,#999 25%,transparent 25%); background-size: 16px 16px; }
+  `
+})
+export class ImageViewerComponent {
+  readonly imageService = inject(DoomImageService);
+  private readonly editor = inject(EditorService);
+  private readonly processing = inject(ImageProcessingService);
+  readonly selected = signal<DoomImageResource | null>(null);
+  readonly model = signal<DecodedPng | null>(null);
+  readonly importModel = signal<DecodedPng | null>(null);
+  readonly dirty = signal(false);
+  readonly tool = signal<ImageTool>('pencil');
+  readonly resizeOpen = signal(false);
+  readonly cursor = signal<{ x: number; y: number } | null>(null);
+  readonly selection = signal<ImageSelection | null>(null);
+  readonly tools: ImageTool[] = ['pencil', 'brush', 'fill', 'select'];
+  readonly paletteEntries = computed(() => Array((this.model()?.palette?.length ?? 0) / 3));
+  readonly rgba = computed<[number, number, number, number]>(() => [parseInt(this.color.slice(1, 3), 16), parseInt(this.color.slice(3, 5), 16), parseInt(this.color.slice(5, 7), 16), this.normalize(this.alpha, 0, 255, 255)]);
+  readonly transparentIndex = computed(() => {
+    const index = this.model()?.transparency?.findIndex(alpha => alpha === 0) ?? -1;
+    return index >= 0 ? index : null;
+  });
+  readonly canUndo = computed(() => this.undoStack().length > 0);
+  readonly canRedo = computed(() => this.redoStack().length > 0);
+  readonly cursorLabel = computed(() => this.cursor() ? `Cursor ${this.cursor()!.x}, ${this.cursor()!.y}` : 'Cursor —');
+  readonly selectionLabel = computed(() => { const area = this.selection(); return area ? `Selection ${area.x}, ${area.y} · ${area.width}×${area.height}` : 'No selection'; });
+  readonly normalizedZoom = computed(() => this.normalize(this.zoom, 1, 32, 8));
+  readonly normalizedBrush = computed(() => this.normalize(this.brushSize, 1, 32, 1));
+  readonly normalizedPaletteIndex = computed(() => this.normalize(this.paletteIndex, 0, Math.max(0, this.paletteEntries().length - 1), 0));
+  private readonly undoStack = signal<HistoryEntry[]>([]);
+  private readonly redoStack = signal<HistoryEntry[]>([]);
+
+  zoom = 8; brushSize = 1; paletteIndex = 0; color = '#ffffff'; alpha = 255;
+  importX = 0; importY = 0; importWidth = 1; importHeight = 1; importOpacity = 1;
+  scaling: ImageScalingMode = 'nearest'; resizeWidth = 1; resizeHeight = 1;
+  resizeMode: 'scale' | 'canvas' = 'scale'; anchor: CanvasAnchor = 'center';
+
+  @HostListener('document:keydown', ['$event'])
+  shortcuts(event: KeyboardEvent): void {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if (event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? this.redo() : this.undo(); }
+    if (event.key.toLowerCase() === 'y') { event.preventDefault(); this.redo(); }
+    if (event.key.toLowerCase() === 's') { event.preventDefault(); void this.save(); }
+  }
+
+  async select(image: DoomImageResource): Promise<void> {
+    if (!this.editor.confirmResourceChange('images', image.id)) return;
+    this.selected.set(image); this.model.set(await decodePng(image.bytes)); this.dirty.set(false);
+    this.cancelImport(); this.resizeWidth = image.width; this.resizeHeight = image.height;
+    this.undoStack.set([]); this.redoStack.set([]); this.selection.set(null);
+  }
+
+  pixelsChanged(pixels: Uint8Array | Uint8ClampedArray): void {
+    const model = this.model(); if (!model) return;
+    this.pushHistory(model); this.model.set({ ...model, pixels }); this.markDirty();
+  }
+
+  undo(): void { this.restore(this.undoStack, this.redoStack); }
+  redo(): void { this.restore(this.redoStack, this.undoStack); }
+
+  async beginImport(blob: Blob): Promise<void> {
+    try { const imported = await decodePng(await blob.arrayBuffer()); this.importModel.set(imported); this.importWidth = imported.width; this.importHeight = imported.height; this.importX = this.importY = 0; }
+    catch (error) { this.editor.notify('error', `Cannot import image: ${(error as Error).message}`); }
+  }
+  importFile(event: Event): void { const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (file) void this.beginImport(file); input.value = ''; }
+  async pasteFromClipboard(): Promise<void> { try { await this.beginImport(await readClipboardImage()); } catch (error) { this.editor.notify('error', (error as Error).message); } }
+  onPaste(event: ClipboardEvent): void { const file = [...(event.clipboardData?.files ?? [])].find(item => item.type.startsWith('image/')); if (file) { event.preventDefault(); void this.beginImport(file); } }
+  cancelImport(): void { this.importModel.set(null); }
+
+  async applyImport(): Promise<void> {
+    const target = this.model(), source = this.importModel(); if (!target || !source) return;
+    if (!this.validateEditorControls()) return;
+    const values = this.validateImport(); if (!values) return;
+    const sourceRgba = source.indexed ? indexedToRgba(source) : source.pixels as Uint8ClampedArray;
+    const canvas = this.canvasFromRgba(sourceRgba, source.width, source.height);
+    const scaled = this.processing.scaleImage(canvas, values.width, values.height, this.scaling).data;
+    const targetRgba = target.indexed ? indexedToRgba(target) : new Uint8ClampedArray(target.pixels);
+    for (let y = 0; y < values.height; y++) for (let x = 0; x < values.width; x++) {
+      const dx = values.x + x, dy = values.y + y; if (dx < 0 || dy < 0 || dx >= target.width || dy >= target.height) continue;
+      const sourceOffset = (y * values.width + x) * 4, destinationOffset = (dy * target.width + dx) * 4;
+      targetRgba.set(compositeRgba(targetRgba.subarray(destinationOffset, destinationOffset + 4), scaled.subarray(sourceOffset, sourceOffset + 4), values.opacity), destinationOffset);
+    }
+    this.pushHistory(target);
+    const pixels = target.indexed ? quantizeRgba(targetRgba, target.palette!, target.transparency) : targetRgba;
+    this.model.set({ ...target, pixels }); this.cancelImport(); this.markDirty();
+  }
+
+  async resize(): Promise<void> {
+    const image = this.selected(), model = this.model(); if (!image || image.source !== 'file' || !model) return;
+    if (!this.validateEditorControls()) return;
+    const size = this.validateSize(this.resizeWidth, this.resizeHeight, 'Resize'); if (!size) return;
+    this.pushHistory(model);
+    if (this.resizeMode === 'scale') {
+      const rgba = model.indexed ? indexedToRgba(model) : model.pixels as Uint8ClampedArray;
+      const scaled = this.processing.scaleImage(this.canvasFromRgba(rgba, model.width, model.height), size.width, size.height, this.scaling).data;
+      this.model.set({ ...model, width: size.width, height: size.height, pixels: model.indexed ? quantizeRgba(scaled, model.palette!, model.transparency) : scaled });
+    } else {
+      this.model.set({ ...model, width: size.width, height: size.height, pixels: resizeCanvas(model.pixels, model.width, model.height, size.width, size.height, model.indexed ? 1 : 4, this.anchor) });
+    }
+    this.resizeOpen.set(false); this.markDirty();
+  }
+
+  async save(): Promise<void> {
+    const image = this.selected(); if (!image || !this.dirty()) return;
+    try {
+      const bytes = await this.serialize(); image.source === 'file' ? this.imageService.saveFileImage(image, bytes) : this.imageService.saveIndexedImage(Number(image.id), bytes);
+      clearImageThumbnailCache(); this.editor.clearDirty('images', image.id); this.dirty.set(false);
+      const updated = this.imageService.images().find(item => item.id === image.id && item.source === image.source);
+      if (updated) { this.selected.set(updated); this.model.set(await decodePng(updated.bytes)); }
+      this.editor.notify('success', 'Image saved to the browser VFS.');
+    } catch (error) { this.editor.notify('error', `Could not save image: ${(error as Error).message}`); }
+  }
+
+  async exportImage(): Promise<void> {
+    const image = this.selected(); if (!image) return;
+    const bytes = this.dirty() ? await this.serialize() : image.bytes; const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = image.path.split('/').at(-1) ?? 'image.png'; anchor.click(); URL.revokeObjectURL(url);
+  }
+
+  paletteCss(index: number): string { const model = this.model()!, palette = model.palette!; return `rgba(${palette[index * 3]},${palette[index * 3 + 1]},${palette[index * 3 + 2]},${(model.transparency?.[index] ?? 255) / 255})`; }
+  private async serialize(): Promise<ArrayBuffer> { const model = this.model()!; return model.indexed ? encodeIndexedPng(model) : encodeRgbaPng(model.width, model.height, new Uint8Array(model.pixels)); }
+  private markDirty(): void { const image = this.selected(); if (image) { this.dirty.set(true); this.editor.markDirty('images', image.id); } }
+  private clone(model: DecodedPng): DecodedPng { return { ...model, pixels: model.pixels.slice(), palette: model.palette?.slice(), transparency: model.transparency?.slice() }; }
+  private pushHistory(model: DecodedPng): void { const entry = { model: this.clone(model), bytes: model.pixels.byteLength + (model.palette?.byteLength ?? 0) + (model.transparency?.byteLength ?? 0) }; let stack = [...this.undoStack(), entry]; while (stack.length > HISTORY_LIMIT || stack.reduce((sum, item) => sum + item.bytes, 0) > HISTORY_BYTES) stack.shift(); this.undoStack.set(stack); this.redoStack.set([]); }
+  private restore(from: typeof this.undoStack, to: typeof this.redoStack): void { const current = this.model(), entry = from().at(-1); if (!current || !entry) return; to.update(items => [...items, { model: this.clone(current), bytes: current.pixels.byteLength }]); from.update(items => items.slice(0, -1)); this.model.set(this.clone(entry.model)); this.markDirty(); }
+  private canvasFromRgba(pixels: ArrayLike<number>, width: number, height: number): HTMLCanvasElement { const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0); return canvas; }
+  private normalize(value: number, min: number, max: number, fallback: number): number { return Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Math.round(Number(value)))) : fallback; }
+  private validateSize(width: number, height: number, label: string): { width: number; height: number } | null { if (![width, height].every(Number.isFinite) || width < 1 || height < 1 || width > 4096 || height > 4096) { this.editor.notify('error', `${label} width and height must be finite values from 1 to 4096.`); return null; } return { width: Math.round(width), height: Math.round(height) }; }
+  private validateImport(): { x: number; y: number; width: number; height: number; opacity: number } | null { const size = this.validateSize(this.importWidth, this.importHeight, 'Import'); if (!size || ![this.importX, this.importY, this.importOpacity].every(Number.isFinite) || this.importOpacity < 0 || this.importOpacity > 1) { this.editor.notify('error', 'Import X/Y must be finite and opacity must be between 0 and 1.'); return null; } return { x: Math.round(this.importX), y: Math.round(this.importY), ...size, opacity: this.importOpacity }; }
+  private validateEditorControls(): boolean {
+    const paletteMaximum = Math.max(0, this.paletteEntries().length - 1);
+    if (!Number.isFinite(this.zoom) || this.zoom < 1 || this.zoom > 32
+      || !Number.isFinite(this.brushSize) || this.brushSize < 1 || this.brushSize > 32
+      || !Number.isFinite(this.alpha) || this.alpha < 0 || this.alpha > 255
+      || !Number.isFinite(this.paletteIndex) || this.paletteIndex < 0 || this.paletteIndex > paletteMaximum) {
+      this.editor.notify('error', `Zoom, brush size, alpha, and palette index must be finite values within their displayed ranges.`);
+      return false;
+    }
+    return true;
+  }
 }

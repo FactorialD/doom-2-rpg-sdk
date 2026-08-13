@@ -3,6 +3,51 @@ import { Injectable } from '@angular/core';
 
 export type ImageScalingMode = 'nearest' | 'bilinear' | 'high-quality';
 
+export interface ImageRectangle { x: number; y: number; width: number; height: number }
+export type CanvasAnchor = 'top-left' | 'center' | 'bottom-right';
+
+/** Alpha-composites source over destination using straight-alpha RGBA. */
+export function compositeRgba(destination: ArrayLike<number>, source: ArrayLike<number>, opacity = 1): [number, number, number, number] {
+  const sourceAlpha = (source[3] / 255) * opacity;
+  const destinationAlpha = destination[3] / 255;
+  const alpha = sourceAlpha + destinationAlpha * (1 - sourceAlpha);
+  if (alpha === 0) return [0, 0, 0, 0];
+  return [0, 1, 2, 3].map(channel => channel === 3
+    ? Math.round(alpha * 255)
+    : Math.round((source[channel] * sourceAlpha + destination[channel] * destinationAlpha * (1 - sourceAlpha)) / alpha)) as [number, number, number, number];
+}
+
+export function quantizeRgba(pixels: ArrayLike<number>, palette: Uint8Array, transparency?: Uint8Array): Uint8Array {
+  const result = new Uint8Array(pixels.length / 4);
+  for (let pixel = 0; pixel < result.length; pixel++) {
+    let best = 0;
+    let distance = Infinity;
+    for (let index = 0; index < palette.length / 3; index++) {
+      const offset = pixel * 4;
+      const candidate = index * 3;
+      const next = (pixels[offset] - palette[candidate]) ** 2
+        + (pixels[offset + 1] - palette[candidate + 1]) ** 2
+        + (pixels[offset + 2] - palette[candidate + 2]) ** 2
+        + (pixels[offset + 3] - (transparency?.[index] ?? 255)) ** 2;
+      if (next < distance) { distance = next; best = index; }
+    }
+    result[pixel] = best;
+  }
+  return result;
+}
+
+export function resizeCanvas<T extends Uint8Array | Uint8ClampedArray>(pixels: T, oldWidth: number, oldHeight: number, width: number, height: number, channels: number, anchor: CanvasAnchor): T {
+  const result = new (pixels.constructor as { new(length: number): T })(width * height * channels);
+  const offsetX = anchor === 'top-left' ? 0 : anchor === 'bottom-right' ? width - oldWidth : Math.floor((width - oldWidth) / 2);
+  const offsetY = anchor === 'top-left' ? 0 : anchor === 'bottom-right' ? height - oldHeight : Math.floor((height - oldHeight) / 2);
+  for (let y = 0; y < oldHeight; y++) for (let x = 0; x < oldWidth; x++) {
+    const nextX = x + offsetX, nextY = y + offsetY;
+    if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) continue;
+    for (let channel = 0; channel < channels; channel++) result[(nextY * width + nextX) * channels + channel] = pixels[(y * oldWidth + x) * channels + channel];
+  }
+  return result;
+}
+
 interface RGB {
     r: number;
     g: number;

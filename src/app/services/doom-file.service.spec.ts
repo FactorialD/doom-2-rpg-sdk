@@ -96,3 +96,19 @@ test('rebuilds the resource index and revokes font URLs on repeated JAR loads', 
     URL.revokeObjectURL = originalRevoke;
   }
 });
+
+test('atomically updates and deletes only explicitly named resources', () => {
+  const service = new DoomFileService();
+  service.files.set('game/images.idx', Uint8Array.from([1]).buffer);
+  service.files.set('game/images0.bin', Uint8Array.from([2]).buffer);
+  service.files.set('game/images1.bin', Uint8Array.from([3]).buffer);
+  service.files.set('other/images1.bin.backup', Uint8Array.from([4]).buffer);
+  (service as any).rebuildResourceIndex();
+
+  service.updateBuffersAtomically(new Map([['game/images.idx', Uint8Array.from([9]).buffer]]), ['game/images1.bin']);
+
+  assert.deepEqual(bytes(service.files.get('game/images.idx')), [9]);
+  assert.equal(service.files.has('game/images1.bin'), false);
+  assert.deepEqual(bytes(service.files.get('game/images0.bin')), [2]);
+  assert.deepEqual(bytes(service.files.get('other/images1.bin.backup')), [4]);
+});

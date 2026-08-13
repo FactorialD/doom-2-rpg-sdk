@@ -137,11 +137,21 @@ export class DoomFileService {
 
   /** Resolves every destination before committing a group of related files. */
   saveBuffersAtomically(buffers: ReadonlyMap<string, ArrayBuffer>): void {
+    this.updateBuffersAtomically(buffers, []);
+  }
+
+  /** Resolves all paths first, then applies related updates and deletions as one VFS mutation. */
+  updateBuffersAtomically(buffers: ReadonlyMap<string, ArrayBuffer>, deletes: readonly string[]): void {
     const resolved = [...buffers].map(([path, buffer]) => {
       const normalized = this.normalizePath(path);
       const target = normalized.includes('/') ? normalized : this.resolveResourcePath(normalized) ?? normalized;
       return [target, buffer] as const;
     });
+    const resolvedDeletes = deletes.map(path => {
+      const normalized = this.normalizePath(path);
+      return normalized.includes('/') ? normalized : this.resolveResourcePath(normalized) ?? normalized;
+    });
+    for (const path of resolvedDeletes) this.files.delete(path);
     for (const [path, buffer] of resolved) this.files.set(path, buffer);
     this.rebuildResourceIndex();
     this.updateStringsIndexLoaded();
