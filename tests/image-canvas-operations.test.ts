@@ -1,0 +1,4 @@
+import assert from 'node:assert/strict';import test from 'node:test';import {floodFillPixels,moveSelectionPixels,paintBrush,rasterizeLine} from '../src/app/components/texture-viewer/texture-canvas/texture-canvas-interaction.ts';
+test('line interpolation and brush work for indexed pixels',()=>{let pixels=new Uint8Array(5);for(const point of rasterizeLine({x:0,y:0},{x:4,y:0}))pixels=paintBrush(pixels,5,1,point,[3]);assert.deepEqual([...pixels],[3,3,3,3,3]);});
+test('RGBA brush preserves alpha and flood fill compares complete pixels',()=>{let pixels=new Uint8ClampedArray(3*4);pixels=paintBrush(pixels,3,1,{x:1,y:0},[10,20,30,40],1,4);pixels=floodFillPixels(pixels,3,1,{x:0,y:0},[1,2,3,4],4);assert.deepEqual([...pixels],[1,2,3,4,10,20,30,40,0,0,0,0]);});
+test('selection move clips destinations and clears the source',()=>{const moved=moveSelectionPixels(new Uint8Array([1,2,3,4]),4,1,{x:1,y:0,width:3,height:1},3,0,0);assert.deepEqual([...moved],[1,0,0,2]);});
