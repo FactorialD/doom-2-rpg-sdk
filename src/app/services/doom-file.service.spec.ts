@@ -3,14 +3,24 @@ import { test } from 'node:test';
 import JSZip from 'jszip';
 import { DoomFileService, ResourceCompatibilityError } from './doom-file.service';
 
+const testJarEntries = new WeakMap<File, Record<string, Uint8Array>>();
+
 async function jarFile(name: string, entries: Record<string, Uint8Array>): Promise<File> {
-  const zip = new JSZip();
-  for (const [path, contents] of Object.entries(entries)) {
-    zip.file(path, contents);
-  }
-  const bytes = await zip.generateAsync({ type: 'uint8array' });
-  return new File([bytes], name, { type: 'application/java-archive' });
+  const file = new File([], name, { type: 'application/java-archive' });
+  testJarEntries.set(file, entries);
+  return file;
 }
+
+(JSZip.prototype as any).loadAsync = async (file: File) => ({
+  forEach(callback: (path: string, entry: { dir: boolean; async: () => Promise<ArrayBuffer> }) => void) {
+    for (const [path, contents] of Object.entries(testJarEntries.get(file) ?? {})) {
+      callback(path, {
+        dir: false,
+        async: async () => contents.buffer.slice(contents.byteOffset, contents.byteOffset + contents.byteLength)
+      });
+    }
+  }
+});
 
 function bytes(buffer: ArrayBuffer | undefined): number[] | undefined {
   return buffer ? [...new Uint8Array(buffer)] : undefined;
@@ -32,25 +42,47 @@ test('resolves root and uniquely nested game resources by basename', async () =>
   assert.equal(service.stringsIndexLoaded(), true);
 });
 
-test('reports all conflicting paths instead of choosing an ambiguous basename', async () => {
-  const service = new DoomFileService();
-  await assert.rejects(
-    service.loadJar(await jarFile('ambiguous.jar', {
-      'region-a/strings.idx': new Uint8Array([1]),
-      'region-b/strings.idx': new Uint8Array([2])
-    })),
-    (error: unknown) => {
-      assert.ok(error instanceof ResourceCompatibilityError);
-      assert.equal(error.code, 'AMBIGUOUS_RESOURCE_BASENAME');
-      assert.equal(error.resourceName, 'strings.idx');
-      assert.deepEqual(error.conflictingPaths, ['region-a/strings.idx', 'region-b/strings.idx']);
-      return true;
-    }
-  );
+test('keeps the loaded JAR and its font URL when a replacement has ambiguous resources', async () => {
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const revoked: string[] = [];
+  URL.createObjectURL = () => 'blob:valid-font';
+  URL.revokeObjectURL = url => revoked.push(url);
 
-  assert.equal(service.stringsIndexLoaded(), false);
-  assert.throws(() => service.getFile('strings.idx'), ResourceCompatibilityError);
-  assert.deepEqual(bytes(service.getFile('region-a/strings.idx')), [1]);
+  try {
+    const service = new DoomFileService();
+    await service.loadJar(await jarFile('valid.jar', {
+      'game/strings.idx': new Uint8Array([7]),
+      'game/font.png': new Uint8Array([8]),
+      'game/map00.bin': new Uint8Array([9])
+    }));
+
+    await assert.rejects(
+      service.loadJar(await jarFile('ambiguous.jar', {
+        'region-a/strings.idx': new Uint8Array([1]),
+        'region-b/strings.idx': new Uint8Array([2])
+      })),
+      (error: unknown) => {
+        assert.ok(error instanceof ResourceCompatibilityError);
+        assert.equal(error.code, 'AMBIGUOUS_RESOURCE_BASENAME');
+        assert.equal(error.resourceName, 'strings.idx');
+        assert.deepEqual(error.conflictingPaths, ['region-a/strings.idx', 'region-b/strings.idx']);
+        return true;
+      }
+    );
+
+    assert.equal(service.loadedFileName(), 'valid.jar');
+    assert.equal(service.isLoaded(), true);
+    assert.equal(service.stringsIndexLoaded(), true);
+    assert.equal(service.fontImageSrc(), 'blob:valid-font');
+    assert.deepEqual(revoked, []);
+    assert.deepEqual(bytes(service.getFile('strings.idx')), [7]);
+    assert.deepEqual(bytes(service.getFile('map00.bin')), [9]);
+    assert.equal(service.getFile('region-a/strings.idx'), undefined);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+  }
 });
 
 test('writes basename updates back to the uniquely resolved original path', async () => {
