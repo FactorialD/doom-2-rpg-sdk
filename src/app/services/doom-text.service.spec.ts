@@ -171,3 +171,34 @@ test('canvas preview handles game line controls and technical hyphens before wra
     assert.equal(canvas.height, 32);
     assert.equal(canvas.width, 72);
 });
+
+test('prepared layout keeps wrapping and canvas dimensions stable throughout animation', () => {
+    const service = createService(new Map());
+    const drawCounts: number[] = [];
+    let draws = 0;
+    const canvas = {
+        width: 0, height: 0,
+        getContext: () => ({ clearRect() { draws = 0; }, drawImage() { draws++; }, imageSmoothingEnabled: true })
+    } as unknown as HTMLCanvasElement;
+    const layout = service.preparePreviewLayout('alpha bravocharlie', 45);
+    const lines = layout.lines.map(line => line.text);
+    const dimensions = layout.lines.map(() => [Math.max(1, ...layout.lineWidths), layout.lines.length * 16]);
+    layout.lines.forEach((line, lineIndex) => {
+        for (let count = 0; count <= Array.from(line.text).length; count++) {
+            service.renderPreviewLayout(layout, canvas, {} as HTMLImageElement, lineIndex, count);
+            drawCounts.push(draws);
+            assert.deepEqual(layout.lines.map(item => item.text), lines);
+            assert.deepEqual([canvas.width, canvas.height], dimensions[lineIndex]);
+        }
+    });
+    assert.equal(drawCounts.length > 1, true);
+});
+
+test('layout removes line controls from stable visible ranges', () => {
+    const service = createService(new Map());
+    const layout = service.preparePreviewLayout('A|BC', 200);
+    assert.deepEqual(layout.lines, [
+        { text: 'A', start: 0, end: 1 },
+        { text: 'BC', start: 1, end: 3 },
+    ]);
+});

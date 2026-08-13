@@ -21,6 +21,18 @@ export interface TextEntry {
   renderKey: string;  // String decoded as windows-1252 (1-to-1 byte mapping) for the Font Atlas
 }
 
+export interface DoomTextLayoutLine {
+  text: string;
+  /** Stable visible-character range in the prepared preview. */
+  start: number;
+  end: number;
+}
+
+export interface DoomTextLayout {
+  lines: readonly DoomTextLayoutLine[];
+  lineWidths: readonly number[];
+}
+
 interface IndexEntry {
     fileId: number;
     offset: number;
@@ -364,12 +376,27 @@ export class DoomTextService {
       return text.replace(/--|-/g, hyphen => hyphen === '--' ? '-' : '');
   }
 
-  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement, availableWidth = Number.POSITIVE_INFINITY) {
+  preparePreviewLayout(text: string, availableWidth = Number.POSITIVE_INFINITY): DoomTextLayout {
       const previewText = this.getPreviewText(text).replace(/\r\n?/g, '\n');
-      const lines = previewText.split(/[\n|]/).flatMap(line => this.wrapPreviewLine(line, availableWidth));
-      const lineWidths = lines.map(line => Array.from(line).reduce((width, char) => {
+      const texts = previewText.split(/[\n|]/).flatMap(line => this.wrapPreviewLine(line, availableWidth));
+      let offset = 0;
+      const lines = texts.map(text => {
+          const start = offset;
+          offset += Array.from(text).length;
+          return { text, start, end: offset };
+      });
+      const lineWidths = texts.map(line => Array.from(line).reduce((width, char) => {
           return width + (char === ' ' || char === '\u00a0' ? this.FONT_SPACE_ADVANCE : this.FONT_ADVANCE);
       }, 0));
+      return { lines, lineWidths };
+  }
+
+  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement, availableWidth = Number.POSITIVE_INFINITY) {
+      this.renderPreviewLayout(this.preparePreviewLayout(text, availableWidth), canvas, fontImage);
+  }
+
+  renderPreviewLayout(layout: DoomTextLayout, canvas: HTMLCanvasElement, fontImage: HTMLImageElement, activeLine = layout.lines.length, characterCount = 0) {
+      const { lines, lineWidths } = layout;
 
       canvas.width = Math.max(1, ...lineWidths);
       canvas.height = Math.max(1, lines.length * this.FONT_HEIGHT);
@@ -382,7 +409,8 @@ export class DoomTextService {
 
       lines.forEach((line, lineIndex) => {
           let x = 0;
-          for (const char of Array.from(line)) {
+          const visibleText = lineIndex < activeLine ? line.text : lineIndex === activeLine ? Array.from(line.text).slice(0, characterCount) : [];
+          for (const char of typeof visibleText === 'string' ? Array.from(visibleText) : visibleText) {
               if (char === ' ' || char === '\u00a0') {
                   x += this.FONT_SPACE_ADVANCE;
                   continue;
