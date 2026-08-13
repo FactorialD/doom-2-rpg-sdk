@@ -364,8 +364,9 @@ export class DoomTextService {
       return text.replace(/--|-/g, hyphen => hyphen === '--' ? '-' : '');
   }
 
-  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement) {
-      const lines = text.replace(/\r\n?/g, '\n').split(/[\n|]/);
+  renderTextToCanvas(text: string, canvas: HTMLCanvasElement, fontImage: HTMLImageElement, availableWidth = Number.POSITIVE_INFINITY) {
+      const previewText = this.getPreviewText(text).replace(/\r\n?/g, '\n');
+      const lines = previewText.split(/[\n|]/).flatMap(line => this.wrapPreviewLine(line, availableWidth));
       const lineWidths = lines.map(line => Array.from(line).reduce((width, char) => {
           return width + (char === ' ' || char === '\u00a0' ? this.FONT_SPACE_ADVANCE : this.FONT_ADVANCE);
       }, 0));
@@ -396,5 +397,26 @@ export class DoomTextService {
               x += this.FONT_ADVANCE;
           }
       });
+  }
+
+  private wrapPreviewLine(line: string, availableWidth: number): string[] {
+      const maxWidth = Number.isFinite(availableWidth) ? Math.max(this.FONT_ADVANCE, Math.floor(availableWidth)) : Number.POSITIVE_INFINITY;
+      const width = (value: string) => Array.from(value).reduce((sum, char) => sum + (char === ' ' || char === '\u00a0' ? this.FONT_SPACE_ADVANCE : this.FONT_ADVANCE), 0);
+      if (width(line) <= maxWidth) return [line];
+      const result: string[] = [];
+      let current = '';
+      for (const word of line.split(/([ \u00a0]+)/).filter(Boolean)) {
+          if (width(current + word) <= maxWidth) { current += word; continue; }
+          if (current.trim()) result.push(current.trimEnd());
+          current = word.trimStart();
+          while (width(current) > maxWidth) {
+              let count = 1;
+              while (count < current.length && width(current.slice(0, count + 1)) <= maxWidth) count++;
+              result.push(current.slice(0, count));
+              current = current.slice(count);
+          }
+      }
+      result.push(current);
+      return result.length ? result : [''];
   }
 }
