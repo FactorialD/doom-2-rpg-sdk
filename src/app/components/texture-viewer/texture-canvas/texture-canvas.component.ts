@@ -7,7 +7,7 @@ import { TextureInfo, DoomTextureService } from '../../../services/doom-texture.
 import { ImageProcessingService } from '../../../services/image-processing.service';
 import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/texture-toolbar.component';
 
-import { firstClipboardImage, isPointerButtonPressed, moveSelectionPixels } from './texture-canvas-interaction';
+import { CanvasPoint, firstClipboardImage, isPointerButtonPressed, moveSelectionPixels, rasterizeLine } from './texture-canvas-interaction';
 
 @Component({
   selector: 'app-texture-canvas',
@@ -100,6 +100,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     private editorService = inject(EditorService);
     private activePointerId: number | null = null;
     private activeButton = 0;
+    private lastStrokePoint: (CanvasPoint & { pointerId: number }) | null = null;
 
     activeTool: Tool = 'pencil';
     brushSize: number = 3;
@@ -310,7 +311,9 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
             this.handleFill(event);
         } else {
             this.isDrawing = true;
-            this.draw(event);
+            const point = this.getCanvasCoords(event);
+            this.lastStrokePoint = { ...point, pointerId: event.pointerId };
+            this.paintStrokeBatch([point]);
         }
     }
     
@@ -328,6 +331,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
             (event.currentTarget as Element).releasePointerCapture(event.pointerId);
         }
         this.activePointerId = null;
+        this.lastStrokePoint = null;
     }
 
     onLostPointerCapture(event: PointerEvent) {
@@ -335,6 +339,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     }
     
     draw(event: PointerEvent) {
+        if (this.activePointerId !== null && event.pointerId !== this.activePointerId) return;
         if (this.activePointerId !== null && event.pointerId === this.activePointerId && !isPointerButtonPressed(event, this.activeButton)) {
             this.stopDrawing(event);
             return;
@@ -352,16 +357,34 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
 
         if (!this.isDrawing || !this.canEdit || !this.texture || !this.rawData) return;
         
-        const { x, y } = this.getCanvasCoords(event);
-        
-        if (x >= 0 && x < this.texture.width && y >= 0 && y < this.texture.height) {
-            if (this.activeTool === 'pencil') {
-                this.plot(x, y);
-                this.render(); // Redraw immediately for single pixel
-            } else if (this.activeTool === 'brush') {
-                this.paintBrush(x, y);
-            }
+        const samples = typeof event.getCoalescedEvents === 'function'
+            ? [...event.getCoalescedEvents(), event]
+            : [event];
+        const points: CanvasPoint[] = [];
+        let previous = this.lastStrokePoint?.pointerId === event.pointerId
+            ? this.lastStrokePoint
+            : this.getCanvasCoords(samples[0]);
+        for (const sample of samples) {
+            const current = this.getCanvasCoords(sample);
+            const segment = rasterizeLine(previous, current);
+            points.push(...segment.slice(points.length === 0 ? 0 : 1));
+            previous = current;
         }
+        this.lastStrokePoint = { ...previous, pointerId: event.pointerId };
+        this.paintStrokeBatch(points);
+    }
+
+    private paintStrokeBatch(points: CanvasPoint[]) {
+        let changed = false;
+        for (const point of points) {
+            changed = (this.activeTool === 'pencil'
+                ? this.plot(point.x, point.y)
+                : this.activeTool === 'brush' && this.paintBrush(point.x, point.y)) || changed;
+        }
+        if (!changed) return;
+        this.pixelChanged.emit({ index: 0, colorIndex: this.selectedColorIndex });
+        this.hasChanges = true;
+        this.render();
     }
 
     private handleSelectionStart(event: PointerEvent) {
@@ -407,19 +430,19 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     }
     
     // Plots a single pixel
-    plot(x: number, y: number) {
-        if (!this.texture || !this.rawData) return;
+    plot(x: number, y: number): boolean {
+        if (!this.texture || !this.rawData || x < 0 || x >= this.texture.width || y < 0 || y >= this.texture.height) return false;
         const idx = y * this.texture.width + x;
         if (idx < this.rawData.length && this.rawData[idx] !== this.selectedColorIndex) {
             this.rawData[idx] = this.selectedColorIndex;
-            this.pixelChanged.emit({index: idx, colorIndex: this.selectedColorIndex});
-            this.hasChanges = true;
+            return true;
         }
+        return false;
     }
     
     // Paints a circle for the brush
-    paintBrush(centerX: number, centerY: number) {
-        if (!this.texture || !this.rawData) return;
+    paintBrush(centerX: number, centerY: number): boolean {
+        if (!this.texture || !this.rawData) return false;
         
         const radius = Math.floor(this.brushSize / 2);
         const radiusSq = radius * radius;
@@ -450,11 +473,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
             }
         }
         
-        if (changed) {
-            this.pixelChanged.emit({index: 0, colorIndex: this.selectedColorIndex}); // Logic uses dirty flag anyway
-            this.hasChanges = true;
-            this.render(); // Redraw whole canvas for brush strokes
-        }
+        return changed;
     }
 
     // --- Import Interaction ---

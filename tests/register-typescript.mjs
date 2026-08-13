@@ -12,6 +12,8 @@ const ts = require(existsSync(localTypeScript) ? localTypeScript : globalTypeScr
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === '@angular/core') return { url: 'test:angular-core', shortCircuit: true };
+    if (specifier === '@angular/common') return { url: 'test:angular-common', shortCircuit: true };
+    if (specifier === '@angular/forms') return { url: 'test:angular-forms', shortCircuit: true };
     if (specifier === 'three') return { url: 'test:three', shortCircuit: true };
     // Service unit tests construct their in-memory file-service doubles and do
     // not exercise archive I/O. Keep that transitive browser dependency from
@@ -32,8 +34,15 @@ registerHooks({
       format: 'module',
       source: `
         export const Injectable = () => target => target;
+        export const Component = () => target => target;
+        export const Input = () => () => {};
+        export const Output = () => () => {};
+        export const ViewChild = () => () => {};
+        export class EventEmitter { emit() {} }
+        export class ElementRef { constructor(nativeElement) { this.nativeElement = nativeElement; } }
         export const inject = () => undefined;
         export const effect = callback => callback();
+        export const computed = callback => callback;
         export const signal = initial => {
           let value = initial;
           return Object.assign(() => value, {
@@ -43,6 +52,12 @@ registerHooks({
         };
       `,
       shortCircuit: true
+    };
+    if (url === 'test:angular-common') return {
+      format: 'module', source: 'export class CommonModule {}', shortCircuit: true
+    };
+    if (url === 'test:angular-forms') return {
+      format: 'module', source: 'export class FormsModule {}', shortCircuit: true
     };
     if (url === 'test:three') return {
       format: 'module',
