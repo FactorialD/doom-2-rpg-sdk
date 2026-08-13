@@ -46,7 +46,11 @@ export class DoomImageService {
     payloads.forEach(bytes => { if (offset && offset + bytes.byteLength > 32768) { fileId++; offset = 0; } (chunks.get(fileId) ?? (chunks.set(fileId, []), chunks.get(fileId)!)).push(new Uint8Array(bytes)); entries.push({ fileId, offset, length: bytes.byteLength }); offset += bytes.byteLength; });
     const updates = new Map<string, ArrayBuffer>([['images.idx', serializeResourceFileIndex(entries)]]);
     chunks.forEach((parts, chunkId) => { const total = parts.reduce((n, part) => n + part.length, 0), joined = new Uint8Array(total); let at = 0; parts.forEach(part => { joined.set(part, at); at += part.length; }); updates.set(`images${chunkId}.bin`, joined.buffer); });
-    this.files.saveBuffersAtomically(updates); this.reload();
+    const newChunkIds = new Set(chunks.keys());
+    const staleChunks = [...new Set(oldEntries.map(entry => entry.fileId))]
+      .filter(chunkId => !newChunkIds.has(chunkId))
+      .map(chunkId => `images${chunkId}.bin`);
+    this.files.updateBuffersAtomically(updates, staleChunks); this.reload();
   }
 
   private readEntry(entry: ResourceFileIndexEntry): ArrayBuffer { const chunk = this.files.getFile(`images${entry.fileId}.bin`); if (!chunk || entry.offset + entry.length > chunk.byteLength) throw new Error('Invalid images.idx entry'); return chunk.slice(entry.offset, entry.offset + entry.length); }

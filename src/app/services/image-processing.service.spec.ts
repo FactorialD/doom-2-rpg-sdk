@@ -59,3 +59,26 @@ test('normalizes invalid and excessive scaling dimensions before creating a canv
   assert.equal(service.normalizeScaleDimension(12.6), 13);
   assert.equal(service.normalizeScaleDimension(1_000_000), ImageProcessingService.MAX_SCALE_DIMENSION);
 });
+
+import { compositeRgba, quantizeRgba, resizeCanvas } from './image-processing.service';
+
+test('composites semi-transparent RGBA with straight alpha', () => {
+  assert.deepEqual(compositeRgba([0, 0, 255, 255], [255, 0, 0, 128], 0.5), [64, 0, 191, 255]);
+  assert.deepEqual(compositeRgba([10, 20, 30, 0], [200, 100, 50, 0], 1), [0, 0, 0, 0]);
+});
+
+test('quantizes an opacity-composited indexed import including palette alpha', () => {
+  const palette = Uint8Array.from([0, 0, 255, 128, 0, 191]);
+  const transparency = Uint8Array.from([255, 255]);
+  const composited = compositeRgba([0, 0, 255, 255], [255, 0, 0, 128], 0.5);
+  assert.deepEqual([...quantizeRgba(composited, palette, transparency)], [1]);
+});
+
+test('resizes canvas at every supported anchor and preserves pixels', () => {
+  const pixels = Uint8Array.from([1, 2, 3, 4]);
+  assert.deepEqual([...resizeCanvas(pixels, 2, 2, 4, 4, 1, 'top-left')].slice(0, 6), [1, 2, 0, 0, 3, 4]);
+  const center = resizeCanvas(pixels, 2, 2, 4, 4, 1, 'center');
+  assert.deepEqual([center[5], center[6], center[9], center[10]], [1, 2, 3, 4]);
+  const bottom = resizeCanvas(pixels, 2, 2, 4, 4, 1, 'bottom-right');
+  assert.deepEqual([...bottom.slice(10)], [1, 2, 0, 0, 3, 4]);
+});
