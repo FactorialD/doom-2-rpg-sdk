@@ -74,8 +74,8 @@ import { TextureThumbnailComponent } from './texture-thumbnail/texture-thumbnail
                              <app-texture-composite 
                                 [textures]="siblings()" 
                                 [selectedTextureId]="tex.id"
-                                [selectedRawData]="localRawData"
-                                [selectedPalette]="currentPaletteRaw"
+                                [previewMode]="previewMode()"
+                                (previewModeChange)="previewMode.set($event)"
                                 [checkerColor]="bgColor()"
                                 [forceRefresh]="saveCounter()" 
                              />
@@ -142,6 +142,7 @@ export class TextureViewerComponent {
     currentPaletteRaw: Uint32Array | undefined;
     selectedColorIndex = signal(0);
     saveCounter = signal(0);
+    previewMode = signal<'edited' | 'original'>('edited');
     isCompressed = signal(false);
     
     siblings = signal<TextureInfo[]>([]);
@@ -192,7 +193,10 @@ export class TextureViewerComponent {
     }
 
     onTextureSelected(tex: TextureInfo) {
+        const previousId = this.selectedId();
+        const discarded = previousId !== null && previousId !== tex.id && this.hasChanges();
         if (!this.editorService.confirmResourceChange('textures', tex.id)) return;
+        if (discarded) this.textureService.setEditedTexture(previousId, null);
         this.selectedId.set(tex.id);
         this.editorService.currentTextureId.set(tex.id);
         
@@ -206,6 +210,7 @@ export class TextureViewerComponent {
         const raw = this.textureService.getTextureRawIndices(tex.id);
         if (raw) {
             this.localRawData = new Uint8Array(raw);
+            this.textureService.setEditedTexture(tex.id, this.localRawData);
         }
         
         // Fetch Siblings (Composite parts)
@@ -243,6 +248,7 @@ export class TextureViewerComponent {
         if (!this.localRawData || !this.canEdit()) return;
         this.localRawData[event.index] = event.colorIndex;
         this.editorService.markDirty('textures', this.selectedId()!);
+        this.textureService.notifyTexturePixelsChanged();
     }
     
     saveChanges() {

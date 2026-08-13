@@ -1,10 +1,13 @@
 
 import { Component, Input, Output, EventEmitter, ViewChild, ElementRef, OnChanges, AfterViewInit, inject, SimpleChanges } from '@angular/core';
+import { EditorService } from '../../../services/editor.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TextureInfo, DoomTextureService } from '../../../services/doom-texture.service';
 import { ImageProcessingService } from '../../../services/image-processing.service';
 import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/texture-toolbar.component';
+
+import { firstClipboardImage, isPointerButtonPressed, moveSelectionPixels } from './texture-canvas-interaction';
 
 @Component({
   selector: 'app-texture-canvas',
@@ -36,17 +39,19 @@ import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/t
             ></app-texture-toolbar>
 
             <!-- Canvas Container -->
-            <div class="flex-1 overflow-auto flex items-center justify-center p-8 bg-neutral-950 custom-scrollbar">
+            <div #scrollContainer tabindex="0" class="flex-1 overflow-auto flex items-center justify-center p-8 bg-neutral-950 custom-scrollbar outline-none"
+                 (paste)="onPaste($event)">
                 <div *ngIf="texture" class="border border-white/20 shadow-2xl relative cursor-crosshair checkerboard"
                      [style.--checker-color]="bgColor" [style.--checker-light]="checkerLightColor">
                      <canvas #canvas class="block image-pixelated bg-transparent"
                         [style.width.px]="texture.width * zoom"
                         [style.height.px]="texture.height * zoom"
                         [style.cursor]="cursorStyle"
-                        (mousedown)="startDrawing($event)"
-                        (mousemove)="draw($event)"
-                        (mouseup)="stopDrawing()"
-                        (mouseleave)="stopDrawing()"
+                        (pointerdown)="startDrawing($event)"
+                        (pointermove)="draw($event)"
+                        (pointerup)="stopDrawing($event)"
+                        (pointercancel)="stopDrawing($event)"
+                        (lostpointercapture)="onLostPointerCapture($event)"
                      ></canvas>
                 </div>
             </div>
@@ -88,9 +93,13 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     @Output() pixelChanged = new EventEmitter<{index: number, colorIndex: number}>();
 
     @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
+    @ViewChild('scrollContainer') scrollContainerRef!: ElementRef<HTMLElement>;
     
     private textureService = inject(DoomTextureService);
     private imgProcessor = inject(ImageProcessingService);
+    private editorService = inject(EditorService);
+    private activePointerId: number | null = null;
+    private activeButton = 0;
 
     activeTool: Tool = 'pencil';
     brushSize: number = 3;
@@ -279,8 +288,11 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         ctx.globalAlpha = 1.0;
     }
 
-    startDrawing(event: MouseEvent) {
-        if (!this.texture) return;
+    startDrawing(event: PointerEvent) {
+        if (!this.texture || event.button < 0) return;
+        this.activePointerId = event.pointerId;
+        this.activeButton = event.button;
+        (event.currentTarget as HTMLCanvasElement).setPointerCapture(event.pointerId);
         
         if (this.importState.active) {
             this.handleImportStart(event);
@@ -302,7 +314,8 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         }
     }
     
-    stopDrawing() {
+    stopDrawing(event?: PointerEvent) {
+        if (event && this.activePointerId !== null && event.pointerId !== this.activePointerId) return;
         if (this.selectionDrag) {
             this.selectionDrag = null;
             if (this.selection?.width === 0 || this.selection?.height === 0) this.selection = null;
@@ -311,9 +324,22 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         this.isDrawing = false;
         this.dragState.isDragging = false;
         this.dragState.mode = 'none';
+        if (event && (event.currentTarget as Element).hasPointerCapture?.(event.pointerId)) {
+            (event.currentTarget as Element).releasePointerCapture(event.pointerId);
+        }
+        this.activePointerId = null;
+    }
+
+    onLostPointerCapture(event: PointerEvent) {
+        if (event.pointerId === this.activePointerId) this.stopDrawing();
     }
     
-    draw(event: MouseEvent) {
+    draw(event: PointerEvent) {
+        if (this.activePointerId !== null && event.pointerId === this.activePointerId && !isPointerButtonPressed(event, this.activeButton)) {
+            this.stopDrawing(event);
+            return;
+        }
+        if (this.activePointerId !== null) this.autoScroll(event);
         if (this.importState.active) {
             this.handleImportDrag(event);
             return;
@@ -338,7 +364,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         }
     }
 
-    private handleSelectionStart(event: MouseEvent) {
+    private handleSelectionStart(event: PointerEvent) {
         if (!this.texture || !this.rawData) return;
         const point = this.getCanvasCoords(event);
         const current = this.selection;
@@ -354,7 +380,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         this.render();
     }
 
-    private handleSelectionDrag(event: MouseEvent) {
+    private handleSelectionDrag(event: PointerEvent) {
         if (!this.texture || !this.rawData || !this.selection || !this.selectionDrag) return;
         const point = this.getCanvasCoords(event);
         const drag = this.selectionDrag;
@@ -371,17 +397,9 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         }
 
         const old = { ...this.selection, x: drag.originX, y: drag.originY };
-        const nextX = Math.max(0, Math.min(this.texture.width - old.width, drag.originX + point.x - drag.startX));
-        const nextY = Math.max(0, Math.min(this.texture.height - old.height, drag.originY + point.y - drag.startY));
-        this.rawData.set(drag.snapshot);
-        for (let y = 0; y < old.height; y++) {
-            for (let x = 0; x < old.width; x++) this.rawData[(old.y + y) * this.texture.width + old.x + x] = 0;
-        }
-        for (let y = 0; y < old.height; y++) {
-            for (let x = 0; x < old.width; x++) {
-                this.rawData[(nextY + y) * this.texture.width + nextX + x] = drag.snapshot[(old.y + y) * this.texture.width + old.x + x];
-            }
-        }
+        const nextX = drag.originX + point.x - drag.startX;
+        const nextY = drag.originY + point.y - drag.startY;
+        this.rawData.set(moveSelectionPixels(drag.snapshot, this.texture.width, this.texture.height, old, nextX, nextY));
         this.selection = { ...old, x: nextX, y: nextY };
         this.pixelChanged.emit({ index: 0, colorIndex: this.rawData[0] });
         this.hasChanges = true;
@@ -441,7 +459,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
 
     // --- Import Interaction ---
 
-    handleImportStart(event: MouseEvent) {
+    handleImportStart(event: PointerEvent) {
         const { x, y } = this.getCanvasCoords(event);
         
         const handleSize = 4; // texture pixels
@@ -473,7 +491,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         }
     }
 
-    handleImportDrag(event: MouseEvent) {
+    handleImportDrag(event: PointerEvent) {
         const { x, y } = this.getCanvasCoords(event);
         
         const handleSize = 4;
@@ -538,7 +556,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         this.render();
     }
 
-    handleFill(event: MouseEvent) {
+    handleFill(event: PointerEvent) {
         if (!this.texture || !this.rawData) return;
         const { x, y } = this.getCanvasCoords(event);
         
@@ -583,9 +601,9 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
         this.render();
     }
 
-    private getCanvasCoords(event: MouseEvent): {x: number, y: number} {
+    private getCanvasCoords(event: PointerEvent): {x: number, y: number} {
         if (!this.texture) return {x: -1, y: -1};
-        const rect = (event.target as HTMLCanvasElement).getBoundingClientRect();
+        const rect = this.canvasRef.nativeElement.getBoundingClientRect();
         const scaleX = this.texture.width / rect.width;
         const scaleY = this.texture.height / rect.height;
         return {
@@ -596,35 +614,64 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
 
     // --- Import / Export ---
 
-    async onFileSelected(file: File) {
+    async onFileSelected(file: Blob) {
+        await this.beginImport(file);
+    }
+
+    async onPaste(event: ClipboardEvent) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) return;
+        const file = firstClipboardImage(Array.from(event.clipboardData?.items ?? []));
+        if (!file) {
+            this.editorService.notify('error', 'Clipboard does not contain an image.');
+            return;
+        }
+        event.preventDefault();
+        await this.beginImport(file);
+    }
+
+    private async beginImport(blob: Blob) {
         if (!this.texture) return;
-        
-        const img = new Image();
-        img.onload = () => {
-             // Enter Import Mode
-             this.importState = {
-                 active: true,
-                 img: img,
-                 x: 0,
-                 y: 0,
-                 width: this.texture!.width,
-                 height: this.texture!.height, 
-                 bgOpacity: 0.5,
-                 imgOpacity: 0.8
-             };
-             // If image is smaller, center it
-             if (img.width < this.texture!.width) {
-                 this.importState.width = img.width;
-                 this.importState.x = Math.floor((this.texture!.width - img.width) / 2);
-             }
-             if (img.height < this.texture!.height) {
-                 this.importState.height = img.height;
-                 this.importState.y = Math.floor((this.texture!.height - img.height) / 2);
-             }
-             
-             this.render();
-        };
-        img.src = URL.createObjectURL(file);
+        try {
+            const img = await this.decodeImage(blob);
+            this.importState = {
+                active: true, img, x: 0, y: 0,
+                width: this.texture.width, height: this.texture.height,
+                bgOpacity: 0.5, imgOpacity: 0.8
+            };
+            if (img.width < this.texture.width) {
+                this.importState.width = img.width;
+                this.importState.x = Math.floor((this.texture.width - img.width) / 2);
+            }
+            if (img.height < this.texture.height) {
+                this.importState.height = img.height;
+                this.importState.y = Math.floor((this.texture.height - img.height) / 2);
+            }
+            this.render();
+        } catch {
+            this.editorService.notify('error', 'Could not decode the clipboard image.');
+        }
+    }
+
+    private decodeImage(blob: Blob): Promise<HTMLImageElement> {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image decode failed')); };
+            img.src = url;
+        });
+    }
+
+    private autoScroll(event: PointerEvent) {
+        const container = this.scrollContainerRef?.nativeElement;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const edge = 32;
+        const speed = 12;
+        const dx = event.clientX < rect.left + edge ? -speed : event.clientX > rect.right - edge ? speed : 0;
+        const dy = event.clientY < rect.top + edge ? -speed : event.clientY > rect.bottom - edge ? speed : 0;
+        if (dx || dy) container.scrollBy({ left: dx, top: dy, behavior: 'auto' });
     }
 
     cancelImport() {
