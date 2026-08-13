@@ -1,10 +1,12 @@
 
-import { Component, input, output, computed, signal, inject, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, ElementRef, input, output, computed, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MapSprite } from '../../../services/doom-map.service';
 import { DoomTextureService } from '../../../services/doom-texture.service';
 import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
+import { EditorService } from '../../../services/editor.service';
+import { NavigationHighlightService } from '../../../shared/services/navigation-highlight.service';
 
 @Component({
   selector: 'app-entity-list',
@@ -60,12 +62,15 @@ import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnai
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
   `]
 })
-export class EntityListComponent implements OnChanges {
+export class EntityListComponent {
     sprites = input<MapSprite[]>([]);
     selectedId = input<number>(-1);
     selectEntity = output<number>();
     
     private textureService = inject(DoomTextureService);
+    private editorService = inject(EditorService);
+    private host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private navigationHighlight = inject(NavigationHighlightService);
     
     searchQuery = signal('');
     
@@ -92,19 +97,20 @@ export class EntityListComponent implements OnChanges {
         );
     });
 
-    ngOnChanges(changes: SimpleChanges) {
-        if (changes['selectedId'] && this.selectedId() !== -1) {
-            this.scrollToEntity(this.selectedId());
-        }
+    constructor() {
+        effect(() => {
+            const request = this.editorService.requestedEntitySelection();
+            if (!request || this.selectedId() !== request.entityId || !this.sprites()[request.entityId]) return;
+            void this.revealExternal(request.requestId, request.entityId);
+        });
     }
 
-    scrollToEntity(id: number) {
-        setTimeout(() => {
-            const el = document.getElementById(`entity-${id}`);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }, 100);
+    private async revealExternal(requestId: number, id: number) {
+        const found = await this.navigationHighlight.reveal({
+            find: () => this.host.nativeElement.querySelector<HTMLElement>(`#entity-${id}`),
+        });
+        if (found) this.editorService.acknowledgeNavigation(this.editorService.requestedEntitySelection, requestId);
+        else if (this.editorService.requestedEntitySelection()?.requestId === requestId) this.editorService.notify('error', `Entity #${id} was not found.`);
     }
 
     onSelect(index: number) {

@@ -1,10 +1,11 @@
-import { Component, input, output, signal, effect, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, input, output, signal, effect, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScriptData, ScriptInstruction, DoomScriptService } from '../../../services/doom-script.service';
 import { TextureThumbnailComponent } from '../../texture-viewer/texture-thumbnail/texture-thumbnail.component';
 import { ScriptInstructionEditorComponent } from '../script-instruction-editor/script-instruction-editor.component';
 import { EditorService } from '../../../services/editor.service';
+import { NavigationHighlightService } from '../../../shared/services/navigation-highlight.service';
 
 export interface ScriptBlock {
     title: string;
@@ -269,6 +270,8 @@ export class ScriptCodeViewComponent {
     
     scriptService = inject(DoomScriptService);
     editorService = inject(EditorService);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly navigationHighlight = inject(NavigationHighlightService);
     
     showHex = signal(false);
     hasChanges = signal(false);
@@ -287,6 +290,12 @@ export class ScriptCodeViewComponent {
             if (offset !== null) {
                 this.scrollToOffset(offset);
             }
+        });
+        effect(() => {
+            const request = this.editorService.requestedScriptNavigation();
+            const data = this.scriptData();
+            if (!request || data?.mapId !== request.mapId || !data.instructions.some(item => item.offset === request.offset)) return;
+            void this.revealExternal(request.requestId, request.offset);
         });
         
         effect(() => {
@@ -327,15 +336,18 @@ export class ScriptCodeViewComponent {
         
         if (targetBlock) {
             targetBlock.isOpen = true;
-            setTimeout(() => {
-                const el = document.getElementById(`inst-${offset}`);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.classList.add('bg-neutral-700');
-                    setTimeout(() => el.classList.remove('bg-neutral-700'), 1000);
-                }
-            }, 100);
+            setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(`#inst-${offset}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
         }
+    }
+
+    private async revealExternal(requestId: number, offset: number) {
+        const block = this.scriptBlocks().find(item => item.instructions.some(instruction => instruction.offset === offset));
+        const found = await this.navigationHighlight.reveal({
+            expand: () => { if (block) block.isOpen = true; },
+            find: () => this.host.nativeElement.querySelector<HTMLElement>(`#inst-${offset}`),
+        });
+        if (found) this.editorService.acknowledgeNavigation(this.editorService.requestedScriptNavigation, requestId);
+        else if (this.editorService.requestedScriptNavigation()?.requestId === requestId) this.editorService.notify('error', `Instruction 0x${this.padHex(offset, 4)} was not found.`);
     }
     
     // --- Editing Methods ---
