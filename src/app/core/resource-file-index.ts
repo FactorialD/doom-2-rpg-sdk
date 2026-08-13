@@ -73,3 +73,27 @@ export function flattenResourceFileIndex(entries: readonly ResourceFileIndexEntr
   });
   return result;
 }
+
+/** Writes the exact record layout consumed by Resource.loadFileIndex(). */
+export function serializeResourceFileIndex(entries: readonly ResourceFileIndexEntry[]): ArrayBuffer {
+  const boundaries = entries.slice(1).filter((entry, index) => entry.fileId !== entries[index].fileId).length;
+  const buffer = new ArrayBuffer(HEADER_SIZE + (entries.length + boundaries + 1) * RECORD_SIZE);
+  const view = new DataView(buffer);
+  view.setInt16(0, entries.length, true);
+  let position = HEADER_SIZE;
+  entries.forEach((entry, index) => {
+    view.setUint8(position, entry.fileId);
+    view.setInt32(position + 1, entry.offset, true);
+    position += RECORD_SIZE;
+    const next = entries[index + 1];
+    if (next && next.fileId !== entry.fileId) {
+      view.setUint8(position, SKIP_FILE_ID);
+      view.setInt32(position + 1, entry.offset + entry.length, true);
+      position += RECORD_SIZE;
+    }
+  });
+  const last = entries.at(-1);
+  view.setUint8(position, SKIP_FILE_ID);
+  view.setInt32(position + 1, last ? last.offset + last.length : 0, true);
+  return buffer;
+}

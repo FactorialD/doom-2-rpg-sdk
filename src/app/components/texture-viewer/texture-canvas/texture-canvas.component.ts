@@ -8,6 +8,7 @@ import { ImageProcessingService } from '../../../services/image-processing.servi
 import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/texture-toolbar.component';
 
 import { CanvasPoint, firstClipboardImage, isPointerButtonPressed, moveSelectionPixels, rasterizeLine } from './texture-canvas-interaction';
+import { readClipboardImage } from '../../../shared/image-clipboard';
 
 @Component({
   selector: 'app-texture-canvas',
@@ -28,6 +29,7 @@ import { CanvasPoint, firstClipboardImage, isPointerButtonPressed, moveSelection
                 (activeToolChange)="activeTool = $event"
                 (brushSizeChange)="brushSize = $event"
                 (fileSelected)="onFileSelected($event)"
+                (pasteRequested)="pasteFromClipboard()"
                 (saveChanges)="saveChanges.emit()"
                 (stateChange)="render()"
                 (applyImport)="applyImport()"
@@ -629,6 +631,11 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
 
     async onFileSelected(file: Blob) {
         await this.beginImport(file);
+    }
+
+    async pasteFromClipboard() {
+        try { await this.beginImport(await readClipboardImage()); }
+        catch (error) { this.editorService.notify('error', (error as Error).message); }
     }
 
     async onPaste(event: ClipboardEvent) {

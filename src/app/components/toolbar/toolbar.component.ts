@@ -53,6 +53,9 @@ import { CommonModule } from '@angular/common';
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Textures @if(service.dirtyResources().textures.dirty) { <span class="text-amber-400">●</span> }
         </button>
+        <button (click)="service.activeTab.set('images')" [class.bg-neutral-800]="service.activeTab() === 'images'" [class.text-white]="service.activeTab() === 'images'" class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
+          Images @if(service.dirtyResources().images.dirty) { <span class="text-amber-400">●</span> }
+        </button>
         <button 
           (click)="service.activeTab.set('items')"
           [class.bg-neutral-800]="service.activeTab() === 'items'"

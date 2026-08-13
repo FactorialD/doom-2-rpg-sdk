@@ -74,6 +74,7 @@ export interface ImportState {
                         <span class="font-bold">Import</span>
                         <input type="file" accept="image/*" class="hidden" (change)="onFileSelected($event)" />
                     </label>
+                    <button (click)="pasteRequested.emit()" class="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded border border-neutral-700"><span>📋</span><span class="font-bold">Paste from clipboard</span></button>
 
                     <button 
                         (click)="saveChanges.emit()" 
@@ -179,6 +180,7 @@ export class TextureToolbarComponent {
     @Output() activeToolChange = new EventEmitter<Tool>();
     @Output() brushSizeChange = new EventEmitter<number>();
     @Output() fileSelected = new EventEmitter<File>();
+    @Output() pasteRequested = new EventEmitter<void>();
     @Output() saveChanges = new EventEmitter<void>();
     @Output() stateChange = new EventEmitter<void>(); // When sliders/inputs change
     @Output() applyImport = new EventEmitter<void>();
