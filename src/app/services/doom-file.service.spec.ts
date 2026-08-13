@@ -144,3 +144,85 @@ test('atomically updates and deletes only explicitly named resources', () => {
   assert.deepEqual(bytes(service.files.get('game/images0.bin')), [2]);
   assert.deepEqual(bytes(service.files.get('other/images1.bin.backup')), [4]);
 });
+
+test('preserves supported JSZip entry metadata and untouched payloads across a JAR round trip', async () => {
+  const source = new JSZip();
+  source.file('stored.bin', Uint8Array.from([0, 1, 2, 3]), {
+    date: new Date(2020, 1, 2, 3, 4, 6),
+    comment: 'stored entry',
+    unixPermissions: 0o100640,
+    compression: 'STORE'
+  });
+  source.file('nested/', null, {
+    date: new Date(2021, 2, 4, 5, 6, 8),
+    unixPermissions: 0o40750,
+    dir: true
+  });
+  source.file('nested/deflated.bin', Uint8Array.from([9, 8, 7, 6, 5]), {
+    date: new Date(2022, 3, 6, 7, 8, 10),
+    comment: 'deflated entry',
+    unixPermissions: 0o100600,
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 }
+  });
+  const sourceBytes = await source.generateAsync({ type: 'uint8array', platform: 'UNIX' });
+  const service = new DoomFileService();
+  await service.loadJar(new File([sourceBytes], 'metadata.jar'));
+
+  let downloadedBlob: Blob | undefined;
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const originalDocument = globalThis.document;
+  URL.createObjectURL = blob => {
+    downloadedBlob = blob;
+    return 'blob:round-trip';
+  };
+  URL.revokeObjectURL = () => {};
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      body: { appendChild() {}, removeChild() {} },
+      createElement: () => ({ click() {}, href: '', download: '' })
+    }
+  });
+
+  try {
+    await service.downloadModdedJar();
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+  }
+
+  assert.ok(downloadedBlob);
+  const roundTrip = await JSZip.loadAsync(await downloadedBlob.arrayBuffer());
+  assert.deepEqual(Object.keys(roundTrip.files), ['stored.bin', 'nested/', 'nested/deflated.bin']);
+
+  for (const path of ['stored.bin', 'nested/', 'nested/deflated.bin']) {
+    const before = (await JSZip.loadAsync(sourceBytes)).files[path];
+    const after = roundTrip.files[path];
+    assert.equal(after.date.getTime(), before.date.getTime(), `${path} date`);
+    assert.equal(after.comment, before.comment, `${path} comment`);
+    assert.equal(after.unixPermissions, before.unixPermissions, `${path} UNIX permissions`);
+    assert.equal(after.dir, before.dir, `${path} directory flag`);
+  }
+  assert.equal(service.entryMetadata.get('stored.bin')?.compression, 'STORE');
+  assert.equal(service.entryMetadata.get('nested/deflated.bin')?.compression, 'DEFLATE');
+  assert.deepEqual(bytes(await roundTrip.file('stored.bin')?.async('arraybuffer')), [0, 1, 2, 3]);
+  assert.deepEqual(bytes(await roundTrip.file('nested/deflated.bin')?.async('arraybuffer')), [9, 8, 7, 6, 5]);
+});
+
+test('uses stable ZIP metadata defaults for newly saved resources', () => {
+  const service = new DoomFileService();
+  service.saveBuffer('new.bin', Uint8Array.from([1]).buffer);
+
+  const metadata = service.entryMetadata.get('new.bin');
+  assert.ok(metadata);
+  assert.deepEqual(metadata.date, new Date(1980, 0, 1, 0, 0, 0));
+  assert.equal(metadata.comment, '');
+  assert.equal(metadata.unixPermissions, null);
+  assert.equal(metadata.dosPermissions, null);
+  assert.equal(metadata.dir, false);
+  assert.equal(metadata.compression, 'STORE');
+  assert.equal(metadata.compressionOptions, null);
+});

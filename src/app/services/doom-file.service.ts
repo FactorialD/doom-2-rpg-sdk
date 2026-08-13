@@ -3,6 +3,21 @@ import { Injectable, signal, WritableSignal } from '@angular/core';
 import JSZip from 'jszip';
 import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
 
+type ZipCompression = 'STORE' | 'DEFLATE';
+
+export interface VfsEntryMetadata {
+  date: Date;
+  comment: string;
+  unixPermissions: number | string | null;
+  dosPermissions: number | null;
+  dir: boolean;
+  order: number;
+  compression: ZipCompression;
+  compressionOptions: { level: number } | null;
+}
+
+const NEW_ENTRY_DATE = new Date(1980, 0, 1, 0, 0, 0);
+
 export class ResourceCompatibilityError extends Error {
   readonly code = 'AMBIGUOUS_RESOURCE_BASENAME';
 
@@ -21,6 +36,8 @@ export class ResourceCompatibilityError extends Error {
 export class DoomFileService {
   // Stores raw ArrayBuffers for files with their FULL paths (e.g., "com/ea/Game.class")
   files: Map<string, ArrayBuffer> = new Map();
+  /** ZIP properties kept separately so replacing a payload does not discard its container metadata. */
+  readonly entryMetadata: Map<string, VfsEntryMetadata> = new Map();
   private resourcePathsByBasename: Map<string, string[]> = new Map();
   
   // Signal to notify app that a JAR is loaded
@@ -42,14 +59,26 @@ export class DoomFileService {
 
   async loadJar(file: File): Promise<void> {
     try {
+      this.isLoaded.set(false);
+      this.stringsIndexLoaded.set(false); // Reset this so UI cleans up
+      this.setFontImageSrc(null);
+      this.files.clear();
+      this.entryMetadata.clear();
+      this.resourcePathsByBasename.clear();
+      
       const zip = new JSZip();
-      const content = await zip.loadAsync(file);
+      const content = await zip.loadAsync(await file.arrayBuffer());
       const nextFiles = new Map<string, ArrayBuffer>();
+
       const promises: Promise<void>[] = [];
 
-      content.forEach((relativePath: string, zipEntry: any) => {
+      let order = 0;
+      content.forEach((relativePath: string, zipEntry: JSZip.JSZipObject) => {
+        const normalizedPath = this.normalizePath(relativePath);
+        this.entryMetadata.set(normalizedPath, this.metadataFromZipEntry(zipEntry, order++));
         if (!zipEntry.dir) {
           const promise = zipEntry.async('arraybuffer').then((buffer: ArrayBuffer) => {
+            this.files.set(normalizedPath, buffer);
             nextFiles.set(this.normalizePath(relativePath), buffer);
           });
           promises.push(promise);
@@ -91,21 +120,44 @@ export class DoomFileService {
     try {
         const zip = new JSZip();
 
-        // Repack all files preserving their original paths
-        for (const [path, buffer] of this.files.entries()) {
-            zip.file(path, buffer);
+        // Original entries retain central-directory order; new resources follow in VFS insertion order.
+        const paths = new Set([...this.entryMetadata.keys(), ...this.files.keys()]);
+        const orderedPaths = [...paths].sort((left, right) =>
+          this.metadataFor(left).order - this.metadataFor(right).order
+        );
+        for (const path of orderedPaths) {
+            const metadata = this.metadataFor(path);
+            const options: JSZip.JSZipFileOptions = {
+              date: new Date(metadata.date),
+              comment: metadata.comment,
+              unixPermissions: metadata.unixPermissions,
+              dosPermissions: metadata.dosPermissions,
+              dir: metadata.dir,
+              compression: metadata.compression,
+              compressionOptions: metadata.compressionOptions,
+              createFolders: false
+            };
+            if (metadata.dir) {
+              zip.file(path, null, { ...options, dir: true });
+            } else {
+              const buffer = this.files.get(path);
+              if (buffer) zip.file(path, buffer, options);
+            }
         }
 
-        const blob = await zip.generateAsync({ type: 'blob' });
+        const platform = [...this.entryMetadata.values()].some(metadata => metadata.unixPermissions !== null)
+          ? 'UNIX'
+          : 'DOS';
+        const blob = await zip.generateAsync({ type: 'blob', platform });
         
         // Trigger download
-        const url = window.URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = 'doom2rpg_modded.jar';
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
     } catch (e) {
@@ -120,6 +172,9 @@ export class DoomFileService {
       ? normalizedPath
       : this.resolveResourcePath(normalizedPath) ?? normalizedPath;
     this.files.set(targetPath, buffer);
+    if (!this.entryMetadata.has(targetPath)) {
+      this.entryMetadata.set(targetPath, this.newEntryMetadata());
+    }
     this.rebuildResourceIndex();
 
     this.updateStringsIndexLoaded();
@@ -147,8 +202,14 @@ export class DoomFileService {
       const normalized = this.normalizePath(path);
       return normalized.includes('/') ? normalized : this.resolveResourcePath(normalized) ?? normalized;
     });
-    for (const path of resolvedDeletes) this.files.delete(path);
-    for (const [path, buffer] of resolved) this.files.set(path, buffer);
+    for (const path of resolvedDeletes) {
+      this.files.delete(path);
+      this.entryMetadata.delete(path);
+    }
+    for (const [path, buffer] of resolved) {
+      this.files.set(path, buffer);
+      if (!this.entryMetadata.has(path)) this.entryMetadata.set(path, this.newEntryMetadata());
+    }
     this.rebuildResourceIndex();
     this.updateStringsIndexLoaded();
   }
@@ -207,6 +268,46 @@ export class DoomFileService {
 
   private normalizePath(path: string): string {
     return path.replace(/^\/+/, '');
+  }
+
+  private metadataFromZipEntry(entry: JSZip.JSZipObject, order: number): VfsEntryMetadata {
+    // JSZip exposes the input compression only on its loaded compressed-data object.
+    const compressedData = (entry as JSZip.JSZipObject & {
+      _data?: { compression?: { magic?: string } };
+    })._data;
+    const compression = compressedData?.compression?.magic === '\x08\x00' ? 'DEFLATE' : 'STORE';
+    return {
+      date: new Date(entry.date),
+      comment: entry.comment ?? '',
+      unixPermissions: entry.unixPermissions,
+      dosPermissions: entry.dosPermissions,
+      dir: entry.dir,
+      order,
+      compression,
+      // The ZIP format does not record the encoder's DEFLATE level, so it cannot be recovered.
+      compressionOptions: null
+    };
+  }
+
+  private metadataFor(path: string): VfsEntryMetadata {
+    const existing = this.entryMetadata.get(path);
+    if (existing) return existing;
+    const metadata = this.newEntryMetadata();
+    this.entryMetadata.set(path, metadata);
+    return metadata;
+  }
+
+  private newEntryMetadata(): VfsEntryMetadata {
+    return {
+      date: new Date(NEW_ENTRY_DATE),
+      comment: '',
+      unixPermissions: null,
+      dosPermissions: null,
+      dir: false,
+      order: this.entryMetadata.size,
+      compression: 'STORE',
+      compressionOptions: null
+    };
   }
 
   private basename(path: string): string {
