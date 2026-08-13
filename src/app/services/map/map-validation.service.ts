@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import { MapData } from '../doom-map.service';
-import { SpriteFlag } from '../../core/constants/map-flags';
 import { MAX_SAFE_ENTITY_ID } from '../../core/constants/entity-types';
 import { MapCoordinateService } from './map-coordinate.service';
 import { TextureMappingService } from '../textures/texture-mapping.service';
@@ -19,8 +18,6 @@ export class MapValidationService {
     data.sprites.forEach((s, i) => {
       this.validateTextureGroup(errors, `Entity ${i}`, s.textureId);
       if (!Number.isInteger(s.flags) || s.flags < 0 || s.flags > 0xffff) errors.push(`Entity ${i}: flags must fit uint16.`);
-      const directions = [SpriteFlag.North, SpriteFlag.South, SpriteFlag.East, SpriteFlag.West].filter(f => (s.flags & f) !== 0).length;
-      if (directions > 1 || ((s.flags & SpriteFlag.Flat) !== 0 && (s.flags & SpriteFlag.Wall) !== 0)) errors.push(`Entity ${i}: incompatible sprite orientation flags.`);
       if (![s.x, s.z].every(v => Number.isInteger(v) && v >= 0 && v <= 2040 && v % 8 === 0)) errors.push(`Entity ${i}: X/depth must be multiples of 8 in 0…2040.`);
       const floor = this.coordinates.getFloorHeight(data, s.x, s.z);
       const packedHeight = s.y - floor + 32;

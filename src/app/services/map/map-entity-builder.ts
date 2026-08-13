@@ -38,7 +38,7 @@ export class MapEntityBuilder {
       data.sprites.forEach((spr, index) => {
            if (isNaN(spr.x) || isNaN(spr.y) || isNaN(spr.z)) return;
 
-           const isOriented = (spr.flags & (SpriteFlag.North | SpriteFlag.South | SpriteFlag.East | SpriteFlag.West | SpriteFlag.Flat | SpriteFlag.Wall)) !== 0;
+           const isOriented = (spr.flags & (SpriteFlag.OrientationNorthBit | SpriteFlag.OrientationSouthBit | SpriteFlag.OrientationEastBit | SpriteFlag.OrientationWestBit | SpriteFlag.Flat | SpriteFlag.Wall)) !== 0;
            
            let obj: THREE.Object3D | null = null;
 
@@ -91,10 +91,10 @@ export class MapEntityBuilder {
                const WALL_OFFSET = 2.0;
                let xOff = 0, zOff = 0;
 
-               if (spr.flags & SpriteFlag.North) { mesh.rotation.y = Math.PI; zOff = -WALL_OFFSET; }
-               else if (spr.flags & SpriteFlag.South) { mesh.rotation.y = 0; zOff = WALL_OFFSET; }
-               else if (spr.flags & SpriteFlag.East) { mesh.rotation.y = -Math.PI / 2; xOff = WALL_OFFSET; }
-               else if (spr.flags & SpriteFlag.West) { mesh.rotation.y = Math.PI / 2; xOff = -WALL_OFFSET; }
+               if (spr.flags & SpriteFlag.OrientationNorthBit) { mesh.rotation.y = Math.PI; zOff = -WALL_OFFSET; }
+               else if (spr.flags & SpriteFlag.OrientationSouthBit) { mesh.rotation.y = 0; zOff = WALL_OFFSET; }
+               else if (spr.flags & SpriteFlag.OrientationEastBit) { mesh.rotation.y = -Math.PI / 2; xOff = WALL_OFFSET; }
+               else if (spr.flags & SpriteFlag.OrientationWestBit) { mesh.rotation.y = Math.PI / 2; xOff = -WALL_OFFSET; }
                else if (spr.flags & SpriteFlag.Wall) { mesh.rotation.y = 0; }
 
                if (spr.flags & SpriteFlag.Flat) {

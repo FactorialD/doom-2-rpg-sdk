@@ -5,6 +5,7 @@ import { PolyFlag } from '../../core/constants/geometry.ts';
 import { TextureMappingService } from '../textures/texture-mapping.service.ts';
 import { MapValidationService } from './map-validation.service.ts';
 import { packPolygonTextureId, unpackPolygonTextureId } from './map-texture-id.ts';
+import { SpriteFlag } from '../../core/constants/map-flags.ts';
 
 function mappingFixture(): TextureMappingService {
   const mappings = new Int16Array(512);
@@ -56,4 +57,21 @@ test('empty mapping groups exist while broken reference chains receive precise e
   assert.match(service.validate(mapWithGroups([301]))[0], /cyclic texture reference/);
   mapping.mediaTexelSizes![7] = 0x8000 | 2047;
   assert.match(service.validate(mapWithGroups([301]))[0], /parent 2047 outside the mapping range/);
+});
+
+test('independent sprite orientation bits may be combined while flags remain uint16', () => {
+  const service = validator(mappingFixture());
+  const map = mapWithGroups([]);
+  map.sprites = [{
+    uuid: 'combined-orientation', x: 0, y: 0, z: 0, textureId: 299,
+    flatIndex: 0,
+    flags: SpriteFlag.OrientationNorthBit | SpriteFlag.OrientationSouthBit |
+      SpriteFlag.OrientationEastBit | SpriteFlag.OrientationWestBit,
+    type: 'normal', extraInfo: 0
+  }];
+  Object.assign(service, { coordinates: { getFloorHeight: () => 0 } });
+
+  assert.deepEqual(service.validate(map), []);
+  map.sprites[0].flags = 0x1_0000;
+  assert.match(service.validate(map)[0], /flags must fit uint16/);
 });
