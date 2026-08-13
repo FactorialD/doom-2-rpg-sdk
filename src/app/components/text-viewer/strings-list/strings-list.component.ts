@@ -1,5 +1,5 @@
 
-import { AfterViewInit, Component, ElementRef, Input, OnChanges, OnDestroy, QueryList, SimpleChanges, ViewChildren, inject, effect, output } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, Injector, OnChanges, OnDestroy, QueryList, SimpleChanges, ViewChildren, afterNextRender, inject, effect, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomTextService, TextEntry } from '../../../services/doom-text.service';
@@ -113,7 +113,11 @@ export interface TextSelectionEvent { id: number; selectionStart: number; select
 export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy {
     @Input() strings: TextEntry[] = [];
     @Input() scrollToId: number = -1;
-    @Input() resourceId = '';
+    private readonly resourceIdValue = signal('');
+    private readonly navigationVisibleValue = signal(false);
+    @Input() set resourceId(value: string) { this.resourceIdValue.set(value); }
+    get resourceId() { return this.resourceIdValue(); }
+    @Input() set navigationVisible(value: boolean) { this.navigationVisibleValue.set(value); }
     onSave = output<void>(); 
     selectionChange = output<TextSelectionEvent>();
     @ViewChildren('canvas') private canvases!: QueryList<ElementRef<HTMLCanvasElement>>;
@@ -123,6 +127,7 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     fileService = inject(DoomFileService);
     editorService = inject(EditorService);
     private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+    private readonly injector = inject(Injector);
     private readonly navigationHighlight = inject(NavigationHighlightService);
     
     fontImage: HTMLImageElement | null = null;
@@ -147,9 +152,13 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
         });
         effect(() => {
             const request = this.editorService.requestedTextNavigation();
-            const chunk = Number(this.resourceId.split(':')[1]);
-            if (!request || request.chunkId !== chunk || !this.strings.some(entry => entry.id === request.stringId)) return;
-            void this.revealExternal(request.requestId, request.stringId);
+            const chunk = Number(this.resourceIdValue().split(':')[1]);
+            if (!request || !this.navigationVisibleValue() || request.chunkId !== chunk) return;
+            afterNextRender(() => {
+                if (this.editorService.requestedTextNavigation()?.requestId === request.requestId) {
+                    void this.revealExternal(request.requestId, request.stringId);
+                }
+            }, { injector: this.injector });
         });
     }
 

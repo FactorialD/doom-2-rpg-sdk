@@ -112,39 +112,39 @@ export class EditorService {
 
   selectMapEntity(mapId: number, entityId: number, fromScript: boolean = false) {
       const request = { ...this.request(), mapId, entityId, fromScript };
+      this.activeTab.set('map');
       this.requestedEntitySelection.set(request);
       this.expireNavigation(this.requestedEntitySelection, request, `Entity #${entityId}`);
-      this.activeTab.set('map');
   }
 
   selectTexture(textureId: number) {
       // Set both the navigation request AND the current brush
       this.currentTextureId.set(textureId);
       const request = { ...this.request(), textureId };
+      this.activeTab.set('textures');
       this.requestedTextureSelection.set(request);
       this.expireNavigation(this.requestedTextureSelection, request, `Texture #${textureId}`);
-      this.activeTab.set('textures');
   }
 
   goToScript(mapId: number, offset: number) {
       const request = { ...this.request(), mapId, offset };
+      this.activeTab.set('scripts');
       this.requestedScriptNavigation.set(request);
       this.expireNavigation(this.requestedScriptNavigation, request, `Instruction 0x${offset.toString(16).toUpperCase()}`);
-      this.activeTab.set('scripts');
   }
 
   selectPalette(paletteId: number) {
       const request = { ...this.request(), paletteId };
+      this.activeTab.set('palettes');
       this.requestedPaletteSelection.set(request);
       this.expireNavigation(this.requestedPaletteSelection, request, `Palette #${paletteId}`);
-      this.activeTab.set('palettes');
   }
 
   goToString(chunkId: number, stringId: number) {
       const request = { ...this.request(), chunkId, stringId };
+      this.activeTab.set('text');
       this.requestedTextNavigation.set(request);
       this.expireNavigation(this.requestedTextNavigation, request, `String #${stringId}`);
-      this.activeTab.set('text');
   }
   
   notifyScriptsChanged() {

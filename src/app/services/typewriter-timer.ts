@@ -1,8 +1,15 @@
+type TimerHandle = ReturnType<typeof globalThis.setTimeout>;
+type ScheduleTimer = (callback: () => void, delay: number) => TimerHandle;
+type CancelTimer = (handle: TimerHandle) => void;
+
 export class TypewriterTimer {
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  private timer: TimerHandle | null = null;
   private generation = 0;
 
-  constructor(private readonly schedule = setTimeout, private readonly cancel = clearTimeout) {}
+  constructor(
+    private readonly schedule: ScheduleTimer = (callback, delay) => globalThis.setTimeout(callback, delay),
+    private readonly cancel: CancelTimer = handle => globalThis.clearTimeout(handle),
+  ) {}
 
   start(length: number, delay: number, frame: (position: number) => void, complete: () => void) {
     this.stop();
