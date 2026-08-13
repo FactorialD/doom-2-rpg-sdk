@@ -31,3 +31,31 @@ test('a rapid second reveal cancels only the first temporary effect', async () =
   assert.equal(first.style.outline, '');
   assert.notEqual(second.style.outline, '');
 });
+
+test('string navigation waits for Text, Strings, and the target chunk before acknowledgement', async () => {
+  const service = new NavigationHighlightService();
+  const target = element();
+  const events: string[] = [];
+  let activeTab = 'scripts';
+  let activeSubTab = 'atlases';
+  let chunk = 0;
+  target.id = 'string-7';
+  target.scrollIntoView = options => events.push(`scroll:${target.id}:${options?.block}`);
+
+  const reveal = service.reveal({
+    find: () => activeTab === 'text' && activeSubTab === 'strings' && chunk === 4 ? target : null,
+    durationMs: 5,
+  }).then(found => {
+    if (found) events.push('acknowledge');
+    return found;
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(events, []);
+  activeTab = 'text';
+  activeSubTab = 'strings';
+  chunk = 4;
+
+  assert.equal(await reveal, true);
+  assert.deepEqual(events, ['scroll:string-7:center', 'acknowledge']);
+});

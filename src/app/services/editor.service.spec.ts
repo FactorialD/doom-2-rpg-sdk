@@ -44,6 +44,34 @@ test('cross-editor requests have unique IDs and identify external navigation', (
   assert.equal(new Set(requests.map(request => request.requestId)).size, 5);
 });
 
+test('cross-editor navigation activates its workspace before publishing the request', () => {
+  const service = new EditorService();
+  const publications: string[] = [];
+  const watch = <T>(target: { set(value: T): void }, label: string) => {
+    const publish = target.set.bind(target);
+    target.set = value => {
+      if (value) publications.push(`${label}:${service.activeTab()}`);
+      publish(value);
+    };
+  };
+  watch(service.requestedTextNavigation, 'text');
+  watch(service.requestedScriptNavigation, 'script');
+  watch(service.requestedPaletteSelection, 'palette');
+  watch(service.requestedEntitySelection, 'entity');
+  watch(service.requestedTextureSelection, 'texture');
+
+  service.activeTab.set('items');
+  service.goToString(4, 7);
+  service.goToScript(2, 0x20);
+  service.selectPalette(3);
+  service.selectMapEntity(1, 9);
+  service.selectTexture(11);
+
+  assert.deepEqual(publications, [
+    'text:text', 'script:scripts', 'palette:palettes', 'entity:map', 'texture:textures',
+  ]);
+});
+
 test('only the matching request may acknowledge rapid sequential navigation', () => {
   const service = new EditorService();
   service.selectTexture(10);

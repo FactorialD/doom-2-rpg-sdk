@@ -169,6 +169,7 @@ import { TextSelectionEvent } from "./strings-list/strings-list.component";
               <app-strings-list
                 [strings]="currentStrings()"
                 [resourceId]="textResourceId()"
+                [navigationVisible]="editorService.activeTab() === 'text' && activeSubTab() === 'strings'"
                 [scrollToId]="targetStringId"
                 (onSave)="onSaveCurrentChunk()"
                 (selectionChange)="onTextSelection($event)"
