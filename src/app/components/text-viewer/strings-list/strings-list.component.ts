@@ -25,9 +25,6 @@ export interface TextSelectionEvent { id: number; selectionStart: number; select
             </div>
             
             <div class="flex items-center gap-2 ml-4">
-                <label class="text-[10px] text-neutral-400 whitespace-nowrap">Type delay
-                    <input type="number" min="10" max="1000" step="10" [(ngModel)]="typeDelay" class="w-16 ml-1 bg-neutral-800 p-1 rounded">
-                </label>
                 <button 
                     (click)="addString()" 
                     class="px-3 py-1 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-bold rounded transition-colors flex items-center gap-2 border border-neutral-600">
@@ -136,9 +133,7 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     
     // Track newly added IDs to highlight them
     newIds = new Set<number>();
-    typeDelay = 45;
     activeEntryId: number | null = null;
-    typePosition = 0;
     private readonly typeTimer = new TypewriterTimer();
     private resizeObserver: ResizeObserver | null = null;
     private viewChanges?: { unsubscribe(): void };
@@ -214,14 +209,15 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     toggleTypewriter(entry: TextEntry) {
         if (this.activeEntryId === entry.id) { this.stopTypewriter(); this.renderSingle(entry); return; }
         this.stopTypewriter();
+        const canvas = this.getCanvas(entry.id);
+        if (!canvas || !this.fontImage) return;
         this.activeEntryId = entry.id;
-        this.typePosition = 0;
-        const chars = Array.from(entry.renderKey);
-        this.renderSingle(entry, '');
-        this.typeTimer.start(chars.length, Math.max(10, this.typeDelay), position => {
+        const width = Math.max(1, canvas.parentElement!.clientWidth - 16);
+        const layout = this.textService.preparePreviewLayout(entry.renderKey, width);
+        this.textService.renderPreviewLayout(layout, canvas, this.fontImage, 0, 0);
+        this.typeTimer.start(layout.lines.map(line => Array.from(line.text).length), state => {
             if (this.activeEntryId !== entry.id) return;
-            this.typePosition = position;
-            this.renderSingle(entry, chars.slice(0, position).join(''));
+            this.textService.renderPreviewLayout(layout, canvas, this.fontImage!, state.lineIndex, state.characterCount);
         }, () => {
             if (this.activeEntryId === entry.id) {
                 this.stopTypewriter();
@@ -233,7 +229,6 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
     stopTypewriter() {
         this.typeTimer.stop();
         this.activeEntryId = null;
-        this.typePosition = 0;
     }
     
     addString() {
@@ -279,10 +274,14 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
 
     renderSingle(entry: TextEntry, previewText = entry.renderKey) {
         if (!this.fontImage || !this.fontLoaded) return;
-        const canvas = this.canvases?.find(item => Number(item.nativeElement.dataset['entryId']) === entry.id)?.nativeElement;
+        const canvas = this.getCanvas(entry.id);
         if (!canvas) return;
         const width = Math.max(1, canvas.parentElement!.clientWidth - 16);
         this.textService.renderTextToCanvas(previewText, canvas, this.fontImage, width);
+    }
+
+    private getCanvas(entryId: number) {
+        return this.canvases?.find(item => Number(item.nativeElement.dataset['entryId']) === entryId)?.nativeElement;
     }
 
     private observePreviews() {
@@ -293,7 +292,8 @@ export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy
                 const canvas = observed.target.querySelector<HTMLCanvasElement>('canvas');
                 const id = Number(canvas?.dataset['entryId']);
                 const entry = this.strings.find(item => item.id === id);
-                if (entry) this.renderSingle(entry, this.activeEntryId === id ? Array.from(entry.renderKey).slice(0, this.typePosition).join('') : entry.renderKey);
+                // Keep the play-time layout stable until Stop, matching the game dialog.
+                if (entry && this.activeEntryId !== id) this.renderSingle(entry);
             }
         });
         this.previews.forEach(item => this.resizeObserver!.observe(item.nativeElement));

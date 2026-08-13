@@ -38,10 +38,14 @@ registerHooks({
         export const Input = () => () => {};
         export const Output = () => () => {};
         export const ViewChild = () => () => {};
+        export const ViewChildren = () => () => {};
+        export class Injector {}
         export class EventEmitter { emit() {} }
         export class ElementRef { constructor(nativeElement) { this.nativeElement = nativeElement; } }
         export const inject = () => undefined;
         export const effect = callback => callback();
+        export const afterNextRender = callback => callback();
+        export const output = () => ({ emit() {} });
         export const computed = callback => callback;
         export const signal = initial => {
           let value = initial;

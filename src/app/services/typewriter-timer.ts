@@ -2,6 +2,14 @@ type TimerHandle = ReturnType<typeof globalThis.setTimeout>;
 type ScheduleTimer = (callback: () => void, delay: number) => TimerHandle;
 type CancelTimer = (handle: TimerHandle) => void;
 
+export interface TypewriterState {
+  lineIndex: number;
+  characterCount: number;
+}
+
+/** Canvas.dialogState reveals one character every 25 milliseconds. */
+export const MS_PER_CHAR = 25;
+
 export class TypewriterTimer {
   private timer: TimerHandle | null = null;
   private generation = 0;
@@ -11,18 +19,29 @@ export class TypewriterTimer {
     private readonly cancel: CancelTimer = handle => globalThis.clearTimeout(handle),
   ) {}
 
-  start(length: number, delay: number, frame: (position: number) => void, complete: () => void) {
+  start(lineLengths: readonly number[], frame: (state: TypewriterState) => void, complete: () => void) {
     this.stop();
     const generation = this.generation;
-    let position = 0;
+    let lineIndex = 0;
+    let characterCount = 0;
+    const advanceEmptyLines = () => {
+      while (lineIndex < lineLengths.length && lineLengths[lineIndex] === 0) lineIndex++;
+    };
+    advanceEmptyLines();
     const tick = () => {
       if (generation !== this.generation) return;
-      frame(++position);
-      if (position >= length) { this.timer = null; complete(); }
-      else this.timer = this.schedule(tick, delay);
+      characterCount++;
+      frame({ lineIndex, characterCount });
+      if (characterCount >= lineLengths[lineIndex]) {
+        lineIndex++;
+        characterCount = 0;
+        advanceEmptyLines();
+      }
+      if (lineIndex >= lineLengths.length) { this.timer = null; complete(); }
+      else this.timer = this.schedule(tick, MS_PER_CHAR);
     };
-    if (length === 0) complete();
-    else this.timer = this.schedule(tick, delay);
+    if (lineIndex >= lineLengths.length) complete();
+    else this.timer = this.schedule(tick, MS_PER_CHAR);
   }
 
   stop() {
