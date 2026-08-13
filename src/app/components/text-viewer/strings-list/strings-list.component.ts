@@ -1,10 +1,13 @@
 
-import { Component, Input, OnChanges, SimpleChanges, inject, effect, output } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, OnChanges, OnDestroy, QueryList, SimpleChanges, ViewChildren, inject, effect, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomTextService, TextEntry } from '../../../services/doom-text.service';
 import { DoomFileService } from '../../../services/doom-file.service';
 import { EditorService } from '../../../services/editor.service';
+import { TypewriterTimer } from '../../../services/typewriter-timer';
+
+export interface TextSelectionEvent { id: number; selectionStart: number; selectionEnd: number; text: string; }
 
 @Component({
   selector: 'app-strings-list',
@@ -21,6 +24,9 @@ import { EditorService } from '../../../services/editor.service';
             </div>
             
             <div class="flex items-center gap-2 ml-4">
+                <label class="text-[10px] text-neutral-400 whitespace-nowrap">Type delay
+                    <input type="number" min="10" max="1000" step="10" [(ngModel)]="typeDelay" class="w-16 ml-1 bg-neutral-800 p-1 rounded">
+                </label>
                 <button 
                     (click)="addString()" 
                     class="px-3 py-1 bg-neutral-700 hover:bg-neutral-600 text-white text-xs font-bold rounded transition-colors flex items-center gap-2 border border-neutral-600">
@@ -50,6 +56,8 @@ import { EditorService } from '../../../services/editor.service';
                         <textarea 
                             [(ngModel)]="entry.raw" 
                             (ngModelChange)="onTextChange(entry)"
+                            (select)="emitSelection(entry, $event)"
+                            (keyup)="emitSelection(entry, $event)"
                             class="w-full bg-neutral-950/50 text-amber-500 font-mono text-sm p-2 rounded border border-transparent focus:border-red-600 focus:bg-black outline-none min-h-[40px] resize-y custom-scrollbar"
                             rows="2"
                         ></textarea>
@@ -61,9 +69,11 @@ import { EditorService } from '../../../services/editor.service';
                          }
                     </div>
                     
-                    <!-- Preview Container with Y-scroll -->
-                    <div class="w-full max-h-32 overflow-y-auto overflow-x-auto bg-black/20 rounded border border-white/5 p-2 custom-scrollbar flex items-center justify-center">
-                        <canvas #canvas [attr.data-text]="entry.renderKey" class="image-pixelated block"></canvas>
+                    <div #preview class="w-full overflow-x-hidden bg-black/20 rounded border border-white/5 p-2 flex flex-col items-start justify-start">
+                        <button (click)="toggleTypewriter(entry)" class="mb-1 px-2 py-0.5 text-[10px] rounded bg-neutral-700 hover:bg-neutral-600 text-white">
+                            {{ activeEntryId === entry.id ? '■ Stop' : '▶ Play' }}
+                        </button>
+                        <canvas #canvas [attr.data-entry-id]="entry.id" class="image-pixelated block max-w-full"></canvas>
                     </div>
                 </div>
             } @empty {
@@ -99,11 +109,14 @@ import { EditorService } from '../../../services/editor.service';
     }
   `]
 })
-export class StringsListComponent implements OnChanges {
+export class StringsListComponent implements OnChanges, AfterViewInit, OnDestroy {
     @Input() strings: TextEntry[] = [];
     @Input() scrollToId: number = -1;
     @Input() resourceId = '';
     onSave = output<void>(); 
+    selectionChange = output<TextSelectionEvent>();
+    @ViewChildren('canvas') private canvases!: QueryList<ElementRef<HTMLCanvasElement>>;
+    @ViewChildren('preview') private previews!: QueryList<ElementRef<HTMLElement>>;
     
     textService = inject(DoomTextService);
     fileService = inject(DoomFileService);
@@ -115,6 +128,12 @@ export class StringsListComponent implements OnChanges {
     
     // Track newly added IDs to highlight them
     newIds = new Set<number>();
+    typeDelay = 45;
+    activeEntryId: number | null = null;
+    typePosition = 0;
+    private readonly typeTimer = new TypewriterTimer();
+    private resizeObserver: ResizeObserver | null = null;
+    private viewChanges?: { unsubscribe(): void };
 
     constructor() {
         effect(() => {
@@ -126,7 +145,8 @@ export class StringsListComponent implements OnChanges {
     }
 
     ngOnChanges(changes: SimpleChanges): void {
-        if (changes['strings']) {
+        if (changes['strings'] || changes['resourceId']) {
+            this.stopTypewriter();
             this.newIds.clear();
             setTimeout(() => this.renderAll(), 0);
         }
@@ -140,6 +160,18 @@ export class StringsListComponent implements OnChanges {
         }
     }
 
+    ngAfterViewInit(): void {
+        this.observePreviews();
+        this.viewChanges = this.previews.changes.subscribe(() => this.observePreviews());
+        queueMicrotask(() => this.renderAll());
+    }
+
+    ngOnDestroy(): void {
+        this.stopTypewriter();
+        this.resizeObserver?.disconnect();
+        this.viewChanges?.unsubscribe();
+    }
+
     scrollToItem(id: number) {
         const el = document.getElementById(`string-${id}`);
         if (el) {
@@ -150,9 +182,42 @@ export class StringsListComponent implements OnChanges {
     }
 
     onTextChange(entry: TextEntry) {
+        if (this.activeEntryId === entry.id) this.stopTypewriter();
         this.editorService.markDirty('strings', this.resourceId);
         entry.renderKey = entry.raw; 
         setTimeout(() => this.renderSingle(entry), 0);
+    }
+
+    emitSelection(entry: TextEntry, event: Event) {
+        const textarea = event.target as HTMLTextAreaElement;
+        const selectionStart = textarea.selectionStart ?? 0;
+        const selectionEnd = textarea.selectionEnd ?? selectionStart;
+        this.selectionChange.emit({ id: entry.id, selectionStart, selectionEnd, text: entry.raw.slice(selectionStart, selectionEnd) });
+    }
+
+    toggleTypewriter(entry: TextEntry) {
+        if (this.activeEntryId === entry.id) { this.stopTypewriter(); this.renderSingle(entry); return; }
+        this.stopTypewriter();
+        this.activeEntryId = entry.id;
+        this.typePosition = 0;
+        const chars = Array.from(entry.renderKey);
+        this.renderSingle(entry, '');
+        this.typeTimer.start(chars.length, Math.max(10, this.typeDelay), position => {
+            if (this.activeEntryId !== entry.id) return;
+            this.typePosition = position;
+            this.renderSingle(entry, chars.slice(0, position).join(''));
+        }, () => {
+            if (this.activeEntryId === entry.id) {
+                this.stopTypewriter();
+                this.renderSingle(entry);
+            }
+        });
+    }
+
+    stopTypewriter() {
+        this.typeTimer.stop();
+        this.activeEntryId = null;
+        this.typePosition = 0;
     }
     
     addString() {
@@ -193,24 +258,28 @@ export class StringsListComponent implements OnChanges {
 
     renderAll() {
         if (!this.fontImage || !this.fontLoaded) return;
-        const canvases = document.querySelectorAll('canvas');
-        canvases.forEach((canvas: any) => { 
-            const text = canvas.getAttribute('data-text');
-            if (text !== null) {
-                this.textService.renderTextToCanvas(this.textService.getPreviewText(text), canvas, this.fontImage!);
-            }
-        });
+        this.strings.forEach(entry => this.renderSingle(entry));
     }
 
-    renderSingle(entry: TextEntry) {
+    renderSingle(entry: TextEntry, previewText = entry.renderKey) {
         if (!this.fontImage || !this.fontLoaded) return;
-        // Optimization: Find canvas within the specific ID row
-        const row = document.getElementById(`string-${entry.id}`);
-        if (row) {
-            const canvas = row.querySelector('canvas');
-            if (canvas) {
-                this.textService.renderTextToCanvas(this.textService.getPreviewText(entry.renderKey), canvas, this.fontImage);
+        const canvas = this.canvases?.find(item => Number(item.nativeElement.dataset['entryId']) === entry.id)?.nativeElement;
+        if (!canvas) return;
+        const width = Math.max(1, canvas.parentElement!.clientWidth - 16);
+        this.textService.renderTextToCanvas(previewText, canvas, this.fontImage, width);
+    }
+
+    private observePreviews() {
+        this.resizeObserver?.disconnect();
+        if (typeof ResizeObserver === 'undefined') return;
+        this.resizeObserver = new ResizeObserver(entries => {
+            for (const observed of entries) {
+                const canvas = observed.target.querySelector<HTMLCanvasElement>('canvas');
+                const id = Number(canvas?.dataset['entryId']);
+                const entry = this.strings.find(item => item.id === id);
+                if (entry) this.renderSingle(entry, this.activeEntryId === id ? Array.from(entry.renderKey).slice(0, this.typePosition).join('') : entry.renderKey);
             }
-        }
+        });
+        this.previews.forEach(item => this.resizeObserver!.observe(item.nativeElement));
     }
 }

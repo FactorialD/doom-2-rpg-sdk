@@ -15,6 +15,9 @@ function makeIndex(): ArrayBuffer {
 function createService(files: Map<string, ArrayBuffer>) {
     const service = Object.create(DoomTextService.prototype) as DoomTextService;
     Object.assign(service, {
+        FONT_WIDTH: 12, FONT_HEIGHT: 16, FONT_COLUMNS: 16, FONT_GLYPH_COUNT: 144,
+        FONT_ADVANCE: 9, FONT_SPACE_ADVANCE: 7, MISSING_GLYPH_INDEX: 30,
+        glyphRects: Array.from({ length: 144 }, (_, index) => ({ x: (index % 16) * 12, y: Math.floor(index / 16) * 16, w: 12, h: 16 })),
         fileService: {
             getFile: (name: string) => files.get(name),
             saveBuffer: (name: string, data: ArrayBuffer) => files.set(name, data),
@@ -146,4 +149,25 @@ test('preview conversion does not mutate raw during a save and load round trip',
 
     const reparsed = service.loadStrings(0, 0, service.parseStringsIndex(files.get('strings.idx')!));
     assert.equal(reparsed[0].raw, raw);
+});
+
+test('canvas preview wraps words to the available width and grows vertically', () => {
+    const service = createService(new Map());
+    const draws: unknown[][] = [];
+    const canvas = {
+        width: 0, height: 0,
+        getContext: () => ({ clearRect() {}, imageSmoothingEnabled: true, drawImage: (...args: unknown[]) => draws.push(args) })
+    } as unknown as HTMLCanvasElement;
+    service.renderTextToCanvas('one two three', canvas, {} as HTMLImageElement, 38);
+    assert.equal(canvas.width <= 38, true);
+    assert.equal(canvas.height, 64);
+    assert.equal(draws.length, 11);
+});
+
+test('canvas preview handles game line controls and technical hyphens before wrapping', () => {
+    const service = createService(new Map());
+    const canvas = { width: 0, height: 0, getContext: () => ({ clearRect() {}, drawImage() {}, imageSmoothingEnabled: true }) } as unknown as HTMLCanvasElement;
+    service.renderTextToCanvas('de-hy|Doom--RPG', canvas, {} as HTMLImageElement, 200);
+    assert.equal(canvas.height, 32);
+    assert.equal(canvas.width, 72);
 });
