@@ -10,7 +10,7 @@ import { readClipboardImage } from '../../shared/image-clipboard';
   selector: 'app-image-viewer', standalone: true, imports: [CommonModule, FormsModule],
   host: { '(document:paste)': 'onPaste($event)' },
   template: `
-    <div class="flex h-full bg-neutral-950 text-neutral-300">
+    <div data-testid="image-workspace" class="flex h-full bg-neutral-950 text-neutral-300">
       <aside class="w-80 shrink-0 border-r border-neutral-800 flex flex-col">
         <h2 class="p-4 border-b border-neutral-800 font-bold text-white">Images</h2>
         <div class="overflow-y-auto p-2">

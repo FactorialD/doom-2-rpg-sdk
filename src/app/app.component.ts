@@ -28,37 +28,37 @@ import { SoundViewerComponent } from './app/components/sound-viewer/sound-viewer
            
            <!-- Use hidden classes instead of @if/@switch to keep components alive (preserving scroll/state) -->
            
-           <div class="w-full h-full p-0" [class.hidden]="service.activeTab() !== 'map'">
+           <div data-testid="map-workspace" class="w-full h-full p-0" [class.hidden]="service.activeTab() !== 'map'" [attr.aria-hidden]="service.activeTab() !== 'map'">
                 <app-map-3d />
            </div>
 
-           <div class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'textures'">
+           <div data-testid="textures-workspace" class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'textures'" [attr.aria-hidden]="service.activeTab() !== 'textures'">
                 <app-texture-viewer />
            </div>
-           <div class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'images'">
+           <div data-testid="image-workspace-wrapper" class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'images'" [attr.aria-hidden]="service.activeTab() !== 'images'">
                 <app-image-viewer />
            </div>
 
-           <div class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'palettes'">
+           <div data-testid="palettes-workspace" class="w-full h-full bg-[#222]" [class.hidden]="service.activeTab() !== 'palettes'" [attr.aria-hidden]="service.activeTab() !== 'palettes'">
                 <app-palette-viewer />
            </div>
 
-           <div class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'text'">
+           <div data-testid="text-workspace" class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'text'" [attr.aria-hidden]="service.activeTab() !== 'text'">
                 <app-text-viewer />
            </div>
            
-           <div class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'items'">
+           <div data-testid="items-workspace" class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'items'" [attr.aria-hidden]="service.activeTab() !== 'items'">
                 <app-item-viewer />
            </div>
 
-           <div class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'variables'">
+           <div data-testid="variables-workspace" class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'variables'" [attr.aria-hidden]="service.activeTab() !== 'variables'">
                 <app-variables-viewer />
            </div>
 
-           <div class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'scripts'">
+           <div data-testid="scripts-workspace" class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'scripts'" [attr.aria-hidden]="service.activeTab() !== 'scripts'">
                 <app-script-viewer />
            </div>
-           <div class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'sounds'">
+           <div data-testid="sounds-workspace" class="w-full h-full bg-[#1a1a1a]" [class.hidden]="service.activeTab() !== 'sounds'" [attr.aria-hidden]="service.activeTab() !== 'sounds'">
                 <app-sound-viewer />
            </div>
            

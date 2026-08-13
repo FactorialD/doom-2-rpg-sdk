@@ -40,59 +40,59 @@ import { CommonModule } from '@angular/common';
 
       <nav class="flex gap-1">
         <button
-          (click)="service.activeTab.set('map')"
+          (click)="service.selectTab('map')"
           [class.bg-neutral-800]="service.activeTab() === 'map'"
           [class.text-white]="service.activeTab() === 'map'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Map @if(service.dirtyResources().maps.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
-          (click)="service.activeTab.set('textures')"
+          (click)="service.selectTab('textures')"
           [class.bg-neutral-800]="service.activeTab() === 'textures'"
           [class.text-white]="service.activeTab() === 'textures'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Textures @if(service.dirtyResources().textures.dirty) { <span class="text-amber-400">●</span> }
         </button>
-        <button (click)="service.activeTab.set('images')" [class.bg-neutral-800]="service.activeTab() === 'images'" [class.text-white]="service.activeTab() === 'images'" class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
+        <button (click)="service.selectTab('images')" [class.bg-neutral-800]="service.activeTab() === 'images'" [class.text-white]="service.activeTab() === 'images'" class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Images @if(service.dirtyResources().images.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
-          (click)="service.activeTab.set('items')"
+          (click)="service.selectTab('items')"
           [class.bg-neutral-800]="service.activeTab() === 'items'"
           [class.text-white]="service.activeTab() === 'items'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Items
         </button>
         <button 
-          (click)="service.activeTab.set('palettes')"
+          (click)="service.selectTab('palettes')"
           [class.bg-neutral-800]="service.activeTab() === 'palettes'"
           [class.text-white]="service.activeTab() === 'palettes'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Palettes @if(service.dirtyResources().palettes.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
-          (click)="service.activeTab.set('text')"
+          (click)="service.selectTab('text')"
           [class.bg-neutral-800]="service.activeTab() === 'text'"
           [class.text-white]="service.activeTab() === 'text'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Texts @if(service.dirtyResources().strings.dirty) { <span class="text-amber-400">●</span> }
         </button>
         <button 
-          (click)="service.activeTab.set('variables')"
+          (click)="service.selectTab('variables')"
           [class.bg-neutral-800]="service.activeTab() === 'variables'"
           [class.text-white]="service.activeTab() === 'variables'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Vars
         </button>
         <button
-          (click)="service.activeTab.set('sounds')"
+          (click)="service.selectTab('sounds')"
           [class.bg-neutral-800]="service.activeTab() === 'sounds'"
           [class.text-white]="service.activeTab() === 'sounds'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">
           Sounds
         </button>
         <button
-          (click)="service.activeTab.set('scripts')"
+          (click)="service.selectTab('scripts')"
           [class.bg-neutral-800]="service.activeTab() === 'scripts'"
           [class.text-white]="service.activeTab() === 'scripts'"
           class="px-3 py-1.5 rounded text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors">

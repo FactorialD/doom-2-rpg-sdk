@@ -36,6 +36,10 @@ const cleanState = (): Record<EditableResource, DirtyResource> => ({
 })
 export class EditorService {
   activeTab = signal<EditorTab>('text'); 
+
+  selectTab(tab: EditorTab) {
+    this.activeTab.set(tab);
+  }
   
   // The texture currently selected in the Texture Viewer (acting as a "Clipboard" or "Brush")
   currentTextureId = signal<number>(1);
@@ -112,7 +116,7 @@ export class EditorService {
 
   selectMapEntity(mapId: number, entityId: number, fromScript: boolean = false) {
       const request = { ...this.request(), mapId, entityId, fromScript };
-      this.activeTab.set('map');
+      this.selectTab('map');
       this.requestedEntitySelection.set(request);
       this.expireNavigation(this.requestedEntitySelection, request, `Entity #${entityId}`);
   }
@@ -121,28 +125,28 @@ export class EditorService {
       // Set both the navigation request AND the current brush
       this.currentTextureId.set(textureId);
       const request = { ...this.request(), textureId };
-      this.activeTab.set('textures');
+      this.selectTab('textures');
       this.requestedTextureSelection.set(request);
       this.expireNavigation(this.requestedTextureSelection, request, `Texture #${textureId}`);
   }
 
   goToScript(mapId: number, offset: number) {
       const request = { ...this.request(), mapId, offset };
-      this.activeTab.set('scripts');
+      this.selectTab('scripts');
       this.requestedScriptNavigation.set(request);
       this.expireNavigation(this.requestedScriptNavigation, request, `Instruction 0x${offset.toString(16).toUpperCase()}`);
   }
 
   selectPalette(paletteId: number) {
       const request = { ...this.request(), paletteId };
-      this.activeTab.set('palettes');
+      this.selectTab('palettes');
       this.requestedPaletteSelection.set(request);
       this.expireNavigation(this.requestedPaletteSelection, request, `Palette #${paletteId}`);
   }
 
   goToString(chunkId: number, stringId: number) {
       const request = { ...this.request(), chunkId, stringId };
-      this.activeTab.set('text');
+      this.selectTab('text');
       this.requestedTextNavigation.set(request);
       this.expireNavigation(this.requestedTextNavigation, request, `String #${stringId}`);
   }
