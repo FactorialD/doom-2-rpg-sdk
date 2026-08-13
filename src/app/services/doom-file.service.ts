@@ -42,49 +42,45 @@ export class DoomFileService {
 
   async loadJar(file: File): Promise<void> {
     try {
-      this.isLoaded.set(false);
-      this.stringsIndexLoaded.set(false); // Reset this so UI cleans up
-      this.setFontImageSrc(null);
-      this.files.clear();
-      this.resourcePathsByBasename.clear();
-      
       const zip = new JSZip();
       const content = await zip.loadAsync(file);
-      
+      const nextFiles = new Map<string, ArrayBuffer>();
       const promises: Promise<void>[] = [];
 
       content.forEach((relativePath: string, zipEntry: any) => {
         if (!zipEntry.dir) {
           const promise = zipEntry.async('arraybuffer').then((buffer: ArrayBuffer) => {
-            this.files.set(this.normalizePath(relativePath), buffer);
+            nextFiles.set(this.normalizePath(relativePath), buffer);
           });
           promises.push(promise);
         }
       });
 
       await Promise.all(promises);
-      this.rebuildResourceIndex();
-      console.log(`Loaded ${this.files.size} files from JAR.`);
+      const nextResourceIndex = this.buildResourceIndex(nextFiles);
+      this.validateResourceIndex(nextResourceIndex);
+      const nextFontBuffer = this.findFontBuffer(nextFiles, nextResourceIndex);
+      const nextFontUrl = nextFontBuffer
+        ? URL.createObjectURL(new Blob([nextFontBuffer], { type: 'image/png' }))
+        : null;
+      const nextStringsIndexLoaded = this.resolveResourcePathFromIndex('strings.idx', nextResourceIndex) !== undefined;
 
-      this.updateStringsIndexLoaded();
-      
-      const fontBuffer = this.getFile('font.png');
-      if (fontBuffer) {
-        this.setFontImageSrc(URL.createObjectURL(new Blob([fontBuffer], { type: 'image/png' })));
-      }
-      this.tryExtractFont();
-      
+      this.files = nextFiles;
+      this.resourcePathsByBasename = nextResourceIndex;
       this.loadedFileName.set(file.name);
+      this.stringsIndexLoaded.set(nextStringsIndexLoaded);
+      this.setFontImageSrc(nextFontUrl);
       this.isLoaded.set(true);
+      console.log(`Loaded ${this.files.size} files from JAR.`);
 
     } catch (e) {
       console.error('Failed to load JAR:', e);
-      this.isLoaded.set(false);
-      this.setFontImageSrc(null);
       if (e instanceof ResourceCompatibilityError) {
         throw e;
       }
-      alert('Error loading .jar file. Ensure it is a valid ZIP/JAR archive.');
+      if (typeof alert === 'function') {
+        alert('Error loading .jar file. Ensure it is a valid ZIP/JAR archive.');
+      }
     }
   }
 
@@ -175,9 +171,17 @@ export class DoomFileService {
     return result;
   }
 
-  private tryExtractFont() {
-      const idxBuffer = this.getFile('images.idx');
-      if (!idxBuffer) return;
+  private findFontBuffer(
+    files: ReadonlyMap<string, ArrayBuffer>,
+    index: ReadonlyMap<string, string[]>
+  ): ArrayBuffer | undefined {
+      const getFile = (name: string): ArrayBuffer | undefined => {
+        const path = this.resolveResourcePathFromIndex(name, index);
+        return path ? files.get(path) : undefined;
+      };
+      const directFont = getFile('font.png');
+      const idxBuffer = getFile('images.idx');
+      if (!idxBuffer) return directFont;
 
       const indexData = flattenResourceFileIndex(parseResourceFileIndex(idxBuffer));
       const FONT_ID = 11;
@@ -191,16 +195,14 @@ export class DoomFileService {
           
           if (chunkId !== 255 && length > 0) {
               const binName = `images${chunkId}.bin`;
-              const binBuffer = this.getFile(binName);
+              const binBuffer = getFile(binName);
               
               if (binBuffer && offset + length <= binBuffer.byteLength) {
-                  const fontBlob = binBuffer.slice(offset, offset + length);
-                  const blob = new Blob([fontBlob], { type: 'image/png' }); 
-                  const url = URL.createObjectURL(blob);
-                  this.setFontImageSrc(url);
+                  return binBuffer.slice(offset, offset + length);
               }
           }
       }
+      return directFont;
   }
 
   private normalizePath(path: string): string {
@@ -212,17 +214,37 @@ export class DoomFileService {
   }
 
   private rebuildResourceIndex(): void {
-    this.resourcePathsByBasename.clear();
-    for (const path of this.files.keys()) {
+    this.resourcePathsByBasename = this.buildResourceIndex(this.files);
+  }
+
+  private buildResourceIndex(files: ReadonlyMap<string, ArrayBuffer>): Map<string, string[]> {
+    const index = new Map<string, string[]>();
+    for (const path of files.keys()) {
       const basename = this.basename(path);
-      const paths = this.resourcePathsByBasename.get(basename) ?? [];
+      const paths = index.get(basename) ?? [];
       paths.push(path);
-      this.resourcePathsByBasename.set(basename, paths);
+      index.set(basename, paths);
+    }
+    return index;
+  }
+
+  private validateResourceIndex(index: ReadonlyMap<string, string[]>): void {
+    for (const [basename, paths] of index) {
+      if (paths.length > 1) {
+        throw new ResourceCompatibilityError(basename, [...paths].sort());
+      }
     }
   }
 
   private resolveResourcePath(basename: string): string | undefined {
-    const paths = this.resourcePathsByBasename.get(basename) ?? [];
+    return this.resolveResourcePathFromIndex(basename, this.resourcePathsByBasename);
+  }
+
+  private resolveResourcePathFromIndex(
+    basename: string,
+    index: ReadonlyMap<string, string[]>
+  ): string | undefined {
+    const paths = index.get(basename) ?? [];
     if (paths.length > 1) {
       throw new ResourceCompatibilityError(basename, [...paths].sort());
     }
