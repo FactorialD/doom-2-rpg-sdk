@@ -1,13 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { MapData, MapSprite } from '../doom-map.service';
 import { ByteStream, BinaryWriter, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../../utils/byte-stream';
-import { SpecialTextureIds, TextureGroupIds } from '../../core/constants/texture-groups';
+import { TextureGroupIds } from '../../core/constants/texture-groups';
 import { SpriteFlag } from '../../core/constants/map-flags';
-import { PolyFlag } from '../../core/constants/geometry';
 import { MapCoordinateService } from './map-coordinate.service';
 import { DoomScriptService } from '../doom-script.service';
 import { ScriptCompilerService } from '../scripts/script-compiler.service';
 import { MapValidationService } from './map-validation.service';
+import { packMapTextureId, packPolygonTextureId, packSpriteTextureId } from './map-texture-id';
 
 @Injectable({
     providedIn: 'root'
@@ -200,20 +200,10 @@ export class MapSerializer {
         const g = this.mapData.geometry;
         this.reader.skip(this.head_numPolys * 2 + this.old_numVerts * 5);
         for (const poly of g.polygons) {
-            let tid = poly.textureId;
-            if (tid >= SpecialTextureIds.WALL_OFFSET) tid -= SpecialTextureIds.WALL_OFFSET;
-            this.writer.writeUByte(tid);
+            this.writer.writeUByte(packPolygonTextureId(poly.textureId, poly.flags).packedId);
         }
         for (const poly of g.polygons) {
-            let flags = poly.flags;
-            const tid = poly.textureId;
-
-            if (tid >= SpecialTextureIds.WALL_OFFSET) {
-                flags |= PolyFlag.WallTexture;
-            } else {
-                flags &= ~PolyFlag.WallTexture;
-            }
-            this.writer.writeUByte(flags);
+            this.writer.writeUByte(packPolygonTextureId(poly.textureId, poly.flags).flags);
         }
         for (const v of g.sourceVertices) this.writer.writeUByte(v.x);
         for (const v of g.sourceVertices) this.writer.writeUByte(v.y);
@@ -273,15 +263,9 @@ export class MapSerializer {
 
         for (let i = 0; i < newTotal; i++) {
             const spr = this.sortedSprites[i];
-            let tid = spr.textureId;
-            let flagVal = spr.flags;
-
-            if (tid >= SpecialTextureIds.WALL_OFFSET) {
-                flagVal |= SpriteFlag.Wall;
-                tid -= SpecialTextureIds.WALL_OFFSET;
-            } else {
-                flagVal &= ~SpriteFlag.Wall;
-            }
+            const packed = packSpriteTextureId(spr.textureId, spr.flags);
+            let tid = packed.packedId;
+            let flagVal = packed.flags;
 
             const isMonster = tid >= TextureGroupIds.MONSTER_START && tid <= TextureGroupIds.MONSTER_END;
             const isNPC = tid >= TextureGroupIds.NPC_START && tid <= TextureGroupIds.NPC_END;
@@ -366,7 +350,7 @@ export class MapSerializer {
         g.uvs = g.uvs ?? new Float32Array();
         g.polygons.forEach((p, i) => {
             if (!fits(p.vertexCount, 2, 9) || !fits(p.vertexStart, 0, g.sourceVertices.length - p.vertexCount)) throw new Error(`Polygon ${i} has an invalid vertex range`);
-            if (!fits(p.textureId >= SpecialTextureIds.WALL_OFFSET ? p.textureId - SpecialTextureIds.WALL_OFFSET : p.textureId, 0, 255)) throw new Error(`Polygon ${i} texture ID does not fit uint8`);
+            if (!fits(packMapTextureId(p.textureId).packedId, 0, 255)) throw new Error(`Polygon ${i} texture ID does not fit uint8`);
         });
         g.sourceVertices.forEach((v, i) => {
             if (![v.x, v.y, v.z].every(n => fits(n, 0, 255)) || ![v.u, v.v].every(n => fits(n, -128, 127))) throw new Error(`Vertex ${i} does not fit the map numeric fields`);

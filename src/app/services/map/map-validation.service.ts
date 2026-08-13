@@ -1,28 +1,23 @@
 import { Injectable, inject } from '@angular/core';
 import { MapData } from '../doom-map.service';
-import { DoomTextureService } from '../doom-texture.service';
-import { SpecialTextureIds } from '../../core/constants/texture-groups';
 import { SpriteFlag } from '../../core/constants/map-flags';
-import { PolyFlag } from '../../core/constants/geometry';
 import { MAX_SAFE_ENTITY_ID } from '../../core/constants/entity-types';
 import { MapCoordinateService } from './map-coordinate.service';
+import { TextureMappingService } from '../textures/texture-mapping.service';
+import { packMapTextureId } from './map-texture-id';
 
 @Injectable({ providedIn: 'root' })
 export class MapValidationService {
-  private textures = inject(DoomTextureService);
+  private mappings = inject(TextureMappingService);
   private coordinates = inject(MapCoordinateService);
 
   validate(data: MapData): string[] {
     const errors: string[] = [];
-    const groups = new Set(this.textures.textureList().filter(t => t.valid).map(t => t.groupId));
     data.geometry.textureIds.forEach((id, i) => {
-      const wall = (data.geometry.flags[i] & PolyFlag.WallTexture) !== 0;
-      if (!groups.has(id)) errors.push(`Polygon ${i}: texture group ${id} does not exist.`);
-      if (wall !== (id >= SpecialTextureIds.WALL_OFFSET)) errors.push(`Polygon ${i}: ${wall ? 'wall' : 'flat'} uses a texture from the wrong group.`);
+      this.validateTextureGroup(errors, `Polygon ${i}`, id);
     });
     data.sprites.forEach((s, i) => {
-      const packedTexture = s.textureId >= SpecialTextureIds.WALL_OFFSET ? s.textureId - SpecialTextureIds.WALL_OFFSET : s.textureId;
-      if (!groups.has(s.textureId) || packedTexture < 0 || packedTexture > 255) errors.push(`Entity ${i}: invalid texture group ${s.textureId}.`);
+      this.validateTextureGroup(errors, `Entity ${i}`, s.textureId);
       if (!Number.isInteger(s.flags) || s.flags < 0 || s.flags > 0xffff) errors.push(`Entity ${i}: flags must fit uint16.`);
       const directions = [SpriteFlag.North, SpriteFlag.South, SpriteFlag.East, SpriteFlag.West].filter(f => (s.flags & f) !== 0).length;
       if (directions > 1 || ((s.flags & SpriteFlag.Flat) !== 0 && (s.flags & SpriteFlag.Wall) !== 0)) errors.push(`Entity ${i}: incompatible sprite orientation flags.`);
@@ -35,5 +30,19 @@ export class MapValidationService {
     const unsafeReferences = data.scripts?.instructions.filter(i => i.referencedEntityId !== undefined && i.referencedEntityId > MAX_SAFE_ENTITY_ID) ?? [];
     if (unsafeReferences.length) errors.push(`Script opcodes reference ${unsafeReferences.length} entity ID(s) above ${MAX_SAFE_ENTITY_ID}; those operands only store one byte.`);
     return [...new Set(errors)];
+  }
+
+  private validateTextureGroup(errors: string[], owner: string, groupId: number): void {
+    const packed = packMapTextureId(groupId).packedId;
+    if (!Number.isInteger(packed) || packed < 0 || packed > 255) {
+      errors.push(`${owner}: texture group ${groupId} does not fit the map uint8 field.`);
+      return;
+    }
+    if (!this.mappings.getGroupRange(groupId)) {
+      errors.push(`${owner}: texture group ${groupId} does not exist.`);
+      return;
+    }
+    const referenceError = this.mappings.validateGroupReferences(groupId);
+    if (referenceError) errors.push(`${owner}: texture group ${groupId} ${referenceError}.`);
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { GeometryScale, PolyFlag } from '../core/constants/geometry';
 import { SpecialTextureIds } from '../core/constants/texture-groups';
+import { unpackPolygonTextureId } from './map/map-texture-id';
 
 /** Signed 2.14 fixed-point BSP plane normal, as stored by Render.java. */
 export interface MapNormal { x: number; y: number; z: number; }
@@ -63,14 +64,14 @@ export class DoomGeometryService {
             for (let p = leaf.polygonOffset; p < leaf.polygonOffset + leaf.polygonCount && p < polyTex.length; p++) {
                 const flags = polyFlags[p];
                 const vertexCount = (flags & 7) + 2;
-                const textureId = polyTex[p] + ((flags & PolyFlag.WallTexture) ? SpecialTextureIds.WALL_OFFSET : 0);
+                const textureId = unpackPolygonTextureId(polyTex[p], flags);
                 polygons[p] = { textureId, flags, vertexStart, vertexCount, leafIndex };
                 vertexStart += vertexCount;
             }
         });
         // Preserve malformed/unreferenced records so validation can report rather than silently discard them.
         for (let p = 0; p < polyTex.length; p++) if (!polygons[p]) {
-            polygons[p] = { textureId: polyTex[p] + ((polyFlags[p] & PolyFlag.WallTexture) ? SpecialTextureIds.WALL_OFFSET : 0), flags: polyFlags[p], vertexStart: 0, vertexCount: (polyFlags[p] & 7) + 2, leafIndex: -1 };
+            polygons[p] = { textureId: unpackPolygonTextureId(polyTex[p], polyFlags[p]), flags: polyFlags[p], vertexStart: 0, vertexCount: (polyFlags[p] & 7) + 2, leafIndex: -1 };
         }
         const lines = Array.from({ length: lineXs.length / 2 }, (_, i) => ({
             flags: (lineFlags[i >> 1] >> ((i & 1) * 4)) & 0xf,

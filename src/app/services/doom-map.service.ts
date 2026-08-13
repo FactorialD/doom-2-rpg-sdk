@@ -2,8 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { DoomFileService } from './doom-file.service';
 import { ByteStream, MAP_FIRST_MARKER, MAP_MARKER, checkedLength, readMarker } from '../utils/byte-stream';
 import { DoomGeometryService, MapGeometry } from './doom-geometry.service';
-import { SpecialTextureIds } from '../core/constants/texture-groups';
-import { SpriteFlag } from '../core/constants/map-flags';
+import { unpackSpriteTextureId } from './map/map-texture-id';
 import { GeometryScale, PolyFlag } from '../core/constants/geometry';
 import { MapSerializer } from './map/map-serializer';
 import { MapCoordinateService } from './map/map-coordinate.service';
@@ -171,11 +170,7 @@ export class DoomMapService {
                     const localTexId = spriteInfoLow[i];
                     const flags = spriteFlags[i];
 
-                    let texId = localTexId;
-                    // Bit 6 of flag indicates wall-texture range offset (257)
-                    if ((flags & SpriteFlag.Wall) !== 0) {
-                        texId += SpecialTextureIds.WALL_OFFSET;
-                    }
+                    const texId = unpackSpriteTextureId(localTexId, flags);
 
                     if (texId === targetTileIndex) {
                         locations.push({
@@ -360,11 +355,7 @@ export class DoomMapService {
             const localTexId = spriteInfoLow[i];
             const flags = spriteFlags[i];
 
-            let texId = localTexId;
-            // Map bit 6 of 16-bit flag to offset (Render.java logic)
-            if ((flags & SpriteFlag.Wall) !== 0) {
-                texId += SpecialTextureIds.WALL_OFFSET;
-            }
+            const texId = unpackSpriteTextureId(localTexId, flags);
 
             sprites.push({
                 uuid: crypto.randomUUID(),
