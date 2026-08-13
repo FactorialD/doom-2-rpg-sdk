@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { EditableEntityDef, EntityDef } from '../../../services/doom-entities.service';
 import { MapEntityLocation } from '../../../services/doom-map.service';
 import { ItemReference } from '../../../services/doom-script.service';
+import { TextEntry } from '../../../services/doom-text.service';
+import { resolveEntityString } from '../item-string-resolver';
 
 export interface ItemViewData {
     def: EntityDef;
@@ -20,7 +22,7 @@ export interface ItemViewData {
         @if (item(); as i) {
             <div class="p-4 border-b border-neutral-800 bg-neutral-900 sticky top-0 z-10">
                 <div class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Item Inspector</div>
-                <h3 class="text-lg font-bold text-white leading-tight">{{ i.name }}</h3>
+                <h3 class="text-lg font-bold text-white leading-tight">{{ resolveString(draft().nameId) }}</h3>
                 <div class="flex items-center gap-2 mt-2 text-xs font-mono text-neutral-400">
                     <span class="bg-neutral-800 px-2 py-0.5 rounded">Type: {{ i.def.eSubType }}</span>
                     <span class="bg-neutral-800 px-2 py-0.5 rounded">ID: {{ i.def.parm }}</span>
@@ -32,13 +34,33 @@ export interface ItemViewData {
                 <div>
                     <div class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">entities.bin record</div>
                     <div class="bg-black/40 border border-neutral-800 rounded p-3 text-xs space-y-3">
-                        @for (field of fields; track field.key) {
+                        @for (field of numericFields; track field.key) {
                             <label class="block"><span class="mb-1 flex justify-between text-neutral-400"><span>{{ field.label }}</span><span class="font-mono">{{ field.min }}…{{ field.max }}</span></span>
                                 <input type="number" [min]="field.min" [max]="field.max" step="1"
                                     [ngModel]="draft()[field.key]" (ngModelChange)="setField(field.key, $event)"
                                     class="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-white outline-none focus:border-red-700" />
                             </label>
                         }
+                        <div class="border-t border-neutral-800 pt-3 space-y-4">
+                            <div class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">String references (chunk 1)</div>
+                            @for (field of stringFields; track field.key) {
+                                <div class="space-y-1.5">
+                                    <label class="block text-neutral-400" [for]="field.key">{{ field.label }}</label>
+                                    <div class="rounded border border-neutral-800 bg-neutral-950 p-2 text-neutral-200 break-words">
+                                        <span class="mr-1 font-mono text-neutral-500">#{{ draft()[field.key] }}</span>
+                                        {{ resolveString(draft()[field.key]) }}
+                                    </div>
+                                    <input type="number" min="0" max="255" step="1" [id]="field.key" [attr.list]="field.key + '-strings'"
+                                        [ngModel]="draft()[field.key]" (ngModelChange)="setField(field.key, $event)"
+                                        class="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-white outline-none focus:border-red-700" />
+                                    <datalist [id]="field.key + '-strings'">
+                                        @for (entry of strings(); track entry.id) { <option [value]="entry.id">{{ entry.raw }}</option> }
+                                    </datalist>
+                                    <button type="button" (click)="editString.emit(draft()[field.key])"
+                                        class="text-xs text-blue-400 hover:text-blue-300">Edit current string</button>
+                                </div>
+                            }
+                        </div>
                         @if (validationError(); as error) { <p class="text-red-400" role="alert">{{ error }}</p> }
                         @if (saved()) { <p class="text-emerald-400" role="status">Saved to entities.bin.</p> }
                         <button type="button" (click)="save()" [disabled]="!!validationError() || !dirty()"
@@ -128,19 +150,23 @@ export class ItemInspectorComponent {
     references = input<ItemReference[]>([]);
     loadingLocations = input<boolean>(false);
     loadingReferences = input<boolean>(false);
+    strings = input<TextEntry[]>([]);
     
     showOnMap = output<MapEntityLocation>();
     goToScript = output<ItemReference>();
     saveItem = output<EditableEntityDef>();
+    editString = output<number>();
 
-    readonly fields: Array<{ key: keyof EditableEntityDef; label: string; min: number; max: number }> = [
+    readonly numericFields: Array<{ key: keyof EditableEntityDef; label: string; min: number; max: number }> = [
         { key: 'tileIndex', label: 'Tile index (int16)', min: -32768, max: 32767 },
         { key: 'eType', label: 'Entity type (int8)', min: -128, max: 127 },
         { key: 'eSubType', label: 'Subtype (int8)', min: -128, max: 127 },
-        { key: 'parm', label: 'Item parameter (int8)', min: -128, max: 127 },
-        { key: 'nameId', label: 'Name string ID (uint8)', min: 0, max: 255 },
-        { key: 'longNameId', label: 'Long-name string ID (uint8)', min: 0, max: 255 },
-        { key: 'descriptionId', label: 'Description string ID (uint8)', min: 0, max: 255 }
+        { key: 'parm', label: 'Item parameter (int8)', min: -128, max: 127 }
+    ];
+    readonly stringFields: Array<{ key: 'nameId' | 'longNameId' | 'descriptionId'; label: string }> = [
+        { key: 'nameId', label: 'Name string ID (uint8)' },
+        { key: 'longNameId', label: 'Long-name string ID (uint8)' },
+        { key: 'descriptionId', label: 'Description string ID (uint8)' }
     ];
     readonly draft = signal<EditableEntityDef>({ tileIndex: 0, eType: 0, eSubType: 0, parm: 0, nameId: 0, longNameId: 0, descriptionId: 0 });
     readonly dirty = signal(false);
@@ -160,9 +186,16 @@ export class ItemInspectorComponent {
         this.draft.update(value => ({ ...value, [key]: Number(raw) }));
         this.dirty.set(true); this.saved.set(false); this.validate();
     }
+    resolveString(id: number): string {
+        return resolveEntityString(id, this.strings());
+    }
     save() { if (!this.validationError()) { this.saveItem.emit(this.draft()); this.dirty.set(false); this.saved.set(true); } }
     private validate() {
-        for (const field of this.fields) {
+        const fields = [
+            ...this.numericFields,
+            ...this.stringFields.map(field => ({ ...field, min: 0, max: 255 }))
+        ];
+        for (const field of fields) {
             const value = this.draft()[field.key];
             if (!Number.isInteger(value) || value < field.min || value > field.max) {
                 this.validationError.set(`${field.label} must be an integer from ${field.min} to ${field.max}.`); return;

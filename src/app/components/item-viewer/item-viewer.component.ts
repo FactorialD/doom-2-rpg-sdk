@@ -2,7 +2,8 @@ import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DoomEntitiesService, EditableEntityDef } from '../../services/doom-entities.service';
-import { DoomTextService } from '../../services/doom-text.service';
+import { DoomTextService, TextEntry } from '../../services/doom-text.service';
+import { TextResourceSettingsService } from '../../services/text-resource-settings.service';
 import { DoomFileService } from '../../services/doom-file.service';
 import { ItemCardComponent } from './item-card/item-card.component';
 import { DoomTextureService } from '../../services/doom-texture.service';
@@ -79,7 +80,7 @@ import { SidebarPanelComponent } from '../../shared/components/sidebar-panel/sid
                             <app-item-card 
                                 [def]="item.def" 
                                 [itemName]="item.name" 
-                                [selected]="selectedItem() === item"
+                                [selected]="selectedItem()?.def?.index === item.def.index"
                                 (onClick)="selectItem(item)"
                             />
                         }
@@ -99,8 +100,10 @@ import { SidebarPanelComponent } from '../../shared/components/sidebar-panel/sid
                     [references]="references()"
                     [loadingLocations]="loadingLocations()"
                     [loadingReferences]="loadingReferences()"
+                    [strings]="entityStrings()"
                     (showOnMap)="showOnMap($event)"
                     (goToScript)="goToScript($event)"
+                    (editString)="editorService.goToString(1, $event)"
                     (saveItem)="saveItem(item.def.index, $event)"
                 />
             }
@@ -122,6 +125,7 @@ export class ItemViewerComponent {
     scriptService = inject(DoomScriptService);
     mapService = inject(DoomMapService);
     editorService = inject(EditorService);
+    textSettings = inject(TextResourceSettingsService);
 
     category = signal<'inventory' | 'weapons' | 'ammo'>('inventory');
     sortBy = signal<'id' | 'name'>('id');
@@ -133,9 +137,7 @@ export class ItemViewerComponent {
     locations = signal<MapEntityLocation[]>([]);
     loadingLocations = signal(false);
 
-    // Cache for names
-    private nameCache = new Map<number, string>();
-    private entityStringsLoaded = false;
+    readonly entityStrings = signal<TextEntry[]>([]);
 
     items = computed(() => {
         if (!this.fileService.isLoaded() || !this.entitiesService.isLoaded()) return [];
@@ -151,8 +153,8 @@ export class ItemViewerComponent {
 
         const defs = this.entitiesService.getDefsByType(type, subType);
         
-        // Resolve names eagerly
-        this.ensureNamesLoaded();
+        // Reading the signal makes cards react to language, encoding and text edits.
+        this.entityStrings();
         
         return defs.map(def => ({
             def,
@@ -175,6 +177,14 @@ export class ItemViewerComponent {
                 if (!this.entitiesService.isLoaded()) this.entitiesService.loadEntities();
                 if (!this.textureService.texturesLoaded()) this.textureService.loadTextures();
             }
+        });
+        effect(() => {
+            const loaded = this.fileService.isLoaded();
+            this.editorService.textResourcesUpdated();
+            const langId = this.textSettings.langId();
+            const encoding = this.textSettings.encoding();
+            this.entityStrings.set(loaded ? this.loadEntityStrings(langId, encoding) : []);
+            this.selectedItem.update(item => item ? { ...item, name: this.resolveName(item.def.nameId) } : null);
         });
     }
     
@@ -230,21 +240,16 @@ export class ItemViewerComponent {
         this.selectedItem.update(item => item ? { ...item, def, name: this.resolveName(def.nameId) } : null);
     }
 
-    private ensureNamesLoaded() {
-        if (this.entityStringsLoaded) return;
-        
+    private loadEntityStrings(langId: number, encoding: string): TextEntry[] {
         const idxBuffer = this.fileService.getFile('strings.idx');
-        if (!idxBuffer) return;
+        if (!idxBuffer) return [];
         
         const idxData = this.textService.parseStringsIndex(idxBuffer);
         // Entity Strings are usually Chunk 1 (based on Strings.java)
-        const entries = this.textService.loadStrings(0, 1, idxData);
-        
-        entries.forEach(e => this.nameCache.set(e.id, e.raw));
-        this.entityStringsLoaded = true;
+        return this.textService.loadStrings(langId, 1, idxData, encoding);
     }
     
     private resolveName(id: number): string {
-        return this.nameCache.get(id) || `Unknown #${id}`;
+        return this.entityStrings().find(entry => entry.id === id)?.raw || `Unknown #${id}`;
     }
 }
