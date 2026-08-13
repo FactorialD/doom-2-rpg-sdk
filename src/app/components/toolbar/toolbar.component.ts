@@ -31,7 +31,7 @@ import { CommonModule } from '@angular/common';
                 {{ fileService.loadedFileName() }}
              </span>
              
-             <button (click)="fileService.downloadModdedJar()" class="flex items-center gap-2 cursor-pointer bg-blue-900/30 hover:bg-blue-900/50 text-blue-400 text-xs px-3 py-1.5 rounded transition-colors border border-blue-900/50 ml-4">
+             <button (click)="downloadModdedJar()" class="flex items-center gap-2 cursor-pointer bg-blue-900/30 hover:bg-blue-900/50 text-blue-400 text-xs px-3 py-1.5 rounded transition-colors border border-blue-900/50 ml-4">
                 <span>💾</span>
                 <span class="font-bold">Download Modded JAR</span>
              </button>
@@ -105,6 +105,15 @@ import { CommonModule } from '@angular/common';
 export class ToolbarComponent {
   service = inject(EditorService);
   fileService = inject(DoomFileService);
+
+  async downloadModdedJar() {
+    if (this.service.hasUnsavedChanges()
+      && !confirm('Some editor changes have not been saved and will not be included in the downloaded JAR. Download anyway?')) {
+      return;
+    }
+
+    await this.fileService.downloadModdedJar();
+  }
 
   async onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
