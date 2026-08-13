@@ -122,10 +122,16 @@ export class ImageViewerComponent {
 
   @HostListener('document:keydown', ['$event'])
   shortcuts(event: KeyboardEvent): void {
+    if (this.editor.activeTab() !== 'images' || this.isEditableTarget(event.target)) return;
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-    if (event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? this.redo() : this.undo(); }
-    if (event.key.toLowerCase() === 'y') { event.preventDefault(); this.redo(); }
-    if (event.key.toLowerCase() === 's') { event.preventDefault(); void this.save(); }
+    const key = event.key.toLowerCase();
+    if (key === 'z' && (event.shiftKey ? this.canRedo() : this.canUndo())) {
+      event.preventDefault(); event.shiftKey ? this.redo() : this.undo();
+    } else if (key === 'y' && this.canRedo()) {
+      event.preventDefault(); this.redo();
+    } else if (key === 's' && this.selected() && this.dirty()) {
+      event.preventDefault(); void this.save();
+    }
   }
 
   async select(image: DoomImageResource): Promise<void> {
@@ -149,7 +155,11 @@ export class ImageViewerComponent {
   }
   importFile(event: Event): void { const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (file) void this.beginImport(file); input.value = ''; }
   async pasteFromClipboard(): Promise<void> { try { await this.beginImport(await readClipboardImage()); } catch (error) { this.editor.notify('error', (error as Error).message); } }
-  onPaste(event: ClipboardEvent): void { const file = [...(event.clipboardData?.files ?? [])].find(item => item.type.startsWith('image/')); if (file) { event.preventDefault(); void this.beginImport(file); } }
+  onPaste(event: ClipboardEvent): void {
+    if (this.editor.activeTab() !== 'images' || this.isEditableTarget(event.target)) return;
+    const file = [...(event.clipboardData?.files ?? [])].find(item => item.type.startsWith('image/'));
+    if (file) { event.preventDefault(); void this.beginImport(file); }
+  }
   cancelImport(): void { this.importModel.set(null); }
 
   async applyImport(): Promise<void> {
@@ -208,6 +218,9 @@ export class ImageViewerComponent {
   private clone(model: DecodedPng): DecodedPng { return { ...model, pixels: model.pixels.slice(), palette: model.palette?.slice(), transparency: model.transparency?.slice() }; }
   private pushHistory(model: DecodedPng): void { const entry = { model: this.clone(model), bytes: model.pixels.byteLength + (model.palette?.byteLength ?? 0) + (model.transparency?.byteLength ?? 0) }; let stack = [...this.undoStack(), entry]; while (stack.length > HISTORY_LIMIT || stack.reduce((sum, item) => sum + item.bytes, 0) > HISTORY_BYTES) stack.shift(); this.undoStack.set(stack); this.redoStack.set([]); }
   private restore(from: typeof this.undoStack, to: typeof this.redoStack): void { const current = this.model(), entry = from().at(-1); if (!current || !entry) return; to.update(items => [...items, { model: this.clone(current), bytes: current.pixels.byteLength }]); from.update(items => items.slice(0, -1)); this.model.set(this.clone(entry.model)); this.markDirty(); }
+  private isEditableTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null;
+  }
   private canvasFromRgba(pixels: ArrayLike<number>, width: number, height: number): HTMLCanvasElement { const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0); return canvas; }
   private normalize(value: number, min: number, max: number, fallback: number): number { return Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Math.round(Number(value)))) : fallback; }
   private validateSize(width: number, height: number, label: string): { width: number; height: number } | null { if (![width, height].every(Number.isFinite) || width < 1 || height < 1 || width > 4096 || height > 4096) { this.editor.notify('error', `${label} width and height must be finite values from 1 to 4096.`); return null; } return { width: Math.round(width), height: Math.round(height) }; }
