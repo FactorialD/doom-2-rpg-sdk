@@ -1,7 +1,7 @@
 
 import { computed, Injectable, signal } from '@angular/core';
 
-export type EditorTab = 'map' | 'textures' | 'text' | 'scripts' | 'palettes' | 'items' | 'variables' | 'sounds';
+export type EditorTab = 'map' | 'textures' | 'images' | 'text' | 'scripts' | 'palettes' | 'items' | 'variables' | 'sounds';
 
 export interface NavigationRequest { requestId: number; externalNavigation: true; }
 export interface EntitySelection extends NavigationRequest {
@@ -20,7 +20,7 @@ export interface TextNavigation extends NavigationRequest {
     stringId: number;
 }
 
-export type EditableResource = 'maps' | 'scripts' | 'textures' | 'palettes' | 'strings';
+export type EditableResource = 'maps' | 'scripts' | 'textures' | 'images' | 'palettes' | 'strings';
 export type ResourceId = string | number;
 export interface DirtyResource { dirty: boolean; resourceId: ResourceId | null; }
 export interface EditorMessage { type: 'success' | 'error'; text: string; }
@@ -28,7 +28,7 @@ export interface EditorMessage { type: 'success' | 'error'; text: string; }
 const cleanState = (): Record<EditableResource, DirtyResource> => ({
   maps: { dirty: false, resourceId: null }, scripts: { dirty: false, resourceId: null },
   textures: { dirty: false, resourceId: null }, palettes: { dirty: false, resourceId: null },
-  strings: { dirty: false, resourceId: null }
+  strings: { dirty: false, resourceId: null }, images: { dirty: false, resourceId: null }
 });
 
 @Injectable({
