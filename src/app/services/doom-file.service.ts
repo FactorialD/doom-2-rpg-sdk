@@ -61,6 +61,8 @@ export class DoomFileService {
   // Signal to notify app that a JAR is loaded
   isLoaded: WritableSignal<boolean> = signal(false);
   loadedFileName: WritableSignal<string> = signal('');
+  /** Increments only after a replacement archive has been validated and committed. */
+  readonly archiveRevision = signal(0);
 
   // Specific signal for Font image source
   fontImageSrc: WritableSignal<string | null> = signal(null);
@@ -127,6 +129,7 @@ export class DoomFileService {
     this.stringsIndexLoaded.set(nextStringsIndexLoaded);
     this.fontImageSrc.set(nextFontUrl);
     this.isLoaded.set(true);
+    this.archiveRevision.update(revision => revision + 1);
     if (previousFontUrl && previousFontUrl !== nextFontUrl) URL.revokeObjectURL(previousFontUrl);
     console.log(`Loaded ${this.files.size} files from JAR.`);
   }

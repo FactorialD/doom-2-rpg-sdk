@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import {
@@ -21,6 +21,7 @@ import {
 } from '../../services/image-processing.service';
 import { readClipboardImage } from '../../shared/image-clipboard';
 import { ImageCanvasComponent, type ImageSelection, type ImageTool } from './image-canvas/image-canvas.component';
+import { ImageLoadGuard } from './image-load-guard';
 import { ImageListComponent } from './image-list/image-list.component';
 import { clearImageThumbnailCache } from './image-thumbnail/image-thumbnail.component';
 
@@ -114,11 +115,19 @@ export class ImageViewerComponent {
   readonly normalizedPaletteIndex = computed(() => this.normalize(this.paletteIndex, 0, Math.max(0, this.paletteEntries().length - 1), 0));
   private readonly undoStack = signal<HistoryEntry[]>([]);
   private readonly redoStack = signal<HistoryEntry[]>([]);
+  private readonly loadGuard = new ImageLoadGuard();
 
   zoom = 8; brushSize = 1; paletteIndex = 0; color = '#ffffff'; alpha = 255;
   importX = 0; importY = 0; importWidth = 1; importHeight = 1; importOpacity = 1;
   scaling: ImageScalingMode = 'nearest'; resizeWidth = 1; resizeHeight = 1;
   resizeMode: 'scale' | 'canvas' = 'scale'; anchor: CanvasAnchor = 'center';
+
+  constructor() {
+    effect(() => {
+      this.imageService.archiveRevision();
+      this.resetForArchive();
+    });
+  }
 
   @HostListener('document:keydown', ['$event'])
   shortcuts(event: KeyboardEvent): void {
@@ -135,10 +144,25 @@ export class ImageViewerComponent {
   }
 
   async select(image: DoomImageResource): Promise<void> {
-    if (!this.editor.confirmResourceChange('images', image.id)) return;
-    this.selected.set(image); this.model.set(await decodePng(image.bytes)); this.dirty.set(false);
-    this.cancelImport(); this.resizeWidth = image.width; this.resizeHeight = image.height;
-    this.undoStack.set([]); this.redoStack.set([]); this.selection.set(null);
+    const dirtyResource = this.editor.dirtyResources().images;
+    if (dirtyResource.dirty && dirtyResource.resourceId !== image.id
+      && !window.confirm(`You have unsaved images changes for ${dirtyResource.resourceId}. Discard them?`)) return;
+    const archiveRevision = this.imageService.archiveRevision();
+    if (image.archiveRevision !== archiveRevision) return;
+    const request = this.loadGuard.begin(archiveRevision);
+    try {
+      const model = await decodePng(image.bytes);
+      if (!this.loadGuard.isCurrent(request, this.imageService.archiveRevision())) return;
+      this.selected.set(image); this.model.set(model); this.dirty.set(false);
+      this.editor.clearDirty('images');
+      this.cancelImport(); this.resizeOpen.set(false);
+      this.resizeWidth = model.width; this.resizeHeight = model.height;
+      this.undoStack.set([]); this.redoStack.set([]); this.selection.set(null);
+    } catch (error) {
+      if (this.loadGuard.isCurrent(request, this.imageService.archiveRevision())) {
+        this.editor.notify('error', `Cannot decode image: ${(error as Error).message}`);
+      }
+    }
   }
 
   pixelsChanged(pixels: Uint8Array | Uint8ClampedArray): void {
@@ -196,14 +220,24 @@ export class ImageViewerComponent {
   }
 
   async save(): Promise<void> {
-    const image = this.selected(); if (!image || !this.dirty()) return;
+    const image = this.selected(), model = this.model();
+    if (!image || !model || !this.dirty()) return;
+    const archiveRevision = this.imageService.archiveRevision();
     try {
-      const bytes = await this.serialize(); image.source === 'file' ? this.imageService.saveFileImage(image, bytes) : this.imageService.saveIndexedImage(Number(image.id), bytes);
+      const bytes = await this.serialize(model);
+      if (archiveRevision !== this.imageService.archiveRevision() || this.selected() !== image) return;
+      image.source === 'file' ? this.imageService.saveFileImage(image, bytes) : this.imageService.saveIndexedImage(Number(image.id), bytes);
       clearImageThumbnailCache(); this.editor.clearDirty('images', image.id); this.dirty.set(false);
       const updated = this.imageService.images().find(item => item.id === image.id && item.source === image.source);
-      if (updated) { this.selected.set(updated); this.model.set(await decodePng(updated.bytes)); }
+      if (updated) {
+        const decoded = await decodePng(updated.bytes);
+        if (archiveRevision !== this.imageService.archiveRevision() || this.selected() !== image) return;
+        this.selected.set(updated); this.model.set(decoded);
+      }
       this.editor.notify('success', 'Image saved to the browser VFS.');
-    } catch (error) { this.editor.notify('error', `Could not save image: ${(error as Error).message}`); }
+    } catch (error) {
+      if (archiveRevision === this.imageService.archiveRevision()) this.editor.notify('error', `Could not save image: ${(error as Error).message}`);
+    }
   }
 
   async exportImage(): Promise<void> {
@@ -213,7 +247,16 @@ export class ImageViewerComponent {
   }
 
   paletteCss(index: number): string { const model = this.model()!, palette = model.palette!; return `rgba(${palette[index * 3]},${palette[index * 3 + 1]},${palette[index * 3 + 2]},${(model.transparency?.[index] ?? 255) / 255})`; }
-  private async serialize(): Promise<ArrayBuffer> { const model = this.model()!; return model.indexed ? encodeIndexedPng(model) : encodeRgbaPng(model.width, model.height, new Uint8Array(model.pixels)); }
+  private async serialize(model = this.model()!): Promise<ArrayBuffer> { return model.indexed ? encodeIndexedPng(model) : encodeRgbaPng(model.width, model.height, new Uint8Array(model.pixels)); }
+  private resetForArchive(): void {
+    this.loadGuard.invalidate();
+    this.selected.set(null); this.model.set(null); this.importModel.set(null);
+    this.resizeOpen.set(false); this.selection.set(null); this.cursor.set(null);
+    this.undoStack.set([]); this.redoStack.set([]); this.dirty.set(false);
+    this.importX = this.importY = 0; this.importWidth = this.importHeight = 1; this.importOpacity = 1;
+    this.resizeWidth = this.resizeHeight = 1; this.resizeMode = 'scale'; this.anchor = 'center';
+    this.editor.clearDirty('images');
+  }
   private markDirty(): void { const image = this.selected(); if (image) { this.dirty.set(true); this.editor.markDirty('images', image.id); } }
   private clone(model: DecodedPng): DecodedPng { return { ...model, pixels: model.pixels.slice(), palette: model.palette?.slice(), transparency: model.transparency?.slice() }; }
   private pushHistory(model: DecodedPng): void { const entry = { model: this.clone(model), bytes: model.pixels.byteLength + (model.palette?.byteLength ?? 0) + (model.transparency?.byteLength ?? 0) }; let stack = [...this.undoStack(), entry]; while (stack.length > HISTORY_LIMIT || stack.reduce((sum, item) => sum + item.bytes, 0) > HISTORY_BYTES) stack.shift(); this.undoStack.set(stack); this.redoStack.set([]); }
