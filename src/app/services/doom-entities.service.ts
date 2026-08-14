@@ -71,6 +71,7 @@ export class DoomEntitiesService {
     
     // Quick lookup: TileIndex -> EntityDef (Found by searching definitions)
     private tileIndexToDefMap = new Map<number, EntityDef>();
+    private entityDefsRevision = signal(0);
     
     isLoaded = signal(false);
 
@@ -89,8 +90,27 @@ export class DoomEntitiesService {
                 this.tileIndexToDefMap.set(def.tileIndex, def);
             }
         }
-        
+        this.entityDefsRevision.update(value => value + 1);
         this.isLoaded.set(true);
+    }
+
+    /**
+     * Appends a definition as one VFS transaction. Java's EntityDef.lookup()
+     * returns the first matching tileIndex, so newly-created definitions may
+     * never shadow an existing record.
+     */
+    createDefinition(edited: EditableEntityDef): EntityDef {
+        if (this.entityDefs.some(def => def.tileIndex === edited.tileIndex)) {
+            throw new RangeError(`tileIndex ${edited.tileIndex} is already used by an EntityDef`);
+        }
+        const created: EntityDef = { index: this.entityDefs.length, ...edited };
+        const next = [...this.entityDefs, created];
+        const buffer = serializeEntityDefinitions(next);
+
+        // Nothing above this point mutates either service state or the VFS.
+        this.fileService.saveBuffersAtomically(new Map([['entities.bin', buffer]]));
+        this.replaceDefinitions(next);
+        return created;
     }
 
     saveDefinition(index: number, edited: EditableEntityDef): EntityDef {
@@ -100,9 +120,7 @@ export class DoomEntitiesService {
         const next = this.entityDefs.map(def => def.index === index ? replacement : def);
         const buffer = serializeEntityDefinitions(next); // validates before mutating the VFS
         this.fileService.saveBuffer('entities.bin', buffer);
-        this.entityDefs = next;
-        this.tileIndexToDefMap.clear();
-        for (const def of next) if (!this.tileIndexToDefMap.has(def.tileIndex)) this.tileIndexToDefMap.set(def.tileIndex, def);
+        this.replaceDefinitions(next);
         return replacement;
     }
      
@@ -112,7 +130,19 @@ export class DoomEntitiesService {
 
     /** Snapshot used by entity pickers. Definitions remain owned by this service. */
     getAllDefs(): readonly EntityDef[] {
+        this.entityDefsRevision();
         return this.entityDefs;
+    }
+
+    getTileIndexConflict(tileIndex: number): EntityDef | undefined {
+        return this.entityDefs.find(def => def.tileIndex === tileIndex);
+    }
+
+    private replaceDefinitions(definitions: EntityDef[]): void {
+        this.entityDefs = definitions;
+        this.tileIndexToDefMap.clear();
+        for (const def of definitions) if (!this.tileIndexToDefMap.has(def.tileIndex)) this.tileIndexToDefMap.set(def.tileIndex, def);
+        this.entityDefsRevision.update(value => value + 1);
     }
     
     /**
