@@ -1,6 +1,8 @@
 
 import { Injectable, inject, OnDestroy } from '@angular/core';
 import * as THREE from 'three';
+import { PassagePreview } from './map/bsp-portal-editing.service';
+import { PolyFlag } from '../core/constants/geometry';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { MapData, BspNode } from './doom-map.service';
 import { MapResourcesService } from './map/map-resources.service';
@@ -206,11 +208,42 @@ export class MapRendererService implements OnDestroy {
       this.scene.add(this.geometryPreview);
   }
 
+  /** Draws the proposed wall fragments (cyan) and collision lines (amber). */
+  showPassagePreview(preview: PassagePreview) {
+      this.clearGeometryPreview();
+      const positions: number[] = [];
+      const push = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>
+          positions.push(a.x * 128, a.z * 128, a.y * 128, b.x * 128, b.z * 128, b.y * 128);
+      preview.createdPolygons.forEach(fragment => {
+          const [a, b] = fragment.vertices;
+          const c = { ...a }, d = { ...b };
+          if ((fragment.flags & PolyFlag.AxisMask) === PolyFlag.AxisX) { c.x = b.x; d.x = a.x; }
+          else if ((fragment.flags & PolyFlag.AxisMask) === PolyFlag.AxisY) { c.y = b.y; d.y = a.y; }
+          else { c.z = b.z; d.z = a.z; }
+          push(a, c); push(c, b); push(b, d); push(d, a);
+      });
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      this.geometryPreview = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x00ffff, depthTest: false }));
+      this.geometryPreview.renderOrder = 10000;
+      this.scene.add(this.geometryPreview);
+
+      const collision = preview.createdLines.flatMap(line => [line.x1 * 128, 8, line.y1 * 128, line.x2 * 128, 8, line.y2 * 128]);
+      const collisionGeometry = new THREE.BufferGeometry();
+      collisionGeometry.setAttribute('position', new THREE.Float32BufferAttribute(collision, 3));
+      const collisionLines = new THREE.LineSegments(collisionGeometry, new THREE.LineBasicMaterial({ color: 0xffb000, depthTest: false }));
+      this.geometryPreview.add(collisionLines);
+  }
+
   clearGeometryPreview() {
       if (!this.geometryPreview) return;
       this.scene.remove(this.geometryPreview);
-      this.geometryPreview.geometry.dispose();
-      (this.geometryPreview.material as THREE.Material).dispose();
+      this.geometryPreview.traverse(object => {
+          const line = object as THREE.Line;
+          line.geometry?.dispose();
+          const materials = Array.isArray(line.material) ? line.material : line.material ? [line.material] : [];
+          materials.forEach(material => material.dispose());
+      });
       this.geometryPreview = null;
   }
 
