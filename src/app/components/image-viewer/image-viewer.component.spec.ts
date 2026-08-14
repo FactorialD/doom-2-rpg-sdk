@@ -1,8 +1,43 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { ImageLoadGuard } from './image-load-guard';
 
 const source = readFileSync(new URL('./image-viewer.component.ts', import.meta.url), 'utf8');
+const thumbnailSource = readFileSync(new URL('./image-thumbnail/image-thumbnail.component.ts', import.meta.url), 'utf8');
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+class AsyncSelectionHarness {
+  readonly guard = new ImageLoadGuard();
+  revision = 1;
+  selected: string | null = null;
+  model: string | null = null;
+  dirty = false;
+  saves: string[] = [];
+
+  async select(id: string, decode: Promise<string>): Promise<void> {
+    const request = this.guard.begin(this.revision);
+    const model = await decode;
+    if (!this.guard.isCurrent(request, this.revision)) return;
+    this.selected = id; this.model = model; this.dirty = false;
+  }
+
+  replaceJar(): void {
+    this.revision++; this.guard.invalidate();
+    this.selected = this.model = null; this.dirty = false;
+  }
+
+  async save(encode: Promise<string>): Promise<void> {
+    const revision = this.revision, selected = this.selected;
+    const bytes = await encode;
+    if (revision === this.revision && selected !== null && selected === this.selected) this.saves.push(bytes);
+  }
+}
 
 class ImageShortcutHarness {
   activeTab = 'text'; dirty = true; selected = true; undoAvailable = true; redoAvailable = false;
@@ -87,4 +122,41 @@ test('active Images commands prevent defaults only when they can run', () => {
   component.dirty = false;
   const cleanSave = keyboard('s'); component.shortcuts(cleanSave.event);
   assert.equal(cleanSave.prevented(), false);
+});
+
+test('selection decode commits only the newest request when A finishes after B', async () => {
+  const harness = new AsyncSelectionHarness();
+  const a = deferred<string>(), b = deferred<string>();
+  const selectingA = harness.select('A', a.promise);
+  const selectingB = harness.select('B', b.promise);
+  b.resolve('model-B'); await selectingB;
+  a.resolve('model-A'); await selectingA;
+  assert.deepEqual([harness.selected, harness.model], ['B', 'model-B']);
+});
+
+test('archive replacement invalidates decode and an in-flight save from the old archive', async () => {
+  const harness = new AsyncSelectionHarness();
+  const decode = deferred<string>();
+  const selecting = harness.select('same/path.png', decode.promise);
+  harness.selected = 'same/path.png'; harness.model = 'old-model'; harness.dirty = true;
+  const encode = deferred<string>(), saving = harness.save(encode.promise);
+  harness.replaceJar();
+  decode.resolve('decoded-old-model'); encode.resolve('encoded-old-model');
+  await Promise.all([selecting, saving]);
+  assert.deepEqual([harness.selected, harness.model, harness.dirty, harness.saves], [null, null, false, []]);
+  assert.match(source, /image\.archiveRevision !== archiveRevision/);
+});
+
+test('a failed decode leaves the current model and dirty state intact', async () => {
+  const harness = new AsyncSelectionHarness();
+  harness.selected = 'current'; harness.model = 'current-model'; harness.dirty = true;
+  await assert.rejects(harness.select('broken', Promise.reject(new Error('invalid PNG'))));
+  assert.deepEqual([harness.selected, harness.model, harness.dirty], ['current', 'current-model', true]);
+  assert.match(source, /const model = await decodePng\(image\.bytes\);[\s\S]*this\.selected\.set\(image\); this\.model\.set\(model\)/);
+});
+
+test('same image identity and byte length in a new JAR receives a different thumbnail cache key', () => {
+  const cacheKey = (revision: number) => `${revision}:file:same/path.png:123:123`;
+  assert.notEqual(cacheKey(4), cacheKey(5));
+  assert.match(thumbnailSource, /image\.archiveRevision.*image\.source.*image\.id.*image\.length.*image\.bytes\.byteLength/s);
 });

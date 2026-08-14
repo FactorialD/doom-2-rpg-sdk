@@ -115,6 +115,7 @@ test('keeps all active state when a corrupt ZIP replaces a loaded JAR', async ()
       'game/font.png': new Uint8Array([2]),
       'game/map00.bin': new Uint8Array([3])
     }));
+    const originalRevision = service.archiveRevision();
     const originalFiles = service.files;
     const originalMetadata = service.entryMetadata;
     const corrupt = new File([], 'corrupt.jar');
@@ -135,11 +136,21 @@ test('keeps all active state when a corrupt ZIP replaces a loaded JAR', async ()
     assert.equal(service.isLoaded(), true);
     assert.equal(service.stringsIndexLoaded(), true);
     assert.equal(service.fontImageSrc(), 'blob:original-font');
+    assert.equal(service.archiveRevision(), originalRevision);
     assert.deepEqual(revoked, []);
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
   }
+});
+
+test('increments the archive revision only after each successful transactional replacement', async () => {
+  const service = new DoomFileService();
+  assert.equal(service.archiveRevision(), 0);
+  await service.loadJar(await jarFile('first.jar', { 'same.png': new Uint8Array([1, 2, 3]) }));
+  assert.equal(service.archiveRevision(), 1);
+  await service.loadJar(await jarFile('second.jar', { 'same.png': new Uint8Array([4, 5, 6]) }));
+  assert.equal(service.archiveRevision(), 2);
 });
 
 test('keeps all active state when reading a replacement entry fails', async () => {

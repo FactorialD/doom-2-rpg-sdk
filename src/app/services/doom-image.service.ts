@@ -3,27 +3,29 @@ import { parseResourceFileIndex, serializeResourceFileIndex, type ResourceFileIn
 import { inspectPng, type PngInfo } from '../core/png-codec';
 import { DoomFileService } from './doom-file.service';
 
-export interface DoomImageResource extends PngInfo { id: string; source: 'index' | 'file'; path: string; chunk?: number; offset?: number; length: number; bytes: ArrayBuffer; }
+export interface DoomImageResource extends PngInfo { id: string; source: 'index' | 'file'; path: string; chunk?: number; offset?: number; length: number; bytes: ArrayBuffer; archiveRevision: number; }
 
 @Injectable({ providedIn: 'root' })
 export class DoomImageService {
   private readonly files = inject(DoomFileService);
+  readonly archiveRevision = this.files.archiveRevision;
   readonly images = signal<DoomImageResource[]>([]);
   readonly indexedImages = computed(() => this.images().filter(image => image.source === 'index'));
-  constructor() { effect(() => { this.files.isLoaded(); this.reload(); }); }
+  constructor() { effect(() => { this.files.archiveRevision(); this.reload(); }); }
 
   reload(): void {
     const result: DoomImageResource[] = [];
+    const archiveRevision = this.files.archiveRevision();
     const index = this.files.getFile('images.idx');
     if (index) parseResourceFileIndex(index).forEach((entry, id) => {
       const path = `images${entry.fileId}.bin`, chunk = this.files.getFile(path);
       if (!chunk || entry.offset < 0 || entry.length <= 0 || entry.offset + entry.length > chunk.byteLength) return;
       const bytes = chunk.slice(entry.offset, entry.offset + entry.length);
-      try { result.push({ id: String(id), source: 'index', path, chunk: entry.fileId, offset: entry.offset, length: entry.length, bytes, ...inspectPng(bytes) }); } catch { /* J2ME supports formats this editor cannot safely rewrite. */ }
+      try { result.push({ id: String(id), source: 'index', path, chunk: entry.fileId, offset: entry.offset, length: entry.length, bytes, archiveRevision, ...inspectPng(bytes) }); } catch { /* J2ME supports formats this editor cannot safely rewrite. */ }
     });
     for (const [path, bytes] of this.files.files) {
       if (!path.toLowerCase().endsWith('.png')) continue;
-      try { result.push({ id: path, source: 'file', path, length: bytes.byteLength, bytes, ...inspectPng(bytes) }); } catch { /* ignore malformed PNG */ }
+      try { result.push({ id: path, source: 'file', path, length: bytes.byteLength, bytes, archiveRevision, ...inspectPng(bytes) }); } catch { /* ignore malformed PNG */ }
     }
     this.images.set(result);
   }
