@@ -481,7 +481,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.renderer.clearGeometryPreview(); }
   private snapshot(): MapEditorSnapshot { return { geometry: this.geometryService.cloneEditable(this.mapData!.geometry), sprites: structuredClone(this.mapData!.sprites), scripts: this.currentScriptData() ? structuredClone(this.currentScriptData()!) : null }; }
   pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.snapshot()].slice(-50)); this.redoStack.set([]); }
-  private restoreSnapshot(value: MapEditorSnapshot) { if (!this.mapData) return; this.mapData.geometry = value.geometry; this.mapData.sprites = value.sprites; this.mapData.scripts = value.scripts ?? undefined; this.currentScriptData.set(value.scripts); this.spritesList.set([...value.sprites]); this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
+  private restoreSnapshot(value: MapEditorSnapshot) { if (!this.mapData) return; this.mapData.geometry = value.geometry; this.mapData.sprites = value.sprites; this.mapData.scripts = value.scripts ?? undefined; this.currentScriptData.set(value.scripts); this.scriptService.restoreScriptSnapshot(this.selectedMapId(), value.scripts); this.spritesList.set([...value.sprites]); this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }
   undoGeometry() { if (!this.mapData || !this.undoStack().length) return; const stack = [...this.undoStack()]; const previous = stack.pop()!; this.redoStack.update(s => [...s, this.snapshot()]); this.undoStack.set(stack); this.restoreSnapshot(previous); }
   redoGeometry() { if (!this.mapData || !this.redoStack().length) return; const stack = [...this.redoStack()]; const next = stack.pop()!; this.undoStack.update(s => [...s, this.snapshot()]); this.redoStack.set(stack); this.restoreSnapshot(next); }
   private restoreVertexHandles() { if (this.editMode() === 'vertex') this.renderer.showVertexHandles(this.mapData, this.selectedGeometry()?.polyIndex ?? null); }
@@ -521,7 +521,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       if (geometry?.point) this.renderer.controls.focusAt(geometry.point);
   }
   
-  addEntity(template: EntityTemplate) {
+  async addEntity(template: EntityTemplate) {
       if (!this.mapData) return;
       
       let spawnPos: THREE.Vector3;
@@ -543,10 +543,14 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       const byteX = Math.round(spawnPos.x / 128.0);
       const byteZ = Math.round(spawnPos.z / 128.0);
       
+      const gameX = byteX * 8;
+      const gameZ = byteZ * 8;
+      const floorHeight = this.coordinateService.getFloorHeight(this.mapData, gameX, gameZ);
+      const requestedY = Math.round(spawnPos.y / 16.0);
       const newSprite: MapSprite = {
-          x: byteX * 8,
-          y: Math.max(0, Math.min(255, Math.round(spawnPos.y / 16.0) + 32)),
-          z: byteZ * 8, // World Z is Game Depth (spr.z)
+          x: gameX,
+          y: template.type === 'normal' ? floorHeight + 32 : requestedY,
+          z: gameZ, // World Z is Game Depth (spr.z)
           textureId: template.textureId,
           flags: template.flags & 0xffff,
           type: template.type,
@@ -555,10 +559,18 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
           uuid: globalThis.crypto?.randomUUID?.() ?? `entity-${Date.now()}-${this.mapData.sprites.length}`
       };
       
-      this.pushUndo();
+      if (template.type === 'z') this.coordinateService.analyzeSpriteType(this.mapData, newSprite);
+      const before = this.snapshot();
       // Add to map data
       newSprite.flatIndex = this.mapData.sprites.length;
       this.mapData.sprites.push(newSprite);
+      const tileIndex = (gameZ >> 6) * 32 + (gameX >> 6);
+      let actionCreated = true;
+      if (template.action.kind === 'dialog') actionCreated = !!await this.scriptService.createDialogTileEvent(this.selectedMapId(), tileIndex, template.action.stringId, template.action.style);
+      else if (template.action.kind === 'existing') actionCreated = !!await this.scriptService.addTileEvent(this.selectedMapId(), tileIndex, template.action.targetUid, template.action.flags);
+      else if (template.action.kind === 'new-handler') actionCreated = !!await this.scriptService.createTileEventHandler(this.selectedMapId(), tileIndex, template.action.flags);
+      if (!actionCreated) { this.restoreSnapshot(before); return; }
+      this.undoStack.update(s => [...s, before].slice(-50)); this.redoStack.set([]);
       
       // Update UI
       this.spritesList.set([...this.mapData.sprites]);
@@ -566,6 +578,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       
       // Select the new entity
       this.selectEntity(this.mapData.sprites.length - 1, true);
+      if (template.action.kind !== 'none') this.editorService.notifyScriptsChanged();
       this.markMapDirty();
   }
   
@@ -670,11 +683,6 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   onTileEventsChanged(tileIndex: number) {
       if (!this.mapData || tileIndex < 0 || tileIndex >= this.mapData.heightMap.length) return;
-      const hasEvents = this.currentScriptData()?.tileEventRefs.some(ref => ref.tileIndex === tileIndex) ?? false;
-      // Game.executeTile only examines tiles carrying the event marker bit.
-      this.mapData.heightMap[tileIndex] = hasEvents
-          ? this.mapData.heightMap[tileIndex] | 0x40
-          : this.mapData.heightMap[tileIndex] & ~0x40;
       this.editorService.notifyScriptsChanged();
       this.markMapDirty();
   }

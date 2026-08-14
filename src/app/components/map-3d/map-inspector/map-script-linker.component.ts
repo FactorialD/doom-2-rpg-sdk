@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DoomScriptService, ScriptData, TileEventRef } from '../../../services/doom-script.service';
 import { EntityDetails } from './map-inspector.component';
 import { ScriptEntryNameService } from '../../../services/scripts/script-entry-name.service';
+import { TILE_EVENT_FLAG_OPTIONS } from '../../../core/constants/scripting';
 
 @Component({
   selector: 'app-map-script-linker',
@@ -80,12 +81,7 @@ export class MapScriptLinkerComponent {
   jumpToScript = output<string>();
   eventsChanged = output<number>();
 
-  readonly flagOptions = [
-    { value: 0xff1, label: 'Enter' },
-    { value: 0xff2, label: 'Leave' },
-    { value: 0xff4, label: 'Use / trigger' },
-    { value: 0xff8, label: 'Attack' }
-  ];
+  readonly flagOptions = TILE_EVENT_FLAG_OPTIONS;
 
   getTileIndex(info: EntityDetails): number {
     const gridX = Math.round(info.raw.x) >> 6;

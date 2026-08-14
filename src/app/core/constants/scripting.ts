@@ -26,6 +26,20 @@ export enum DialogFlag {
     Vios = 8
 }
 
+export const DIALOG_STYLE_OPTIONS = [
+  [DialogStyle.Normal, 'Normal'], [DialogStyle.NPC, 'NPC'], [DialogStyle.Help, 'Help'],
+  [DialogStyle.Scroll, 'Scroll'], [DialogStyle.Chest, 'Chest'], [DialogStyle.Monster, 'Monster'],
+  [DialogStyle.Ghost, 'Ghost'], [DialogStyle.Yell, 'Yell'], [DialogStyle.Player, 'Player'],
+  [DialogStyle.Terminal, 'Terminal'], [DialogStyle.Elevator, 'Elevator'], [DialogStyle.Vios, 'Vios'],
+  [DialogStyle.SelfDestruct, 'Self destruct'], [DialogStyle.ArmorRepair, 'Armor repair'],
+  [DialogStyle.CommLink, 'Comm link'], [DialogStyle.Sal, 'Sal']
+] as const;
+
+export const TILE_EVENT_FLAG_OPTIONS = [
+  { value: 0xff1, label: 'Enter' }, { value: 0xff2, label: 'Leave' },
+  { value: 0xff4, label: 'Use / trigger' }, { value: 0xff8, label: 'Attack' }
+] as const;
+
 /**
  * Monster Flag Indices (0-14).
  * Used in EV_MONSTERFLAGOP instruction which takes a bit index (0-63).

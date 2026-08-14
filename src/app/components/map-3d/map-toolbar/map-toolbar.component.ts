@@ -108,7 +108,7 @@ export type EditMode = 'select' | 'vertex' | 'paint' | 'wall' | 'polygon';
           </button>
           @if (showEntityPicker) {
             <div class="absolute right-4 top-11 z-50 w-[34rem] shadow-2xl">
-              <app-entity-picker actionLabel="Place entity" (picked)="pickEntity($event)" />
+              <app-entity-picker actionLabel="Place entity" [mapId]="selectedMapId()" (picked)="pickEntity($event)" />
             </div>
           }
           
