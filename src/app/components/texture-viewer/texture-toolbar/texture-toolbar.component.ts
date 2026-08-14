@@ -4,8 +4,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TextureInfo } from '../../../services/doom-texture.service';
 import type { ImageScalingMode } from '../../../services/image-processing.service';
+import { DrawingToolsComponent } from '../../../shared/drawing-tools/drawing-tools.component';
+import type { DrawingTool } from '../../../shared/drawing-tools/drawing-tool';
+import { EditorActionsComponent } from '../../../shared/editor-actions/editor-actions.component';
 
-export type Tool = 'pencil' | 'brush' | 'fill' | 'select';
 export interface ImportState {
     active: boolean;
     img: HTMLImageElement | null;
@@ -21,7 +23,7 @@ export interface ImportState {
 @Component({
   selector: 'app-texture-toolbar',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DrawingToolsComponent, EditorActionsComponent],
   template: `
     <div class="h-14 border-b border-neutral-800 bg-neutral-900 flex items-center px-4 justify-between shrink-0 select-none">
         <div class="flex items-center gap-4">
@@ -45,28 +47,7 @@ export interface ImportState {
                 <!-- Editor Tools -->
                 @if(canEdit && !importState.active) {
                     <div class="flex items-center gap-2">
-                        <div class="flex bg-neutral-950 rounded border border-neutral-700 p-0.5">
-                            <button (click)="activeToolChange.emit('pencil')" [class.bg-neutral-700]="activeTool === 'pencil'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Pencil (1px)">
-                                ✏️
-                            </button>
-                            <button (click)="activeToolChange.emit('brush')" [class.bg-neutral-700]="activeTool === 'brush'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Brush">
-                                🖌️
-                            </button>
-                            <button (click)="activeToolChange.emit('fill')" [class.bg-neutral-700]="activeTool === 'fill'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Flood Fill">
-                                🪣
-                            </button>
-                            <button (click)="activeToolChange.emit('select')" [class.bg-neutral-700]="activeTool === 'select'" class="p-1.5 rounded hover:bg-neutral-800 transition-colors text-white" title="Select an area, then drag it to move its pixels">
-                                ⬚
-                            </button>
-                        </div>
-                        
-                        @if(activeTool === 'brush') {
-                            <div class="flex items-center gap-2 bg-neutral-800 px-2 py-1 rounded border border-neutral-700">
-                                <span class="text-[10px] text-neutral-400 font-bold">Size</span>
-                                <input type="range" min="1" max="16" step="1" [ngModel]="brushSize" (ngModelChange)="brushSizeChange.emit($event)" class="w-16 h-1 accent-red-600">
-                                <span class="text-[10px] text-white w-3">{{ brushSize }}</span>
-                            </div>
-                        }
+                        <app-drawing-tools [tool]="activeTool" [brushSize]="brushSize" (toolChange)="activeToolChange.emit($event)" (brushSizeChange)="brushSizeChange.emit($event)" />
                     </div>
 
                     <label class="flex items-center gap-2 cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded transition-colors border border-neutral-700 ml-2">
@@ -76,14 +57,7 @@ export interface ImportState {
                     </label>
                     <button (click)="pasteRequested.emit()" class="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded border border-neutral-700"><span>📋</span><span class="font-bold">Paste from clipboard</span></button>
 
-                    <button 
-                        (click)="saveChanges.emit()" 
-                        [disabled]="!hasChanges"
-                        class="flex items-center gap-2 px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:bg-neutral-800 disabled:text-neutral-600 text-white text-xs font-bold rounded transition-colors"
-                    >
-                        <span>💾</span>
-                        <span>Save</span>
-                    </button>
+                    <app-editor-actions [dirty]="hasChanges" (save)="saveChanges.emit()" (discard)="discardChanges.emit()" />
                     
                     @if(hasChanges) {
                         <span class="text-xs text-amber-500 italic">Modified</span>
@@ -171,17 +145,18 @@ export class TextureToolbarComponent {
     @Input() isCompressed: boolean = false;
     @Input() canEdit: boolean = false;
     @Input() hasChanges: boolean = false;
-    @Input() activeTool: Tool = 'pencil';
+    @Input() activeTool: DrawingTool = 'pencil';
     @Input() brushSize: number = 3;
     @Input() importState!: ImportState;
     @Input() bgColor: string = '#111111';
     @Input() zoom: number = 4;
 
-    @Output() activeToolChange = new EventEmitter<Tool>();
+    @Output() activeToolChange = new EventEmitter<DrawingTool>();
     @Output() brushSizeChange = new EventEmitter<number>();
     @Output() fileSelected = new EventEmitter<File>();
     @Output() pasteRequested = new EventEmitter<void>();
     @Output() saveChanges = new EventEmitter<void>();
+    @Output() discardChanges = new EventEmitter<void>();
     @Output() stateChange = new EventEmitter<void>(); // When sliders/inputs change
     @Output() applyImport = new EventEmitter<void>();
     @Output() cancelImport = new EventEmitter<void>();

@@ -5,9 +5,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TextureInfo, DoomTextureService } from '../../../services/doom-texture.service';
 import { ImageProcessingService } from '../../../services/image-processing.service';
-import { TextureToolbarComponent, Tool, ImportState } from '../texture-toolbar/texture-toolbar.component';
+import { TextureToolbarComponent, ImportState } from '../texture-toolbar/texture-toolbar.component';
+import type { DrawingTool } from '../../../shared/drawing-tools/drawing-tool';
 
-import { CanvasPoint, firstClipboardImage, isPointerButtonPressed, moveSelectionPixels, rasterizeLine } from './texture-canvas-interaction';
+import { CanvasPoint, firstClipboardImage, isPointerButtonPressed, moveSelectionPixels, rasterizeLine } from '../../../shared/canvas/canvas-interaction';
 import { readClipboardImage } from '../../../shared/image-clipboard';
 
 @Component({
@@ -31,6 +32,7 @@ import { readClipboardImage } from '../../../shared/image-clipboard';
                 (fileSelected)="onFileSelected($event)"
                 (pasteRequested)="pasteFromClipboard()"
                 (saveChanges)="saveChanges.emit()"
+                (discardChanges)="discardChanges.emit()"
                 (stateChange)="render()"
                 (applyImport)="applyImport()"
                 (cancelImport)="cancelImport()"
@@ -92,6 +94,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     @Output() zoomChange = new EventEmitter<number>();
     @Output() bgColorChange = new EventEmitter<string>();
     @Output() saveChanges = new EventEmitter<void>();
+    @Output() discardChanges = new EventEmitter<void>();
     @Output() pixelChanged = new EventEmitter<{index: number, colorIndex: number}>();
 
     @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
@@ -104,7 +107,7 @@ export class TextureCanvasComponent implements OnChanges, AfterViewInit {
     private activeButton = 0;
     private lastStrokePoint: (CanvasPoint & { pointerId: number }) | null = null;
 
-    activeTool: Tool = 'pencil';
+    activeTool: DrawingTool = 'pencil';
     brushSize: number = 3;
     isDrawing = false;
     cursorStyle = 'crosshair';
