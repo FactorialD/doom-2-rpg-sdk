@@ -2,6 +2,7 @@
 import { Injectable, signal, WritableSignal } from '@angular/core';
 import JSZip from 'jszip';
 import { flattenResourceFileIndex, parseResourceFileIndex } from '../core/resource-file-index';
+import { downloadBlob } from '../shared/browser-download';
 
 type ZipCompression = 'STORE' | 'DEFLATE';
 
@@ -179,15 +180,7 @@ export class DoomFileService {
           : 'DOS';
         const blob = await zip.generateAsync({ type: 'blob', platform });
         
-        // Trigger download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'doom2rpg_modded.jar';
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        downloadBlob(blob, 'doom2rpg_modded.jar');
 
     } catch (e) {
         console.error("Failed to pack JAR", e);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import JSZip from 'jszip';
+import { downloadBlob } from '../shared/browser-download';
 import { DoomFileService, JarLoadError, ResourceCompatibilityError } from './doom-file.service';
 
 const testJarEntries = new WeakMap<ArrayBuffer, Record<string, Uint8Array>>();
@@ -8,6 +9,40 @@ const testJarBuffers = new WeakMap<File, ArrayBuffer>();
 const corruptJars = new WeakSet<ArrayBuffer>();
 const unreadableEntries = new WeakMap<ArrayBuffer, string>();
 const originalLoadAsync = JSZip.prototype.loadAsync;
+
+test('browser download appends and clicks before deferred revoke and removal', () => {
+  const events: string[] = [];
+  const cleanups: Array<() => void> = [];
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const originalDocument = globalThis.document;
+  const originalSetTimeout = globalThis.setTimeout;
+  const anchor = {
+    href: '', download: '',
+    click: () => events.push('click'),
+    remove: () => events.push('remove')
+  };
+  URL.createObjectURL = () => 'blob:download';
+  URL.revokeObjectURL = () => events.push('revoke');
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: {
+    body: { appendChild: () => events.push('append') },
+    createElement: () => anchor
+  } });
+  globalThis.setTimeout = ((callback: () => void) => { cleanups.push(callback); return 1; }) as typeof setTimeout;
+
+  try {
+    downloadBlob(new Blob(), 'mod.jar');
+    assert.deepEqual(events, ['append', 'click']);
+    assert.equal(cleanups.length, 1);
+    cleanups[0]();
+    assert.deepEqual(events, ['append', 'click', 'revoke', 'remove']);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    globalThis.setTimeout = originalSetTimeout;
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+  }
+});
 
 async function jarFile(name: string, entries: Record<string, Uint8Array>): Promise<File> {
   const file = new File([], name, { type: 'application/java-archive' });
@@ -326,7 +361,7 @@ test('preserves supported JSZip entry metadata and untouched payloads across a J
     configurable: true,
     value: {
       body: { appendChild() {}, removeChild() {} },
-      createElement: () => ({ click() {}, href: '', download: '' })
+      createElement: () => ({ click() {}, remove() {}, href: '', download: '' })
     }
   });
 

@@ -1,10 +1,46 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { downloadBlob } from '../../shared/browser-download';
 import { ImageLoadGuard } from './image-load-guard';
 
 const source = readFileSync(new URL('./image-viewer.component.ts', import.meta.url), 'utf8');
 const thumbnailSource = readFileSync(new URL('./image-thumbnail/image-thumbnail.component.ts', import.meta.url), 'utf8');
+
+test('Images export defers cleanup and still cleans up when starting the download throws', () => {
+  assert.match(source, /downloadBlob\(new Blob\(\[bytes\], \{ type: 'image\/png' \}\), image\.path/);
+  const events: string[] = [];
+  const cleanups: Array<() => void> = [];
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const originalDocument = globalThis.document;
+  const originalSetTimeout = globalThis.setTimeout;
+  const anchor = {
+    href: '', download: '',
+    click: () => { events.push('click'); throw new Error('download blocked'); },
+    remove: () => events.push('remove')
+  };
+  URL.createObjectURL = () => 'blob:image';
+  URL.revokeObjectURL = () => events.push('revoke');
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: {
+    body: { appendChild: () => events.push('append') },
+    createElement: () => anchor
+  } });
+  globalThis.setTimeout = ((callback: () => void) => { cleanups.push(callback); return 1; }) as typeof setTimeout;
+
+  try {
+    assert.throws(() => downloadBlob(new Blob(), 'image.png'), /download blocked/);
+    assert.deepEqual(events, ['append', 'click']);
+    assert.equal(cleanups.length, 1);
+    cleanups[0]();
+    assert.deepEqual(events, ['append', 'click', 'revoke', 'remove']);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    globalThis.setTimeout = originalSetTimeout;
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });
+  }
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

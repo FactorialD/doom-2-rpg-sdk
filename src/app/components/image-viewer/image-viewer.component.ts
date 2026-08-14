@@ -19,6 +19,7 @@ import {
   type CanvasAnchor,
   type ImageScalingMode
 } from '../../services/image-processing.service';
+import { downloadBlob } from '../../shared/browser-download';
 import { readClipboardImage } from '../../shared/image-clipboard';
 import { ImageCanvasComponent, type ImageSelection, type ImageTool } from './image-canvas/image-canvas.component';
 import { ImageLoadGuard } from './image-load-guard';
@@ -242,8 +243,8 @@ export class ImageViewerComponent {
 
   async exportImage(): Promise<void> {
     const image = this.selected(); if (!image) return;
-    const bytes = this.dirty() ? await this.serialize() : image.bytes; const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = image.path.split('/').at(-1) ?? 'image.png'; anchor.click(); URL.revokeObjectURL(url);
+    const bytes = this.dirty() ? await this.serialize() : image.bytes;
+    downloadBlob(new Blob([bytes], { type: 'image/png' }), image.path.split('/').at(-1) ?? 'image.png');
   }
 
   paletteCss(index: number): string { const model = this.model()!, palette = model.palette!; return `rgba(${palette[index * 3]},${palette[index * 3 + 1]},${palette[index * 3 + 2]},${(model.transparency?.[index] ?? 255) / 255})`; }
