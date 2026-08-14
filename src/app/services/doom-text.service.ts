@@ -132,6 +132,17 @@ export class DoomTextService {
       }
   }
 
+  /** EntityDef name fields are uint8 indexes into chunk 1. */
+  getEntityStrings(): TextEntry[] {
+      const idxBuffer = this.fileService.getFile('strings.idx');
+      if (!idxBuffer) return [];
+      try {
+          return this.loadStrings(this.textSettings?.langId() ?? 0, 1, this.parseStringsIndex(idxBuffer), this.textSettings?.encoding() ?? 'windows-1252');
+      } catch {
+          return [];
+      }
+  }
+
   parseStringsIndex(buffer: ArrayBuffer): Int32Array {
     return flattenResourceFileIndex(parseResourceFileIndex(buffer));
   }
