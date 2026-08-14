@@ -356,6 +356,23 @@ export class MapSerializer {
             if (![v.x, v.y, v.z].every(n => fits(n, 0, 255)) || ![v.u, v.v].every(n => fits(n, -128, 127))) throw new Error(`Vertex ${i} does not fit the map numeric fields`);
         });
         g.lines.forEach((l, i) => { if (!fits(l.flags, 0, 15) || ![l.x1, l.y1, l.x2, l.y2].every(n => fits(n, 0, 255))) throw new Error(`Collision line ${i} is invalid`); });
+        g.nodes.forEach((node, nodeIndex) => {
+            if (!fits(node.offset, 0, 0xffff) || !fits(node.normalIndex, 0, 0xff) || !fits(node.child1, 0, 0xffff) || !fits(node.child2, 0, 0xffff)) {
+                throw new Error(`BSP node ${nodeIndex} does not fit the map numeric fields`);
+            }
+        });
+        g.leaves.forEach((leaf, leafIndex) => {
+            if (!fits(leafIndex, 0, 0x1ff) || !fits(leaf.polygonCount, 0, 0x7f) ||
+                !fits(leaf.lineOffset, 0, 0x3ff) || !fits(leaf.lineCount, 0, 0x3f)) {
+                throw new Error(`Leaf ${leafIndex} exceeds a packed BSP field`);
+            }
+            const node = g.nodes[leaf.nodeIndex];
+            const child1 = (leaf.polygonCount << 9) | leafIndex;
+            const child2 = (leaf.lineCount << 10) | leaf.lineOffset;
+            if (!node || node.offset !== 0xffff || node.child1 !== child1 || node.child2 !== child2) {
+                throw new Error(`Leaf ${leafIndex} explicit ranges do not match packed child1/child2`);
+            }
+        });
         if (g.heightMap.length !== 1024) throw new Error('Heightmap must contain exactly 1024 bytes');
     }
 

@@ -9,7 +9,16 @@ export interface MapNodeRecord {
     offset: number; normalIndex: number; child1: number; child2: number;
     minX: number; maxX: number; minY: number; maxY: number;
 }
-export interface MapLeafRecord { vertexOffset: number; polygonOffset: number; polygonCount: number; nodeIndex: number; }
+export interface MapLeafRecord {
+    vertexOffset: number;
+    polygonOffset: number;
+    polygonCount: number;
+    /** First collision line owned by this leaf (low ten bits of packed child2). */
+    lineOffset: number;
+    /** Number of collision lines owned by this leaf (high six bits of packed child2). */
+    lineCount: number;
+    nodeIndex: number;
+}
 export interface MapVertexRecord { x: number; y: number; z: number; u: number; v: number; }
 export interface MapPolygonRecord { textureId: number; flags: number; vertexStart: number; vertexCount: number; leafIndex: number; }
 export interface MapLineRecord { flags: number; x1: number; y1: number; x2: number; y2: number; }
@@ -55,6 +64,8 @@ export class DoomGeometryService {
         nodes.forEach((node, nodeIndex) => { if (node.offset === 0xffff) leafNodeByIndex.set(node.child1 & 0x1ff, nodeIndex); });
         const leaves = Array.from(nodePolyOffset, (polygonOffset, i) => ({
             polygonOffset, vertexOffset: nodeVertOffset[i], polygonCount: nodes[leafNodeByIndex.get(i) ?? -1]?.child1 >> 9 & 0x7f,
+            lineOffset: nodes[leafNodeByIndex.get(i) ?? -1]?.child2 & 0x3ff,
+            lineCount: nodes[leafNodeByIndex.get(i) ?? -1]?.child2 >> 10 & 0x3f,
             nodeIndex: leafNodeByIndex.get(i) ?? -1
         }));
         const sourceVertices = Array.from(polyXs, (x, i) => ({ x, y: polyYs[i], z: polyZs[i], u: polyUs[i], v: polyVs[i] }));
@@ -173,6 +184,43 @@ export class DoomGeometryService {
         return poly;
     }
 
+    insertLines(geometry: MapGeometry, leafIndex: number, relativeOffset: number, lines: readonly MapLineRecord[]): void {
+        const leaf = geometry.leaves[leafIndex];
+        if (!leaf) throw new Error(`Leaf ${leafIndex} does not exist`);
+        if (!Number.isInteger(relativeOffset) || relativeOffset < 0 || relativeOffset > leaf.lineCount) throw new Error('Line insertion offset is outside the leaf range');
+        const next = lines.map(line => ({ ...line }));
+        geometry.lines.splice(leaf.lineOffset + relativeOffset, 0, ...next);
+        leaf.lineCount += next.length;
+        for (let i = leafIndex + 1; i < geometry.leaves.length; i++) geometry.leaves[i].lineOffset += next.length;
+        this.syncLeafNodes(geometry);
+        this.assertValid(geometry);
+    }
+
+    removeLines(geometry: MapGeometry, leafIndex: number, relativeOffset: number, count: number): MapLineRecord[] {
+        const leaf = geometry.leaves[leafIndex];
+        if (!leaf) throw new Error(`Leaf ${leafIndex} does not exist`);
+        if (!Number.isInteger(relativeOffset) || !Number.isInteger(count) || relativeOffset < 0 || count < 0 || relativeOffset + count > leaf.lineCount) {
+            throw new Error('Line removal range is outside the leaf range');
+        }
+        const removed = geometry.lines.splice(leaf.lineOffset + relativeOffset, count);
+        leaf.lineCount -= count;
+        for (let i = leafIndex + 1; i < geometry.leaves.length; i++) geometry.leaves[i].lineOffset -= count;
+        this.syncLeafNodes(geometry);
+        this.assertValid(geometry);
+        return removed;
+    }
+
+    replaceLines(geometry: MapGeometry, leafIndex: number, relativeOffset: number, count: number, lines: readonly MapLineRecord[]): void {
+        const snapshot = this.cloneEditable(geometry);
+        try {
+            this.removeLines(geometry, leafIndex, relativeOffset, count);
+            this.insertLines(geometry, leafIndex, relativeOffset, lines);
+        } catch (error) {
+            Object.assign(geometry, snapshot);
+            throw error;
+        }
+    }
+
     validate(geometry: MapGeometry): GeometryValidationIssue[] {
         const issues: GeometryValidationIssue[] = [];
         const issue = (section: string, index: number, message: string) => issues.push({ section, index, message });
@@ -181,10 +229,31 @@ export class DoomGeometryService {
             if (n.normalIndex >= geometry.normals.length && n.offset !== 0xffff) issue('nodes', i, 'normal index is out of range');
             if (n.offset !== 0xffff && (n.child1 >= geometry.nodes.length || n.child2 >= geometry.nodes.length)) issue('nodes', i, 'child node index is out of range');
         });
+        if (geometry.nodes.length) {
+            const state = new Uint8Array(geometry.nodes.length);
+            const visit = (index: number) => {
+                if (index < 0 || index >= geometry.nodes.length) return;
+                if (state[index] === 1) { issue('nodes', index, 'cycle detected from root'); return; }
+                if (state[index] === 2) { issue('nodes', index, 'node is referenced by more than one parent'); return; }
+                state[index] = 1;
+                const node = geometry.nodes[index];
+                if (node.offset !== 0xffff) { visit(node.child1); visit(node.child2); }
+                state[index] = 2;
+            };
+            visit(0);
+            state.forEach((value, index) => { if (!value) issue('nodes', index, 'node is unreachable from root'); });
+        }
         geometry.leaves.forEach((leaf, i) => {
             if (leaf.polygonCount > 0x7f || i > 0x1ff) issue('leaves', i, 'packed leaf field is out of range');
             if (leaf.polygonOffset + leaf.polygonCount > geometry.polygons.length || leaf.vertexOffset > geometry.sourceVertices.length) issue('leaves', i, 'polygon/vertex range is out of bounds');
+            if (leaf.lineOffset < 0 || leaf.lineOffset > 0x3ff || leaf.lineCount < 0 || leaf.lineCount > 0x3f) issue('leaves', i, 'packed collision-line field is out of range');
+            if (leaf.lineOffset + leaf.lineCount > geometry.lines.length) issue('leaves', i, 'collision-line range is out of bounds');
+            if (i && leaf.lineOffset !== geometry.leaves[i - 1].lineOffset + geometry.leaves[i - 1].lineCount) issue('leaves', i, 'collision-line ranges are not contiguous');
+            const node = geometry.nodes[leaf.nodeIndex];
+            if (!node || node.offset !== 0xffff || (node.child1 & 0x1ff) !== i) issue('leaves', i, 'leaf node/index association is invalid');
         });
+        if (geometry.leaves.length && geometry.leaves[0].lineOffset !== 0) issue('leaves', 0, 'collision-line ranges must start at zero');
+        if (geometry.leaves.length && geometry.leaves.at(-1)!.lineOffset + geometry.leaves.at(-1)!.lineCount !== geometry.lines.length) issue('lines', -1, 'collision-line ranges do not cover the line array');
         geometry.sourceVertices.forEach((v, i) => {
             if (![v.x, v.y, v.z].every(n => Number.isInteger(n) && n >= 0 && n <= 255)) issue('vertices', i, 'coordinates must fit uint8');
             if (![v.u, v.v].every(n => Number.isInteger(n) && n >= -128 && n <= 127)) issue('vertices', i, 'UVs must fit int8');
@@ -203,13 +272,34 @@ export class DoomGeometryService {
 
     assertValid(geometry: MapGeometry): void { const issues = this.validate(geometry); if (issues.length) throw new Error(issues.map(i => `${i.section}[${i.index}]: ${i.message}`).join('\n')); }
     findLeafAt(geometry: MapGeometry, x: number, y: number): number {
-        return geometry.leaves.findIndex(l => { const n = geometry.nodes[l.nodeIndex]; return !!n && x >= n.minX && x <= n.maxX && y >= n.minY && y <= n.maxY; });
+        if (!geometry.nodes.length) return -1;
+        let nodeIndex = 0;
+        const seen = new Set<number>();
+        while (nodeIndex >= 0 && nodeIndex < geometry.nodes.length && !seen.has(nodeIndex)) {
+            seen.add(nodeIndex);
+            const node = geometry.nodes[nodeIndex];
+            if (node.offset === 0xffff) {
+                const leafIndex = node.child1 & 0x1ff;
+                const leaf = geometry.leaves[leafIndex];
+                // Render.getNodeForPoint performs the same post-traversal bounds guard.
+                return leaf && x >= node.minX && x <= node.maxX && y >= node.minY && y <= node.maxY ? leafIndex : -1;
+            }
+            nodeIndex = this.classifyPoint(geometry, nodeIndex, x, y, 0) > 0 ? node.child1 : node.child2;
+        }
+        return -1;
+    }
+    /** Render.nodeClassifyPoint with map-file coordinates converted to the engine's 7-bit geometry scale. */
+    classifyPoint(geometry: MapGeometry, nodeIndex: number, x: number, y: number, z = 0): number {
+        const node = geometry.nodes[nodeIndex];
+        const normal = node && geometry.normals[node.normalIndex];
+        if (!node || node.offset === 0xffff || !normal) throw new Error(`Node ${nodeIndex} is not a valid split node`);
+        return Math.floor(((x * 128 * normal.x) + (y * 128 * normal.y) + (z * 128 * normal.z)) / 16384) + node.offset;
     }
     cloneEditable(geometry: MapGeometry): MapGeometry {
         const clone = structuredClone(geometry) as MapGeometry; clone.heightMap = geometry.heightMap.slice(); this.rebuildRenderData(clone); return clone;
     }
 
-    private syncLeafNodes(g: MapGeometry) { g.leaves.forEach((l, i) => { if (l.nodeIndex >= 0) g.nodes[l.nodeIndex].child1 = (l.polygonCount << 9) | i; }); }
+    private syncLeafNodes(g: MapGeometry) { g.leaves.forEach((l, i) => { if (l.nodeIndex >= 0) { g.nodes[l.nodeIndex].child1 = (l.polygonCount << 9) | i; g.nodes[l.nodeIndex].child2 = (l.lineCount << 10) | l.lineOffset; } }); }
     private reindexPolygons(g: MapGeometry) { g.leaves.forEach((l, li) => { let v = l.vertexOffset; for (let p = l.polygonOffset; p < l.polygonOffset + l.polygonCount; p++) { g.polygons[p].leafIndex = li; g.polygons[p].vertexStart = v; v += g.polygons[p].vertexCount; } }); }
     private signedArea(v: MapVertexRecord[]) { let a = 0; for (let i = 0; i < v.length; i++) { const n = v[(i + 1) % v.length]; a += v[i].x * n.y - n.x * v[i].y; } return a; }
     private newellNormal(vertices: MapVertexRecord[]) {

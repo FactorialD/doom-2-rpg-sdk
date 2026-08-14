@@ -11,14 +11,15 @@ function vector(x = 0, y = 0, z = 0): THREE.Vector3 {
 
 function geometryWithTwoLeaves(): MapGeometry {
     return {
-        normals: [],
+        normals: [{ x: -16384, y: 0, z: 0 }],
         nodes: [
+            { offset: 11 * 128, normalIndex: 0, child1: 1, child2: 2, minX: 0, maxX: 20, minY: 0, maxY: 10 },
             { offset: 0xffff, normalIndex: 0, child1: 0, child2: 0, minX: 0, maxX: 10, minY: 0, maxY: 10 },
             { offset: 0xffff, normalIndex: 0, child1: 1, child2: 0, minX: 11, maxX: 20, minY: 0, maxY: 10 }
         ],
         leaves: [
-            { vertexOffset: 0, polygonOffset: 0, polygonCount: 0, nodeIndex: 0 },
-            { vertexOffset: 0, polygonOffset: 0, polygonCount: 0, nodeIndex: 1 }
+            { vertexOffset: 0, polygonOffset: 0, polygonCount: 0, lineOffset: 0, lineCount: 0, nodeIndex: 1 },
+            { vertexOffset: 0, polygonOffset: 0, polygonCount: 0, lineOffset: 0, lineCount: 0, nodeIndex: 2 }
         ],
         polygons: [], sourceVertices: [], lines: [], heightMap: new Int8Array(1024),
         vertices: new Float32Array(), uvs: new Float32Array(), indices: [], textureIds: [], flags: [], polyVertexCounts: []
