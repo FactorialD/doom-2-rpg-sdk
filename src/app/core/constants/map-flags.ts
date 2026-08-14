@@ -16,6 +16,15 @@ export enum SpriteFlag {
   WallTextureOffset = 32 // POLY_FLAG_WALL_TEXTURE
 }
 
+export const EDITABLE_SPRITE_FLAGS = [
+  { value: SpriteFlag.Wall, label: 'Wall sprite' },
+  { value: SpriteFlag.OrientationNorthBit, label: 'Face north' },
+  { value: SpriteFlag.OrientationSouthBit, label: 'Face south' },
+  { value: SpriteFlag.OrientationEastBit, label: 'Face east' },
+  { value: SpriteFlag.OrientationWestBit, label: 'Face west' },
+  { value: SpriteFlag.Flat, label: 'Flat / NPC interaction' }
+] as const;
+
 export enum MapFlag {
   Wall = 1,
   Secret = 2,

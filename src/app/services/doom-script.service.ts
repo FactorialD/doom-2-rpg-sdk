@@ -14,6 +14,7 @@ import { DoomSoundService } from './doom-sound.service';
 import { resolveStringChunk, SCRIPT_OPCODE_SCHEMA, ReferenceType, ScriptArgumentDescriptor } from './scripts/script-opcode-schema';
 import { encodeSetStateAssignment } from './doom-variables';
 import { ScriptEntryNameService } from './scripts/script-entry-name.service';
+import { DialogStyle } from '../core/constants/scripting';
 
 export type { ScriptInstruction, ScriptFunctionTable, TileEventRef };
 
@@ -424,13 +425,47 @@ export class DoomScriptService {
   async createTileEventHandler(mapId: number, tileIndex: number, flags: number): Promise<TileEventRef | null> {
       const data = await this.ensureScriptLoaded(mapId);
       if (!data) return null;
+      const snapshot = structuredClone(data);
       // EV_RETURN is a complete, side-effect-free handler and can safely be expanded later.
       const handler = this.disassembler.disassemble(new Uint8Array([2]), mapId)[0];
       handler.uid = ScriptUtils.generateUUID();
       handler.offset = data.rawSize;
       data.instructions.push(handler);
       this.recalculateOffsets(data);
-      return this.addTileEvent(mapId, tileIndex, handler.uid, flags);
+      const ref = await this.addTileEvent(mapId, tileIndex, handler.uid, flags);
+      if (!ref) Object.assign(data, snapshot);
+      return ref;
+  }
+
+  /** Keeps the service cache identical to map-editor undo/redo snapshots. */
+  restoreScriptSnapshot(mapId: number, snapshot: ScriptData | null): void {
+      if (!snapshot) { this.scriptCache.delete(mapId); return; }
+      const cached = this.scriptCache.get(mapId);
+      if (cached) Object.assign(cached, structuredClone(snapshot));
+      else this.scriptCache.set(mapId, structuredClone(snapshot));
+  }
+
+  /** Atomically creates a complete EV_DIALOG, EV_RETURN handler and its Use tile event. */
+  async createDialogTileEvent(mapId: number, tileIndex: number, stringId: number, style: DialogStyle): Promise<TileEventRef | null> {
+      if (!Number.isInteger(stringId) || stringId < 0 || stringId > 255 || !Number.isInteger(style) || style < 0 || style > 15) return null;
+      const data = await this.ensureScriptLoaded(mapId);
+      if (!data) return null;
+      const snapshot = structuredClone(data);
+      try {
+          const handler = this.disassembler.disassemble(new Uint8Array([13, stringId, style & 15, 2]), mapId);
+          if (handler.length !== 2 || handler[0].opcode !== 13 || handler[1].opcode !== 2) throw new Error('Invalid EV_DIALOG handler');
+          handler.forEach(inst => { inst.uid = ScriptUtils.generateUUID(); data.instructions.push(inst); });
+          this.recalculateOffsets(data);
+          const ref = await this.addTileEvent(mapId, tileIndex, handler[0].uid, 0xff4);
+          const result = this.compiler.compile(data.instructions, data.staticFuncs, data.tileEventRefs, data.tileEvents);
+          if (!ref || result.errors.length) throw new Error(result.errors.join('\n') || 'Could not create tile event');
+          data.tileEvents = result.newTileEvents;
+          return ref;
+      } catch (error) {
+          Object.assign(data, snapshot);
+          console.error('createDialogTileEvent failed', error);
+          return null;
+      }
   }
 
   private rebuildTileEvents(data: ScriptData): void {

@@ -76,10 +76,10 @@ export class MapCoordinateService {
         // Otherwise, it's a Z-Sprite (flying, floating, or sunk).
         // Formula: Z_game = FileZ + Floor - 32
         // Therefore: FileZ = Z_game - Floor + 32
-        let fileZ = sprite.y - floor + 32;
-        
-        // Clamp to byte range (0-255) as file only supports UByte Z
-        fileZ = Math.max(0, Math.min(255, fileZ));
+        const fileZ = sprite.y - floor + 32;
+        if (!Number.isInteger(fileZ) || fileZ < 0 || fileZ > 255) {
+            throw new RangeError(`Z-sprite height ${sprite.y} produces file Z ${fileZ}; expected an unsigned byte`);
+        }
         
         return { type: 'z', fileZ };
     }
