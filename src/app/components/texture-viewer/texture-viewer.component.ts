@@ -54,6 +54,7 @@ import { TextureThumbnailComponent } from './texture-thumbnail/texture-thumbnail
                         (zoomChange)="zoom.set($event)"
                         (bgColorChange)="bgColor.set($event)"
                         (saveChanges)="saveChanges()"
+                        (discardChanges)="discardChanges()"
                         (pixelChanged)="onPixelChange($event)"
                     />
                     
@@ -262,6 +263,17 @@ export class TextureViewerComponent {
                 this.editorService.notify('error', 'Failed to save texture.');
             }
         }
+    }
+
+    discardChanges() {
+        const tex = this.selectedTexture();
+        if (!tex || !this.hasChanges()) return;
+        const raw = this.textureService.getTextureRawIndices(tex.id);
+        if (!raw) return;
+        this.localRawData = new Uint8Array(raw);
+        this.textureService.setEditedTexture(tex.id, this.localRawData);
+        this.editorService.clearDirty('textures', tex.id);
+        this.textureService.notifyTexturePixelsChanged();
     }
 
 

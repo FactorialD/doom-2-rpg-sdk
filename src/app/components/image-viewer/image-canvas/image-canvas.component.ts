@@ -16,9 +16,9 @@ import {
   rasterizeLine,
   type CanvasPoint,
   type PixelBuffer
-} from '../../texture-viewer/texture-canvas/texture-canvas-interaction';
+} from '../../../shared/canvas/canvas-interaction';
+import type { DrawingTool } from '../../../shared/drawing-tools/drawing-tool';
 
-export type ImageTool = 'pencil' | 'brush' | 'fill' | 'select';
 export interface ImageSelection { x: number; y: number; width: number; height: number }
 
 @Component({
@@ -43,7 +43,7 @@ export interface ImageSelection { x: number; y: number; width: number; height: n
 })
 export class ImageCanvasComponent {
   readonly model = input.required<DecodedPng>();
-  readonly tool = input<ImageTool>('pencil');
+  readonly tool = input<DrawingTool>('pencil');
   readonly zoom = input(8);
   readonly brushSize = input(1);
   readonly paletteIndex = input(0);

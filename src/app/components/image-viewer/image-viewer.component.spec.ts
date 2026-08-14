@@ -196,3 +196,36 @@ test('same image identity and byte length in a new JAR receives a different thum
   assert.notEqual(cacheKey(4), cacheKey(5));
   assert.match(thumbnailSource, /image\.archiveRevision.*image\.source.*image\.id.*image\.length.*image\.bytes\.byteLength/s);
 });
+
+test('zoom is a signal wired through numeric ngModel changes to the canvas', () => {
+  assert.match(source, /readonly zoom = signal\(8\)/);
+  assert.match(source, /\[ngModel\]="zoom\(\)" \(ngModelChange\)="zoom\.set\(\+\$event\)"/);
+  assert.match(source, /\[zoom\]="normalizedZoom\(\)"/);
+  assert.match(source, /normalize\(this\.zoom\(\), 1, 32, 8\)/);
+});
+
+test('Save and Discard share dirty-state actions and discard clears transient editor state', () => {
+  assert.match(source, /<app-editor-actions \[dirty\]="dirty\(\)" \(save\)="save\(\)" \(discard\)="discard\(\)"/);
+  assert.match(source, /async discard\(\): Promise<void>/);
+  assert.match(source, /this\.cancelImport\(\); this\.resizeOpen\.set\(false\); this\.selection\.set\(null\)/);
+  assert.match(source, /this\.undoStack\.set\(\[\]\); this\.redoStack\.set\(\[\]\); this\.dirty\.set\(false\)/);
+  assert.match(source, /this\.editor\.clearDirty\('images', image\.id\)/);
+});
+
+test('a stale Discard decode cannot replace a newer selection or archive', async () => {
+  const harness = new AsyncSelectionHarness();
+  harness.selected = 'A'; harness.model = 'edited-A'; harness.dirty = true;
+  const restored = deferred<string>();
+  const discarding = harness.select('A', restored.promise);
+  harness.replaceJar();
+  harness.selected = 'B'; harness.model = 'model-B';
+  restored.resolve('saved-A'); await discarding;
+  assert.deepEqual([harness.selected, harness.model], ['B', 'model-B']);
+  assert.match(source, /this\.loadGuard\.begin\(archiveRevision\)[\s\S]*decodePng\(image\.bytes\)[\s\S]*this\.selected\(\) !== image/);
+});
+
+test('a stale import decode is guarded by archive revision and selected image', () => {
+  assert.match(source, /async beginImport\(blob: Blob\)[\s\S]*const archiveRevision = this\.imageService\.archiveRevision\(\)/);
+  assert.match(source, /const request = this\.loadGuard\.begin\(archiveRevision\)[\s\S]*decodePng\(await blob\.arrayBuffer\(\)\)/);
+  assert.match(source, /!this\.loadGuard\.isCurrent\(request, this\.imageService\.archiveRevision\(\)\) \|\| this\.selected\(\) !== selected/);
+});

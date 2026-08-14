@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { TextureCanvasComponent } from './texture-canvas.component';
-import { firstClipboardImage, isPointerButtonPressed, moveSelectionPixels, rasterizeLine } from './texture-canvas-interaction';
+import { firstClipboardImage, floodFillPixels, isPointerButtonPressed, moveSelectionPixels, paintBrush, rasterizeLine } from '../../../shared/canvas/canvas-interaction';
+
+const canvasSource = readFileSync(new URL('./texture-canvas.component.ts', import.meta.url), 'utf8');
 
 test('rasterizes horizontal, vertical, and diagonal lines inclusively', () => {
   assert.deepEqual(rasterizeLine({ x: 1, y: 2 }, { x: 4, y: 2 }), [
@@ -65,6 +68,21 @@ test('clips a moved selection at negative and overflowing destinations', () => {
   assert.deepEqual([...moved], [1, 2, 3, 6, 0, 0, 9, 0, 0]);
   assert.equal(Object.hasOwn(moved, '-1'), false);
   assert.equal(Object.hasOwn(moved, '9'), false);
+});
+
+test('shared pencil, brush, and fill pixel algorithms preserve texture behavior', () => {
+  const pixels = Uint8Array.from([0, 0, 2, 0, 2, 2, 0, 0, 2]);
+  assert.deepEqual([...paintBrush(pixels, 3, 3, { x: 0, y: 0 }, [7], 1)], [7, 0, 2, 0, 2, 2, 0, 0, 2]);
+  assert.deepEqual([...paintBrush(pixels, 3, 3, { x: 0, y: 0 }, [7], 3)], [7, 7, 2, 7, 7, 2, 0, 0, 2]);
+  assert.deepEqual([...floodFillPixels(pixels, 3, 3, { x: 0, y: 0 }, [5])], [5, 5, 2, 5, 2, 2, 5, 5, 2]);
+});
+
+test('texture canvas retains selection movement and zoom bindings after sharing interactions', () => {
+  assert.match(canvasSource, /from '\.\.\/\.\.\/\.\.\/shared\/canvas\/canvas-interaction'/);
+  assert.match(canvasSource, /\[style\.width\.px\]="texture\.width \* zoom"/);
+  assert.match(canvasSource, /\[style\.height\.px\]="texture\.height \* zoom"/);
+  assert.match(canvasSource, /activeTool: DrawingTool = 'pencil'/);
+  assert.match(canvasSource, /moveSelectionPixels\(/);
 });
 
 test('continues a captured pointer stroke only while its initiating button is held', () => {

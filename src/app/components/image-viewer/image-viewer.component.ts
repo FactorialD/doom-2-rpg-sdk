@@ -21,7 +21,10 @@ import {
 } from '../../services/image-processing.service';
 import { downloadBlob } from '../../shared/browser-download';
 import { readClipboardImage } from '../../shared/image-clipboard';
-import { ImageCanvasComponent, type ImageSelection, type ImageTool } from './image-canvas/image-canvas.component';
+import { DrawingToolsComponent } from '../../shared/drawing-tools/drawing-tools.component';
+import type { DrawingTool } from '../../shared/drawing-tools/drawing-tool';
+import { EditorActionsComponent } from '../../shared/editor-actions/editor-actions.component';
+import { ImageCanvasComponent, type ImageSelection } from './image-canvas/image-canvas.component';
 import { ImageLoadGuard } from './image-load-guard';
 import { ImageListComponent } from './image-list/image-list.component';
 import { clearImageThumbnailCache } from './image-thumbnail/image-thumbnail.component';
@@ -33,7 +36,7 @@ const HISTORY_BYTES = 64 * 1024 * 1024;
 @Component({
   selector: 'app-image-viewer',
   standalone: true,
-  imports: [CommonModule, FormsModule, ImageCanvasComponent, ImageListComponent],
+  imports: [CommonModule, FormsModule, DrawingToolsComponent, EditorActionsComponent, ImageCanvasComponent, ImageListComponent],
   host: { '(document:paste)': 'onPaste($event)' },
   template: `
     <div data-testid="image-workspace" class="flex h-full bg-neutral-950 text-neutral-300">
@@ -41,17 +44,16 @@ const HISTORY_BYTES = 64 * 1024 * 1024;
       <section class="flex min-w-0 flex-1 flex-col">
         @if (model(); as current) {
           <header class="flex flex-wrap items-center gap-2 border-b border-neutral-800 p-2">
-            @for (item of tools; track item) { <button class="button" [class.active]="tool() === item" (click)="tool.set(item)">{{ item }}</button> }
+            <app-drawing-tools [tool]="tool()" [brushSize]="normalizedBrush()" [brushMax]="32" (toolChange)="tool.set($event)" (brushSizeChange)="brushSize = $event" />
             <button class="button" [disabled]="!canUndo()" (click)="undo()">Undo</button>
             <button class="button" [disabled]="!canRedo()" (click)="redo()">Redo</button>
-            <label>Brush <input class="num" type="number" [(ngModel)]="brushSize"></label>
             @if (current.indexed) { <label>Index <input class="num" type="number" [(ngModel)]="paletteIndex"></label> }
             @else { <input aria-label="Drawing color" type="color" [(ngModel)]="color"><label>Alpha <input type="range" min="0" max="255" [(ngModel)]="alpha"></label> }
             <label class="button">Import<input hidden type="file" accept="image/*" (change)="importFile($event)"></label>
             <button class="button" (click)="pasteFromClipboard()">Paste</button>
             <button class="button" (click)="exportImage()">Export</button>
-            <button class="button" [disabled]="!dirty()" (click)="save()">Save</button>
-            <label>Zoom <input type="range" min="1" max="32" [(ngModel)]="zoom"></label>
+            <app-editor-actions [dirty]="dirty()" (save)="save()" (discard)="discard()" />
+            <label>Zoom {{ zoom() }}× <input type="range" min="1" max="32" [ngModel]="zoom()" (ngModelChange)="zoom.set(+$event)"></label>
             @if (selected()?.source === 'file') { <button class="button" (click)="resizeOpen.set(!resizeOpen())">Resize</button> }
           </header>
           @if (importModel()) {
@@ -96,11 +98,11 @@ export class ImageViewerComponent {
   readonly model = signal<DecodedPng | null>(null);
   readonly importModel = signal<DecodedPng | null>(null);
   readonly dirty = signal(false);
-  readonly tool = signal<ImageTool>('pencil');
+  readonly tool = signal<DrawingTool>('pencil');
+  readonly zoom = signal(8);
   readonly resizeOpen = signal(false);
   readonly cursor = signal<{ x: number; y: number } | null>(null);
   readonly selection = signal<ImageSelection | null>(null);
-  readonly tools: ImageTool[] = ['pencil', 'brush', 'fill', 'select'];
   readonly paletteEntries = computed(() => Array((this.model()?.palette?.length ?? 0) / 3));
   readonly rgba = computed<[number, number, number, number]>(() => [parseInt(this.color.slice(1, 3), 16), parseInt(this.color.slice(3, 5), 16), parseInt(this.color.slice(5, 7), 16), this.normalize(this.alpha, 0, 255, 255)]);
   readonly transparentIndex = computed(() => {
@@ -111,14 +113,14 @@ export class ImageViewerComponent {
   readonly canRedo = computed(() => this.redoStack().length > 0);
   readonly cursorLabel = computed(() => this.cursor() ? `Cursor ${this.cursor()!.x}, ${this.cursor()!.y}` : 'Cursor —');
   readonly selectionLabel = computed(() => { const area = this.selection(); return area ? `Selection ${area.x}, ${area.y} · ${area.width}×${area.height}` : 'No selection'; });
-  readonly normalizedZoom = computed(() => this.normalize(this.zoom, 1, 32, 8));
+  readonly normalizedZoom = computed(() => this.normalize(this.zoom(), 1, 32, 8));
   readonly normalizedBrush = computed(() => this.normalize(this.brushSize, 1, 32, 1));
   readonly normalizedPaletteIndex = computed(() => this.normalize(this.paletteIndex, 0, Math.max(0, this.paletteEntries().length - 1), 0));
   private readonly undoStack = signal<HistoryEntry[]>([]);
   private readonly redoStack = signal<HistoryEntry[]>([]);
   private readonly loadGuard = new ImageLoadGuard();
 
-  zoom = 8; brushSize = 1; paletteIndex = 0; color = '#ffffff'; alpha = 255;
+  brushSize = 1; paletteIndex = 0; color = '#ffffff'; alpha = 255;
   importX = 0; importY = 0; importWidth = 1; importHeight = 1; importOpacity = 1;
   scaling: ImageScalingMode = 'nearest'; resizeWidth = 1; resizeHeight = 1;
   resizeMode: 'scale' | 'canvas' = 'scale'; anchor: CanvasAnchor = 'center';
@@ -175,8 +177,18 @@ export class ImageViewerComponent {
   redo(): void { this.restore(this.redoStack, this.undoStack); }
 
   async beginImport(blob: Blob): Promise<void> {
-    try { const imported = await decodePng(await blob.arrayBuffer()); this.importModel.set(imported); this.importWidth = imported.width; this.importHeight = imported.height; this.importX = this.importY = 0; }
-    catch (error) { this.editor.notify('error', `Cannot import image: ${(error as Error).message}`); }
+    const archiveRevision = this.imageService.archiveRevision();
+    const selected = this.selected();
+    const request = this.loadGuard.begin(archiveRevision);
+    try {
+      const imported = await decodePng(await blob.arrayBuffer());
+      if (!this.loadGuard.isCurrent(request, this.imageService.archiveRevision()) || this.selected() !== selected) return;
+      this.importModel.set(imported); this.importWidth = imported.width; this.importHeight = imported.height; this.importX = this.importY = 0;
+    } catch (error) {
+      if (this.loadGuard.isCurrent(request, this.imageService.archiveRevision()) && this.selected() === selected) {
+        this.editor.notify('error', `Cannot import image: ${(error as Error).message}`);
+      }
+    }
   }
   importFile(event: Event): void { const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (file) void this.beginImport(file); input.value = ''; }
   async pasteFromClipboard(): Promise<void> { try { await this.beginImport(await readClipboardImage()); } catch (error) { this.editor.notify('error', (error as Error).message); } }
@@ -241,6 +253,25 @@ export class ImageViewerComponent {
     }
   }
 
+  async discard(): Promise<void> {
+    const image = this.selected();
+    if (!image || !this.dirty()) return;
+    const archiveRevision = this.imageService.archiveRevision();
+    const request = this.loadGuard.begin(archiveRevision);
+    this.cancelImport(); this.resizeOpen.set(false); this.selection.set(null);
+    try {
+      const model = await decodePng(image.bytes);
+      if (!this.loadGuard.isCurrent(request, this.imageService.archiveRevision()) || this.selected() !== image) return;
+      this.model.set(model); this.resizeWidth = model.width; this.resizeHeight = model.height;
+      this.undoStack.set([]); this.redoStack.set([]); this.dirty.set(false);
+      this.editor.clearDirty('images', image.id);
+    } catch (error) {
+      if (this.loadGuard.isCurrent(request, this.imageService.archiveRevision()) && this.selected() === image) {
+        this.editor.notify('error', `Cannot restore image: ${(error as Error).message}`);
+      }
+    }
+  }
+
   async exportImage(): Promise<void> {
     const image = this.selected(); if (!image) return;
     const bytes = this.dirty() ? await this.serialize() : image.bytes;
@@ -271,7 +302,7 @@ export class ImageViewerComponent {
   private validateImport(): { x: number; y: number; width: number; height: number; opacity: number } | null { const size = this.validateSize(this.importWidth, this.importHeight, 'Import'); if (!size || ![this.importX, this.importY, this.importOpacity].every(Number.isFinite) || this.importOpacity < 0 || this.importOpacity > 1) { this.editor.notify('error', 'Import X/Y must be finite and opacity must be between 0 and 1.'); return null; } return { x: Math.round(this.importX), y: Math.round(this.importY), ...size, opacity: this.importOpacity }; }
   private validateEditorControls(): boolean {
     const paletteMaximum = Math.max(0, this.paletteEntries().length - 1);
-    if (!Number.isFinite(this.zoom) || this.zoom < 1 || this.zoom > 32
+    if (!Number.isFinite(this.zoom()) || this.zoom() < 1 || this.zoom() > 32
       || !Number.isFinite(this.brushSize) || this.brushSize < 1 || this.brushSize > 32
       || !Number.isFinite(this.alpha) || this.alpha < 0 || this.alpha > 255
       || !Number.isFinite(this.paletteIndex) || this.paletteIndex < 0 || this.paletteIndex > paletteMaximum) {
