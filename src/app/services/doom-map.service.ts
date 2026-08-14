@@ -25,6 +25,7 @@ export interface MapHeader {
     spawnDir: number;
     numPolys: number;
     numVerts: number;
+    numLines: number;
     numSprites: number;
 }
 
@@ -377,7 +378,7 @@ export class DoomMapService {
 
         return {
             header: {
-                spawnIndex, spawnDir, numPolys, numVerts, numSprites: numMapSprites
+                spawnIndex, spawnDir, numLines, numPolys, numVerts, numSprites: numMapSprites
             },
             geometry,
             sprites,

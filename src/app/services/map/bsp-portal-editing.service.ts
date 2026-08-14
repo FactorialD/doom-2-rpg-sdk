@@ -20,6 +20,8 @@ export interface PassagePreview {
     createdLines: MapLineRecord[];
     createdPolygons: NewPolygon[];
     requiresBspRebuild: boolean;
+    /** This operation only edits leaf ranges; BSP nodes, normals and split planes stay untouched. */
+    topologyUnchanged: true;
 }
 
 export interface PassageResult { geometry: MapGeometry; preview: PassagePreview; }
@@ -32,6 +34,8 @@ export interface PassageResult { geometry: MapGeometry; preview: PassagePreview;
  */
 @Injectable({ providedIn: 'root' })
 export class BspPortalEditingService {
+    /** Player clearance in map vertex units (Render/Game use 8 game units per stored height). */
+    static readonly PLAYER_CLEARANCE = 7;
     private geometryService = inject(DoomGeometryService);
 
     preview(geometry: MapGeometry, request: PassageRequest): PassagePreview {
@@ -48,6 +52,9 @@ export class BspPortalEditingService {
         const min = Math.min(horizontalA, horizontalB), max = Math.max(horizontalA, horizontalB);
         const minZ = Math.min(a.z, b.z), maxZ = Math.max(a.z, b.z);
         if (request.start <= min || request.end >= max || request.bottom < minZ || request.top > maxZ) throw new Error('Passage must be strictly inside the selected wall');
+        if (request.top - request.bottom < BspPortalEditingService.PLAYER_CLEARANCE) {
+            throw new Error(`Passage height must be at least ${BspPortalEditingService.PLAYER_CLEARANCE} map units for the player`);
+        }
 
         const leafIndex = poly.leafIndex;
         const corners = alongX
@@ -55,6 +62,16 @@ export class BspPortalEditingService {
             : [[a.x, request.start], [a.x, request.end]];
         const requiresBspRebuild = corners.some(([x, y]) => this.geometryService.findLeafAt(geometry, x, y) !== leafIndex);
         if (requiresBspRebuild) throw new Error('Passage crosses a BSP split; safe BSP rebuilding is required and no changes were applied');
+
+        const floorHeights = this.floorHeightsAcrossOpening(geometry, alongX, a, request.start, request.end);
+        if (!floorHeights.length || floorHeights.some(floor => request.bottom < floor || request.bottom - floor > 1)) {
+            throw new Error('Passage bottom must meet the floor (or a one-unit threshold) across both sides of the opening');
+        }
+        // Removing a 2D line makes the complete vertical column passable. A lower
+        // wall fragment would therefore look solid while being non-colliding.
+        if (request.bottom > minZ) {
+            throw new Error('A hanging passage with a lower wall fragment cannot be represented by the 2D collision format');
+        }
 
         const leaf = geometry.leaves[leafIndex];
         const lineIndexes: number[] = [];
@@ -75,7 +92,28 @@ export class BspPortalEditingService {
         if (lineIndexes.length !== 1) throw new Error('Passage requires exactly one proven collision line for the selected wall');
 
         const createdPolygons = this.wallFragments(poly, a, b, alongX, request);
-        return { leafIndexes: [leafIndex], polygonIndex: request.wallPolygonIndex, lineIndexes, removedLines, createdLines, createdPolygons, requiresBspRebuild: false };
+        const newPolygonCount = leaf.polygonCount - 1 + createdPolygons.length;
+        if (newPolygonCount > 0x7f) throw new Error('Passage fragments overflow the leaf packed polygonCount');
+        if (leaf.lineCount + 1 > 0x3f) throw new Error('Passage collision fragments overflow the leaf packed lineCount');
+        if (geometry.lines.length + 1 > 0xffff || geometry.polygons.length - 1 + createdPolygons.length > 0xffff ||
+            geometry.sourceVertices.length - 2 + createdPolygons.length * 2 > 0xffff) throw new Error('Passage exceeds a uint16 geometry count');
+        for (let i = leafIndex + 1; i < geometry.leaves.length; i++) {
+            if (geometry.leaves[i].lineOffset + 1 > 0x3ff) throw new Error(`Passage overflows packed lineOffset for leaf ${i}`);
+        }
+        return { leafIndexes: [leafIndex], polygonIndex: request.wallPolygonIndex, lineIndexes, removedLines, createdLines, createdPolygons, requiresBspRebuild: false, topologyUnchanged: true };
+    }
+
+    private floorHeightsAcrossOpening(g: MapGeometry, alongX: boolean, wall: MapVertexRecord, start: number, end: number): number[] {
+        const result = new Set<number>();
+        const normalOffsets = [-1, 1];
+        for (let h = start; h <= end; h++) for (const side of normalOffsets) {
+            const x = alongX ? h : wall.x + side;
+            const y = alongX ? wall.y + side : h;
+            const tileX = Math.max(0, Math.min(31, x >> 3));
+            const tileY = Math.max(0, Math.min(31, y >> 3));
+            result.add(g.heightMap[tileY * 32 + tileX]);
+        }
+        return [...result];
     }
 
     createPassage(geometry: MapGeometry, request: PassageRequest): PassageResult {

@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { MapRendererService } from '../../../services/map-renderer.service';
 import { EntityPickerComponent, EntityTemplate } from '../entity-picker/entity-picker.component';
 
-export type EditMode = 'select' | 'vertex' | 'paint' | 'wall' | 'polygon';
+export type EditMode = 'select' | 'vertex' | 'paint' | 'wall' | 'polygon' | 'passage';
 
 @Component({
   selector: 'app-map-toolbar',
@@ -52,6 +52,8 @@ export type EditMode = 'select' | 'vertex' | 'paint' | 'wall' | 'polygon';
                   class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe wall">🧱 Wall</button>
               <button (click)="editModeChange.emit('polygon')" [class.bg-red-800]="editMode() === 'polygon'"
                   class="px-3 py-1 text-xs text-white rounded" title="Draw a BSP-safe flat polygon">⬡ Polygon</button>
+              <button (click)="editModeChange.emit('passage')" [class.bg-cyan-800]="editMode() === 'passage'"
+                  class="px-3 py-1 text-xs text-white rounded" title="Cut a conservative passage without changing BSP topology">▯ Passage</button>
            </div>
            
            <div class="h-6 w-px bg-neutral-700"></div>

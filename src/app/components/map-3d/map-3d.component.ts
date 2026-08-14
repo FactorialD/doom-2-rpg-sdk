@@ -21,6 +21,7 @@ import { MapValidationService } from '../../services/map/map-validation.service'
 import { DoomGeometryService, MapGeometry, MapVertexRecord } from '../../services/doom-geometry.service';
 import { PolyFlag } from '../../core/constants/geometry';
 import { resolveDraftPoint, validateDraftLeaf, wallAxisFromEndpoints } from '../../services/map/map-drawing';
+import { BspPortalEditingService, PassagePreview, PassageRequest } from '../../services/map/bsp-portal-editing.service';
 
 interface MapEditorSnapshot { geometry: MapGeometry; sprites: MapSprite[]; scripts: ScriptData | null; }
 
@@ -44,7 +45,7 @@ interface MapEditorSnapshot { geometry: MapGeometry; sprites: MapSprite[]; scrip
             [selectedMapId]="selectedMapId()"
             [editMode]="editMode()"
             [canUndo]="undoStack().length > 0" [canRedo]="redoStack().length > 0"
-            [operationActive]="draftPoints().length > 0"
+            [operationActive]="draftPoints().length > 0 || passageRequest() !== null"
             [hasSelection]="selectedEntityId() !== -1 || selectedGeometry() !== null"
             (loadMap)="loadMap($event)"
             (editModeChange)="editMode.set($event)"
@@ -52,10 +53,6 @@ interface MapEditorSnapshot { geometry: MapGeometry; sprites: MapSprite[]; scrip
             (confirmOperation)="confirmGeometryOperation()" (cancelOperation)="cancelGeometryOperation()"
             (saveMap)="saveMap()"
             (addEntity)="addEntity($event)"
-            (confirmOperation)="confirmGeometryOperation()"
-            (cancelOperation)="cancelGeometryOperation()"
-            (undo)="undoGeometry()"
-            (redo)="redoGeometry()"
             (focusSelected)="focusSelected()"
            />
 
@@ -77,10 +74,27 @@ interface MapEditorSnapshot { geometry: MapGeometry; sprites: MapSprite[]; scrip
                 @if(editMode() === 'paint') { Click wall/flat to apply selected texture. }
                 @if(editMode() === 'wall') { Click two snapped points, choose a material, then confirm. }
                 @if(editMode() === 'polygon') { Click 3–9 snapped coplanar points, then confirm. }
+                @if(editMode() === 'passage') { Select an orthogonal two-vertex wall, then adjust the opening and confirm. }
             </div>
             @if(editMode() === 'wall' || editMode() === 'polygon') {
               <div class="absolute bottom-3 left-3 bg-neutral-900/95 border border-cyan-700 rounded px-3 py-2 text-xs text-white">
                 Grid: 1 map unit (128 world) · Material group: {{ selectedMaterialGroup() }} · Points: {{ draftPoints().length }}
+              </div>
+            }
+            @if(editMode() === 'passage') {
+              <div class="absolute bottom-3 left-3 w-96 bg-neutral-900/95 border rounded px-3 py-2 text-xs text-white"
+                   [class.border-cyan-700]="passagePreview()" [class.border-red-700]="passageError()">
+                @if (passageRequest(); as passage) {
+                  <div class="font-bold mb-2">Passage preview <span class="font-normal text-neutral-400">(BSP topology is unchanged)</span></div>
+                  <div class="grid grid-cols-4 gap-2">
+                    <label>Start<input type="number" class="w-full bg-neutral-800 p-1" [ngModel]="passage.start" (ngModelChange)="updatePassage('start', +$event)"></label>
+                    <label>End<input type="number" class="w-full bg-neutral-800 p-1" [ngModel]="passage.end" (ngModelChange)="updatePassage('end', +$event)"></label>
+                    <label>Bottom<input type="number" class="w-full bg-neutral-800 p-1" [ngModel]="passage.bottom" (ngModelChange)="updatePassage('bottom', +$event)"></label>
+                    <label>Top<input type="number" class="w-full bg-neutral-800 p-1" [ngModel]="passage.top" (ngModelChange)="updatePassage('top', +$event)"></label>
+                  </div>
+                } @else { Select a wall to inspect whether a conservative passage is supported. }
+                @if (passageError()) { <div class="mt-2 text-red-300">{{ passageError() }}</div> }
+                @if (passagePreview()) { <div class="mt-2 text-neutral-300">Cyan: future wall fragments · amber: future collision lines.</div> }
               </div>
             }
 
@@ -153,6 +167,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   geometryService = inject(DoomGeometryService);
   editorService = inject(EditorService);
   mapValidation = inject(MapValidationService);
+  portalEditing = inject(BspPortalEditingService);
 
   currentTextureId = this.editorService.currentTextureId; 
 
@@ -166,6 +181,9 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
   draftPoints = signal<THREE.Vector3[]>([]);
   undoStack = signal<MapEditorSnapshot[]>([]);
   redoStack = signal<MapEditorSnapshot[]>([]);
+  passageRequest = signal<PassageRequest | null>(null);
+  passagePreview = signal<PassagePreview | null>(null);
+  passageError = signal('');
   
   selectedEntityId = signal<number>(-1);
   selectedGeometry = signal<GeometrySelection | null>(null);
@@ -339,7 +357,9 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
               const groupId = this.mapData.geometry.textureIds[geom.polyIndex];
               const flags = this.mapData.geometry.flags[geom.polyIndex];
               
-              if (this.editMode() === 'select' || this.editMode() === 'vertex') {
+              if (this.editMode() === 'passage') {
+                  this.selectPassageWall(geom.polyIndex);
+              } else if (this.editMode() === 'select' || this.editMode() === 'vertex') {
                   this.selectedEntityId.set(-1);
                   this.renderer.selectEntity(-1, false);
                   
@@ -460,6 +480,7 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
 
   confirmGeometryOperation() {
       if (!this.mapData) return;
+      if (this.editMode() === 'passage') { this.confirmPassage(); return; }
       const points = this.draftPoints();
       const minimum = this.editMode() === 'wall' ? 2 : 3;
       if (points.length < minimum) return;
@@ -478,7 +499,53 @@ export class Map3DComponent implements AfterViewInit, OnDestroy {
       } catch (error) { this.undoGeometry(); alert((error as Error).message); }
   }
 
-  cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.renderer.clearGeometryPreview(); }
+  cancelGeometryOperation() { this.draftPoints.set([]); this.drawingPlane = null; this.draftLeafIndex = null; this.passageRequest.set(null); this.passagePreview.set(null); this.passageError.set(''); this.renderer.clearGeometryPreview(); }
+
+  private selectPassageWall(polyIndex: number) {
+      if (!this.mapData) return;
+      const poly = this.mapData.geometry.polygons[polyIndex];
+      const vertices = poly && this.mapData.geometry.sourceVertices.slice(poly.vertexStart, poly.vertexStart + poly.vertexCount);
+      if (!poly || vertices.length !== 2) { this.setPassageError('Only an encoded two-vertex wall is supported.'); return; }
+      const [a, b] = vertices;
+      const along = a.y === b.y ? [a.x, b.x] : a.x === b.x ? [a.y, b.y] : null;
+      if (!along) { this.setPassageError('This wall is diagonal. The first passage version supports only X- or Y-orthogonal walls.'); return; }
+      const min = Math.min(...along), max = Math.max(...along), floor = Math.min(a.z, b.z);
+      const width = max - min;
+      const request = { wallPolygonIndex: polyIndex, start: min + Math.max(1, Math.floor(width / 3)), end: max - Math.max(1, Math.floor(width / 3)), bottom: floor, top: Math.min(Math.max(a.z, b.z), floor + BspPortalEditingService.PLAYER_CLEARANCE) };
+      this.passageRequest.set(request); this.refreshPassagePreview();
+  }
+
+  updatePassage(field: keyof Omit<PassageRequest, 'wallPolygonIndex'>, value: number) {
+      const request = this.passageRequest();
+      if (!request) return;
+      this.passageRequest.set({ ...request, [field]: value }); this.refreshPassagePreview();
+  }
+
+  private refreshPassagePreview() {
+      if (!this.mapData || !this.passageRequest()) return;
+      try { const preview = this.portalEditing.preview(this.mapData.geometry, this.passageRequest()!); this.passagePreview.set(preview); this.passageError.set(''); this.renderer.showPassagePreview(preview); }
+      catch (error) { this.passagePreview.set(null); this.renderer.clearGeometryPreview(); this.passageError.set((error as Error).message); }
+  }
+
+  private setPassageError(message: string) { this.cancelGeometryOperation(); this.passageError.set(message); }
+
+  private confirmPassage() {
+      if (!this.mapData || !this.passageRequest() || !this.passagePreview()) return;
+      const before = this.snapshot();
+      this.pushUndo();
+      try {
+          this.portalEditing.createPassage(this.mapData.geometry, this.passageRequest()!);
+          this.mapData.header.numPolys = this.mapData.geometry.polygons.length;
+          this.mapData.header.numVerts = this.mapData.geometry.sourceVertices.length;
+          this.mapData.header.numLines = this.mapData.geometry.lines.length;
+          this.renderer.loadMapData(this.mapData);
+          this.selectedGeometry.set(null); this.cancelGeometryOperation(); this.markMapDirty();
+      } catch (error) {
+          const stack = [...this.undoStack()]; stack.pop(); this.undoStack.set(stack);
+          this.restoreSnapshot(before);
+          this.passageError.set(`Passage was not created: ${(error as Error).message}`);
+      }
+  }
   private snapshot(): MapEditorSnapshot { return { geometry: this.geometryService.cloneEditable(this.mapData!.geometry), sprites: structuredClone(this.mapData!.sprites), scripts: this.currentScriptData() ? structuredClone(this.currentScriptData()!) : null }; }
   pushUndo() { if (!this.mapData) return; this.undoStack.update(s => [...s, this.snapshot()].slice(-50)); this.redoStack.set([]); }
   private restoreSnapshot(value: MapEditorSnapshot) { if (!this.mapData) return; this.mapData.geometry = value.geometry; this.mapData.sprites = value.sprites; this.mapData.scripts = value.scripts ?? undefined; this.currentScriptData.set(value.scripts); this.scriptService.restoreScriptSnapshot(this.selectedMapId(), value.scripts); this.spritesList.set([...value.sprites]); this.renderer.loadMapData(this.mapData); this.restoreVertexHandles(); }

@@ -84,3 +84,17 @@ test('entity edits use atomic history and Delete ignores inspector input', () =>
     assert.match(source, /this\.editorService\.activeTab\(\) !== 'map'/);
     assert.match(source, /this\.selectedEntityId\(\) !== -1/);
 });
+
+test('passage mode exposes non-mutating preview and atomic confirmation lifecycle', () => {
+    const source = readFileSync(new URL('./map-3d.component.ts', import.meta.url), 'utf8');
+    const toolbar = readFileSync(new URL('./map-toolbar/map-toolbar.component.ts', import.meta.url), 'utf8');
+    assert.match(toolbar, /editModeChange\.emit\('passage'\)/);
+    assert.match(source, /portalEditing\.preview\(this\.mapData\.geometry/);
+    assert.match(source, /const before = this\.snapshot\(\);\s*this\.pushUndo\(\);/);
+    assert.match(source, /portalEditing\.createPassage/);
+    assert.match(source, /header\.numLines = this\.mapData\.geometry\.lines\.length/);
+    assert.match(source, /this\.restoreSnapshot\(before\)/);
+    assert.match(source, /this\.passageRequest\.set\(null\)/);
+    assert.match(source, /this\.renderer\.loadMapData\(this\.mapData\)/);
+    assert.match(source, /this\.markMapDirty\(\)/);
+});
