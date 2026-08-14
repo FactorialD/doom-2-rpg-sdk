@@ -1,26 +1,42 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import JSZip from 'jszip';
-import { DoomFileService, ResourceCompatibilityError } from './doom-file.service';
+import { DoomFileService, JarLoadError, ResourceCompatibilityError } from './doom-file.service';
 
-const testJarEntries = new WeakMap<File, Record<string, Uint8Array>>();
+const testJarEntries = new WeakMap<ArrayBuffer, Record<string, Uint8Array>>();
+const testJarBuffers = new WeakMap<File, ArrayBuffer>();
+const corruptJars = new WeakSet<ArrayBuffer>();
+const unreadableEntries = new WeakMap<ArrayBuffer, string>();
+const originalLoadAsync = JSZip.prototype.loadAsync;
 
 async function jarFile(name: string, entries: Record<string, Uint8Array>): Promise<File> {
   const file = new File([], name, { type: 'application/java-archive' });
-  testJarEntries.set(file, entries);
+  const buffer = new ArrayBuffer(0);
+  testJarEntries.set(buffer, entries);
+  testJarBuffers.set(file, buffer);
+  Object.defineProperty(file, 'arrayBuffer', { value: async () => buffer });
   return file;
 }
 
-(JSZip.prototype as any).loadAsync = async (file: File) => ({
-  forEach(callback: (path: string, entry: { dir: boolean; async: () => Promise<ArrayBuffer> }) => void) {
-    for (const [path, contents] of Object.entries(testJarEntries.get(file) ?? {})) {
-      callback(path, {
-        dir: false,
-        async: async () => contents.buffer.slice(contents.byteOffset, contents.byteOffset + contents.byteLength)
-      });
-    }
+(JSZip.prototype as any).loadAsync = async function(buffer: ArrayBuffer) {
+  if (!testJarEntries.has(buffer) && !corruptJars.has(buffer)) {
+    return originalLoadAsync.call(this, buffer);
   }
-});
+  if (corruptJars.has(buffer)) throw new Error('Corrupt central directory');
+  return {
+    forEach(callback: (path: string, entry: { dir: boolean; async: () => Promise<ArrayBuffer> }) => void) {
+      for (const [path, contents] of Object.entries(testJarEntries.get(buffer) ?? {})) {
+        callback(path, {
+          dir: false,
+          async: async () => {
+            if (unreadableEntries.get(buffer) === path) throw new Error(`Cannot read ${path}`);
+            return contents.buffer.slice(contents.byteOffset, contents.byteOffset + contents.byteLength);
+          }
+        });
+      }
+    }
+  };
+};
 
 function bytes(buffer: ArrayBuffer | undefined): number[] | undefined {
   return buffer ? [...new Uint8Array(buffer)] : undefined;
@@ -79,6 +95,123 @@ test('keeps the loaded JAR and its font URL when a replacement has ambiguous res
     assert.deepEqual(bytes(service.getFile('strings.idx')), [7]);
     assert.deepEqual(bytes(service.getFile('map00.bin')), [9]);
     assert.equal(service.getFile('region-a/strings.idx'), undefined);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+  }
+});
+
+test('keeps all active state when a corrupt ZIP replaces a loaded JAR', async () => {
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const revoked: string[] = [];
+  URL.createObjectURL = () => 'blob:original-font';
+  URL.revokeObjectURL = url => revoked.push(url);
+
+  try {
+    const service = new DoomFileService();
+    await service.loadJar(await jarFile('original.jar', {
+      'game/strings.idx': new Uint8Array([1]),
+      'game/font.png': new Uint8Array([2]),
+      'game/map00.bin': new Uint8Array([3])
+    }));
+    const originalFiles = service.files;
+    const originalMetadata = service.entryMetadata;
+    const corrupt = new File([], 'corrupt.jar');
+    const corruptBuffer = await corrupt.arrayBuffer();
+    corruptJars.add(corruptBuffer);
+    Object.defineProperty(corrupt, 'arrayBuffer', { value: async () => corruptBuffer });
+
+    await assert.rejects(service.loadJar(corrupt), (error: unknown) => {
+      assert.ok(error instanceof JarLoadError);
+      assert.equal(error.code, 'INVALID_ARCHIVE');
+      return true;
+    });
+
+    assert.equal(service.files, originalFiles);
+    assert.equal(service.entryMetadata, originalMetadata);
+    assert.deepEqual(bytes(service.getFile('map00.bin')), [3]);
+    assert.equal(service.loadedFileName(), 'original.jar');
+    assert.equal(service.isLoaded(), true);
+    assert.equal(service.stringsIndexLoaded(), true);
+    assert.equal(service.fontImageSrc(), 'blob:original-font');
+    assert.deepEqual(revoked, []);
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+  }
+});
+
+test('keeps all active state when reading a replacement entry fails', async () => {
+  const service = new DoomFileService();
+  await service.loadJar(await jarFile('original.jar', {
+    'strings.idx': new Uint8Array([4]),
+    'map00.bin': new Uint8Array([5])
+  }));
+  const originalFiles = service.files;
+  const originalMetadata = service.entryMetadata;
+  const replacement = await jarFile('unreadable.jar', {
+    'strings.idx': new Uint8Array([6]),
+    'map00.bin': new Uint8Array([7])
+  });
+  unreadableEntries.set(testJarBuffers.get(replacement)!, 'map00.bin');
+
+  await assert.rejects(service.loadJar(replacement), (error: unknown) => {
+    assert.ok(error instanceof JarLoadError);
+    assert.equal(error.code, 'ENTRY_READ_FAILED');
+    return true;
+  });
+
+  assert.equal(service.files, originalFiles);
+  assert.equal(service.entryMetadata, originalMetadata);
+  assert.deepEqual(bytes(service.getFile('strings.idx')), [4]);
+  assert.deepEqual(bytes(service.getFile('map00.bin')), [5]);
+  assert.equal(service.loadedFileName(), 'original.jar');
+  assert.equal(service.isLoaded(), true);
+  assert.equal(service.stringsIndexLoaded(), true);
+  assert.equal(service.fontImageSrc(), null);
+});
+
+test('keeps all active state when a replacement resource index is invalid', async () => {
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  const revoked: string[] = [];
+  let sequence = 0;
+  URL.createObjectURL = () => `blob:font-${++sequence}`;
+  URL.revokeObjectURL = url => revoked.push(url);
+
+  try {
+    const service = new DoomFileService();
+    await service.loadJar(await jarFile('original.jar', {
+      'strings.idx': new Uint8Array([1]),
+      'font.png': new Uint8Array([2]),
+      'map00.bin': new Uint8Array([3])
+    }));
+    const originalFiles = service.files;
+    const originalMetadata = service.entryMetadata;
+
+    await assert.rejects(
+      service.loadJar(await jarFile('invalid-index.jar', {
+        'strings.idx': new Uint8Array([9]),
+        'images.idx': new Uint8Array([1]),
+        'font.png': new Uint8Array([8])
+      })),
+      (error: unknown) => {
+        assert.ok(error instanceof JarLoadError);
+        assert.equal(error.code, 'INVALID_RESOURCE_INDEX');
+        return true;
+      }
+    );
+
+    assert.equal(service.files, originalFiles);
+    assert.equal(service.entryMetadata, originalMetadata);
+    assert.deepEqual(bytes(service.getFile('strings.idx')), [1]);
+    assert.deepEqual(bytes(service.getFile('map00.bin')), [3]);
+    assert.equal(service.loadedFileName(), 'original.jar');
+    assert.equal(service.isLoaded(), true);
+    assert.equal(service.stringsIndexLoaded(), true);
+    assert.equal(service.fontImageSrc(), 'blob:font-1');
+    assert.deepEqual(revoked, []);
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
