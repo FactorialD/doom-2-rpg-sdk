@@ -131,3 +131,28 @@ test('clean export downloads immediately without confirmation', async t => {
   assert.equal(confirmMock.mock.callCount(), 0);
   assert.equal(harness.downloadCount(), 1);
 });
+
+test('failed JAR loading preserves dirty state and never reports success', async t => {
+  const component = Object.create(ToolbarComponent.prototype) as ToolbarComponent;
+  const editor = new EditorService();
+  editor.markDirty('maps', 1);
+  const notifications: Array<{ type: string; text: string }> = [];
+  t.mock.method(editor, 'notify', (type, text) => notifications.push({ type, text }));
+  const clearDirty = t.mock.method(editor, 'clearAllDirty');
+  component.service = editor;
+  component.fileService = {
+    loadJar: async () => { throw new Error('broken archive'); }
+  } as never;
+  mockConfirm(t, () => true);
+  const input = {
+    files: [new File([], 'broken.jar')],
+    value: 'selected'
+  } as unknown as HTMLInputElement;
+
+  await component.onFileSelected({ target: input } as unknown as Event);
+
+  assert.equal(clearDirty.mock.callCount(), 0);
+  assert.equal(editor.hasUnsavedChanges(), true);
+  assert.deepEqual(notifications, [{ type: 'error', text: 'Failed to load JAR: broken archive' }]);
+  assert.equal(input.value, '');
+});

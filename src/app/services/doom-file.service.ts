@@ -16,16 +16,34 @@ export interface VfsEntryMetadata {
   compressionOptions: { level: number } | null;
 }
 
+export type JarLoadErrorCode =
+  | 'INVALID_ARCHIVE'
+  | 'ENTRY_READ_FAILED'
+  | 'INVALID_RESOURCE_INDEX'
+  | 'AMBIGUOUS_RESOURCE_BASENAME';
+
+export class JarLoadError extends Error {
+  constructor(
+    readonly code: JarLoadErrorCode,
+    message: string,
+    options?: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = 'JarLoadError';
+  }
+}
+
 const NEW_ENTRY_DATE = new Date(1980, 0, 1, 0, 0, 0);
 
-export class ResourceCompatibilityError extends Error {
-  readonly code = 'AMBIGUOUS_RESOURCE_BASENAME';
-
+export class ResourceCompatibilityError extends JarLoadError {
   constructor(
     readonly resourceName: string,
     readonly conflictingPaths: string[]
   ) {
-    super(`Resource "${resourceName}" is ambiguous: ${conflictingPaths.join(', ')}`);
+    super(
+      'AMBIGUOUS_RESOURCE_BASENAME',
+      `Resource "${resourceName}" is ambiguous: ${conflictingPaths.join(', ')}`
+    );
     this.name = 'ResourceCompatibilityError';
   }
 }
@@ -37,7 +55,7 @@ export class DoomFileService {
   // Stores raw ArrayBuffers for files with their FULL paths (e.g., "com/ea/Game.class")
   files: Map<string, ArrayBuffer> = new Map();
   /** ZIP properties kept separately so replacing a payload does not discard its container metadata. */
-  readonly entryMetadata: Map<string, VfsEntryMetadata> = new Map();
+  entryMetadata: Map<string, VfsEntryMetadata> = new Map();
   private resourcePathsByBasename: Map<string, string[]> = new Map();
   
   // Signal to notify app that a JAR is loaded
@@ -58,58 +76,66 @@ export class DoomFileService {
   }
 
   async loadJar(file: File): Promise<void> {
+    let phase: JarLoadErrorCode = 'INVALID_ARCHIVE';
+    let nextFontUrl: string | null = null;
+    let nextFiles: Map<string, ArrayBuffer>;
+    let nextEntryMetadata: Map<string, VfsEntryMetadata>;
+    let nextResourceIndex: Map<string, string[]>;
+    let nextStringsIndexLoaded: boolean;
+
     try {
-      this.isLoaded.set(false);
-      this.stringsIndexLoaded.set(false); // Reset this so UI cleans up
-      this.setFontImageSrc(null);
-      this.files.clear();
-      this.entryMetadata.clear();
-      this.resourcePathsByBasename.clear();
-      
       const zip = new JSZip();
       const content = await zip.loadAsync(await file.arrayBuffer());
-      const nextFiles = new Map<string, ArrayBuffer>();
+      nextFiles = new Map<string, ArrayBuffer>();
+      nextEntryMetadata = new Map<string, VfsEntryMetadata>();
 
       const promises: Promise<void>[] = [];
 
       let order = 0;
       content.forEach((relativePath: string, zipEntry: JSZip.JSZipObject) => {
         const normalizedPath = this.normalizePath(relativePath);
-        this.entryMetadata.set(normalizedPath, this.metadataFromZipEntry(zipEntry, order++));
+        nextEntryMetadata.set(normalizedPath, this.metadataFromZipEntry(zipEntry, order++));
         if (!zipEntry.dir) {
           const promise = zipEntry.async('arraybuffer').then((buffer: ArrayBuffer) => {
-            this.files.set(normalizedPath, buffer);
-            nextFiles.set(this.normalizePath(relativePath), buffer);
+            nextFiles.set(normalizedPath, buffer);
           });
           promises.push(promise);
         }
       });
 
+      phase = 'ENTRY_READ_FAILED';
       await Promise.all(promises);
-      const nextResourceIndex = this.buildResourceIndex(nextFiles);
+      phase = 'INVALID_RESOURCE_INDEX';
+      nextResourceIndex = this.buildResourceIndex(nextFiles);
       this.validateResourceIndex(nextResourceIndex);
       const nextFontBuffer = this.findFontBuffer(nextFiles, nextResourceIndex);
-      const nextFontUrl = nextFontBuffer
+      nextFontUrl = nextFontBuffer
         ? URL.createObjectURL(new Blob([nextFontBuffer], { type: 'image/png' }))
         : null;
-      const nextStringsIndexLoaded = this.resolveResourcePathFromIndex('strings.idx', nextResourceIndex) !== undefined;
+      nextStringsIndexLoaded = this.resolveResourcePathFromIndex('strings.idx', nextResourceIndex) !== undefined;
+    } catch (error) {
+      if (nextFontUrl) URL.revokeObjectURL(nextFontUrl);
+      if (error instanceof JarLoadError) throw error;
+      throw new JarLoadError(phase, this.jarLoadErrorMessage(phase), { cause: error });
+    }
 
-      this.files = nextFiles;
-      this.resourcePathsByBasename = nextResourceIndex;
-      this.loadedFileName.set(file.name);
-      this.stringsIndexLoaded.set(nextStringsIndexLoaded);
-      this.setFontImageSrc(nextFontUrl);
-      this.isLoaded.set(true);
-      console.log(`Loaded ${this.files.size} files from JAR.`);
+    const previousFontUrl = this.fontImageSrc();
+    this.files = nextFiles;
+    this.entryMetadata = nextEntryMetadata;
+    this.resourcePathsByBasename = nextResourceIndex;
+    this.loadedFileName.set(file.name);
+    this.stringsIndexLoaded.set(nextStringsIndexLoaded);
+    this.fontImageSrc.set(nextFontUrl);
+    this.isLoaded.set(true);
+    if (previousFontUrl && previousFontUrl !== nextFontUrl) URL.revokeObjectURL(previousFontUrl);
+    console.log(`Loaded ${this.files.size} files from JAR.`);
+  }
 
-    } catch (e) {
-      console.error('Failed to load JAR:', e);
-      if (e instanceof ResourceCompatibilityError) {
-        throw e;
-      }
-      if (typeof alert === 'function') {
-        alert('Error loading .jar file. Ensure it is a valid ZIP/JAR archive.');
-      }
+  private jarLoadErrorMessage(code: JarLoadErrorCode): string {
+    switch (code) {
+      case 'ENTRY_READ_FAILED': return 'Failed to read an entry from the ZIP/JAR archive.';
+      case 'INVALID_RESOURCE_INDEX': return 'The ZIP/JAR contains an invalid resource index.';
+      default: return 'The selected file is not a valid ZIP/JAR archive.';
     }
   }
 
